@@ -1,0 +1,24 @@
+[project]
+name = "typeset-nodes"
+description = "Where can words live in this shot? Occupancy grid, planar surface tracking, subject-following reframe crop, beat grid and lyric-aligned Whisper words — JSON + previews for kinetic typography in real footage."
+version = "0.2.0"
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["typography", "lyrics", "captions", "tracking", "homography", "reframe", "beat", "whisper", "motion-graphics"]
+dependencies = [
+    "faster-whisper>=1.0",
+    "librosa>=0.10",
+    "numpy",
+    "opencv-python>=4.8",
+    "pillow>=10",
+    "scipy",
+]
+
+# comfy-cli / Comfy Registry metadata. Not published yet: set PublisherId after registering a publisher,
+# then `comfy node publish`.
+[tool.comfy]
+PublisherId = ""
+DisplayName = "Typeset Nodes — words in footage"
+Icon = ""
+includes = ["fonts/", "docs/"]

@@ -1,0 +1,41 @@
+{
+  "1": {
+    "class_type": "LoadAudio",
+    "inputs": {
+      "audio": "typeset/test/song.wav"
+    }
+  },
+  "2": {
+    "class_type": "TypesetBeatGrid",
+    "inputs": {
+      "audio": [
+        "1",
+        0
+      ],
+      "beats_per_bar": 4,
+      "section_seconds": 8.0
+    }
+  },
+  "3": {
+    "class_type": "SaveTextFile",
+    "inputs": {
+      "text": [
+        "2",
+        0
+      ],
+      "filename_prefix": "typeset/beats",
+      "extension": "json",
+      "pretty_json": true
+    }
+  },
+  "4": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "2",
+        2
+      ],
+      "filename_prefix": "typeset/beats"
+    }
+  }
+}

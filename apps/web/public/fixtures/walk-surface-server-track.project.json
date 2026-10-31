@@ -1,0 +1,273 @@
+{
+ "version": 1,
+ "id": "beeba9e1-9178-4f24-b9ce-9fb119bb33f6",
+ "name": "Proof A \u2014 walk: behind + head HUD + karaoke",
+ "fps": 24.0,
+ "width": 1344,
+ "height": 768,
+ "duration": 5.167,
+ "media": {
+  "video": {
+   "path": "media/c1d4d4c1981f_walk_night_00001-audio.mp4",
+   "duration": 5.167,
+   "width": 1344,
+   "height": 768,
+   "fps": 24.0,
+   "hasAudio": true
+  },
+  "audio": null,
+  "lyrics": null
+ },
+ "analysis": {
+  "words": null,
+  "matte": "analysis/matte_19b4b659-0550-4ece-81c8-db85871b7895/",
+  "tracks": "analysis/tracks_19b4b659-0550-4ece-81c8-db85871b7895.json",
+  "depth": null,
+  "occupancy": "analysis/occupancy.json"
+ },
+ "style": {
+  "fontFamily": "Inter",
+  "fontWeight": 800,
+  "fontSize": 0.13,
+  "fill": "#f4f1ea",
+  "stroke": null,
+  "strokeWidth": null,
+  "letterSpacing": -0.02,
+  "align": "center"
+ },
+ "words": [
+  {
+   "id": "w0-87091b",
+   "text": "WALK",
+   "start": 0.3,
+   "end": 2.6,
+   "lineId": "l0",
+   "placement": "behind",
+   "preset": "pop",
+   "position": {
+    "x": 0.5,
+    "y": 0.42
+   },
+   "anchor": null,
+   "style": {
+    "fontSize": 0.3
+   },
+   "shotId": null
+  },
+  {
+   "id": "w1-82bbc0",
+   "text": "ME",
+   "start": 0.55,
+   "end": 2.6,
+   "lineId": "l0",
+   "placement": "behind",
+   "preset": "pop",
+   "position": {
+    "x": 0.5,
+    "y": 0.42
+   },
+   "anchor": null,
+   "style": {
+    "fontSize": 0.3
+   },
+   "shotId": null
+  },
+  {
+   "id": "w2-f3b2cb",
+   "text": "THROUGH",
+   "start": 0.8,
+   "end": 2.6,
+   "lineId": "l0",
+   "placement": "behind",
+   "preset": "pop",
+   "position": {
+    "x": 0.5,
+    "y": 0.42
+   },
+   "anchor": null,
+   "style": {
+    "fontSize": 0.3
+   },
+   "shotId": null
+  },
+  {
+   "id": "w3-83a4cf",
+   "text": "the neon rain",
+   "start": 1.1,
+   "end": 2.6,
+   "lineId": "l1",
+   "placement": "behind",
+   "preset": "pop",
+   "position": {
+    "x": 0.5,
+    "y": 0.66
+   },
+   "anchor": null,
+   "style": {
+    "fontSize": 0.11,
+    "fontWeight": 500,
+    "fill": "#d8ff62"
+   },
+   "shotId": null
+  },
+  {
+   "id": "w4-a4d020",
+   "text": "every sign",
+   "start": 2.7,
+   "end": 4.3,
+   "lineId": "l2",
+   "placement": "anchor",
+   "preset": "hud",
+   "position": null,
+   "anchor": {
+    "trackId": "person0",
+    "dx": 0.0,
+    "dy": -0.16
+   },
+   "style": {
+    "fontFamily": "Space Mono",
+    "fontWeight": 700,
+    "fontSize": 0.045,
+    "fill": "#f4f1ea"
+   },
+   "shotId": null
+  },
+  {
+   "id": "w5-e8c245",
+   "text": "repeats",
+   "start": 4.35,
+   "end": 5.1,
+   "lineId": "l3",
+   "placement": "overlay",
+   "preset": "karaoke",
+   "position": {
+    "x": 0.5,
+    "y": 0.86
+   },
+   "anchor": null,
+   "style": {
+    "fontSize": 0.08
+   },
+   "shotId": null
+  },
+  {
+   "id": "w6-5a7c39",
+   "text": "your",
+   "start": 4.6,
+   "end": 5.1,
+   "lineId": "l3",
+   "placement": "overlay",
+   "preset": "karaoke",
+   "position": {
+    "x": 0.5,
+    "y": 0.86
+   },
+   "anchor": null,
+   "style": {
+    "fontSize": 0.08
+   },
+   "shotId": null
+  },
+  {
+   "id": "w7-f5eaa5",
+   "text": "name",
+   "start": 4.85,
+   "end": 5.1,
+   "lineId": "l3",
+   "placement": "overlay",
+   "preset": "karaoke",
+   "position": {
+    "x": 0.5,
+    "y": 0.86
+   },
+   "anchor": null,
+   "style": {
+    "fontSize": 0.08
+   },
+   "shotId": null
+  },
+  {
+   "id": "wsrv0",
+   "text": "HOLD",
+   "start": 2.6,
+   "end": 5.1,
+   "lineId": "ls",
+   "placement": "surface",
+   "preset": "pop",
+   "surfaceId": "s-shutter",
+   "style": {
+    "fontFamily": "Anton",
+    "fontWeight": 400
+   }
+  },
+  {
+   "id": "wsrv1",
+   "text": "ON",
+   "start": 2.9,
+   "end": 5.1,
+   "lineId": "ls",
+   "placement": "surface",
+   "preset": "pop",
+   "surfaceId": "s-shutter",
+   "style": {
+    "fontFamily": "Anton",
+    "fontWeight": 400
+   }
+  }
+ ],
+ "shots": [],
+ "surfaces": [
+  {
+   "id": "s-poster",
+   "label": "poster wall (test)",
+   "keyFrame": 70,
+   "corners": [
+    [
+     0.01,
+     0.05
+    ],
+    [
+     0.14,
+     0.05
+    ],
+    [
+     0.145,
+     0.9
+    ],
+    [
+     0.01,
+     0.9
+    ]
+   ],
+   "track": "analysis/surfaces/s-poster.json",
+   "status": "tracked"
+  },
+  {
+   "id": "s-shutter",
+   "label": "shutter (test)",
+   "keyFrame": 70,
+   "corners": [
+    [
+     0.36,
+     0.03
+    ],
+    [
+     0.5,
+     0.08
+    ],
+    [
+     0.5,
+     0.62
+    ],
+    [
+     0.36,
+     0.68
+    ]
+   ],
+   "track": "analysis/surfaces/s-shutter.json",
+   "status": "tracked",
+   "material": "paint"
+  }
+ ],
+ "frame": null
+}

@@ -1,0 +1,34 @@
+{
+  "1": {
+    "class_type": "TypesetLoadImageSequence",
+    "inputs": {
+      "directory": "typeset/matte",
+      "pattern": "fg_*.png",
+      "max_frames": 0
+    }
+  },
+  "2": {
+    "class_type": "TypesetOccupancyGrid",
+    "inputs": {
+      "mask": [
+        "1",
+        1
+      ],
+      "fps": 24.0,
+      "long_side_cells": 32,
+      "preview_frames": 0
+    }
+  },
+  "3": {
+    "class_type": "SaveTextFile",
+    "inputs": {
+      "text": [
+        "2",
+        0
+      ],
+      "filename_prefix": "typeset/occupancy",
+      "extension": "json",
+      "pretty_json": false
+    }
+  }
+}

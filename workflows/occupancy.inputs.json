@@ -1,0 +1,29 @@
+{
+  "workflow": "occupancy.api.json",
+  "description": "Matte PNG sequence (alpha = subject) -> occupancy grid JSON (SCHEMA v2 \u00a7B).",
+  "inputs": {
+    "matte_dir": {
+      "node": "1",
+      "field": "directory",
+      "kind": "comfy_input_path"
+    },
+    "fps": {
+      "node": "2",
+      "field": "fps",
+      "kind": "float",
+      "default": 24
+    },
+    "long_side_cells": {
+      "node": "2",
+      "field": "long_side_cells",
+      "kind": "int",
+      "default": 32
+    }
+  },
+  "outputs": {
+    "occupancy_json": {
+      "node": "3",
+      "type": "text"
+    }
+  }
+}

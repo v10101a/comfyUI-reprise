@@ -1,0 +1,12 @@
+data/
+outputs/
+node_modules/
+.venv/
+__pycache__/
+*.part
+.DS_Store
+
+# agent verification frames (regenerable)
+apps/web/.verify/
+apps/web/dist/
+*.log

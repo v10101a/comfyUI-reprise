@@ -1,0 +1,31 @@
+{
+  "1": {
+    "class_type": "LoadAudio",
+    "inputs": {
+      "audio": "typeset/test/speech.wav"
+    }
+  },
+  "2": {
+    "class_type": "WhisperWords",
+    "inputs": {
+      "audio": [
+        "1",
+        0
+      ],
+      "model_size": "small",
+      "language": "auto",
+      "lyrics": ""
+    }
+  },
+  "3": {
+    "class_type": "SaveTextFile",
+    "inputs": {
+      "text": [
+        "2",
+        0
+      ],
+      "filename_prefix": "typeset/words",
+      "extension": "json"
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "1": {"class_type": "LoadImage", "inputs": {"image": "example.png"}},
+  "2": {"class_type": "ImageScale", "inputs": {"image": ["1", 0], "upscale_method": "lanczos", "width": 256, "height": 256, "crop": "center"}},
+  "3": {"class_type": "SaveImage", "inputs": {"images": ["2", 0], "filename_prefix": "smoke/test"}}
+}

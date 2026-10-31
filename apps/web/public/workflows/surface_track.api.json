@@ -1,0 +1,57 @@
+{
+  "1": {
+    "class_type": "LoadVideo",
+    "inputs": {
+      "file": "typeset/test/person_short.mp4"
+    }
+  },
+  "2": {
+    "class_type": "GetVideoComponents",
+    "inputs": {
+      "video": [
+        "1",
+        0
+      ]
+    }
+  },
+  "3": {
+    "class_type": "TypesetLoadImageSequence",
+    "inputs": {
+      "directory": "",
+      "pattern": "fg_*.png",
+      "max_frames": 0
+    }
+  },
+  "4": {
+    "class_type": "TypesetPlanarTrack",
+    "inputs": {
+      "images": [
+        "2",
+        0
+      ],
+      "subject_mask": [
+        "3",
+        1
+      ],
+      "corners": "[[0.3,0.3],[0.7,0.3],[0.7,0.7],[0.3,0.7]]",
+      "key_frame": 0,
+      "fps": 24.0,
+      "feature_region": 1.0,
+      "min_confidence": 0.35,
+      "smooth": 2,
+      "preview_frames": 0
+    }
+  },
+  "5": {
+    "class_type": "SaveTextFile",
+    "inputs": {
+      "text": [
+        "4",
+        0
+      ],
+      "filename_prefix": "typeset/surface",
+      "extension": "json",
+      "pretty_json": false
+    }
+  }
+}

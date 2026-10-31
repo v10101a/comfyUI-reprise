@@ -1,0 +1,518 @@
+"""Sidecar-driven ComfyUI workflow runner (Comfy SDK → comfy-api-proxy → local ComfyUI).
+
+A workflow is addressed by *name*: `<workflows_dir>/<name>.inputs.json` (SCHEMA §3) names
+the API-format graph, the inputs (node/field/kind) and the outputs (node/type). The server
+never hardcodes node ids.
+
+Robustness notes (all verified against comfy-api-proxy 0.1.x):
+  * Never `client.run()` / `job.wait()`: the proxy can report `expired` for an instant right
+    after ComfyUI finishes. We poll and treat `expired` as transient for ~5 s.
+  * Outputs are downloaded by node id. The proxy's asset id encodes {filename, subfolder, type},
+    so when ComfyUI is on this machine we copy the file straight from ~/ComfyUI/output (fast path)
+    and fall back to an HTTP download.
+  * A `text` output whose node only emitted plain strings (ComfyUI `ui.text`) is invisible to the
+    proxy (it requires `filename` entries). We fall back to ComfyUI's own /history/<job> and write
+    the strings to a file so callers always get a path.
+"""
+from __future__ import annotations
+
+import base64
+import json
+import logging
+import os
+import shutil
+import threading
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path, PurePosixPath
+from typing import Any
+
+import httpx
+
+from .config import settings
+
+log = logging.getLogger("typeset.comfy")
+
+TERMINAL = {"succeeded", "failed", "canceled"}
+KINDS = {"comfy_input_path", "string", "int", "float", "bool"}
+_MISSING = object()
+ProgressFn = Callable[[str, float], None]  # (status, elapsed_seconds)
+_SDK_ENV_LOCK = threading.Lock()
+
+
+class WorkflowError(RuntimeError):
+    pass
+
+
+class WorkflowMissing(WorkflowError):
+    pass
+
+
+class WorkflowInputError(WorkflowError):
+    pass
+
+
+class WorkflowRunError(WorkflowError):
+    pass
+
+
+# ---- sidecars -------------------------------------------------------------------
+
+@dataclass
+class SidecarInput:
+    node: str
+    field: str
+    kind: str
+    default: Any = _MISSING
+    optional: bool = False
+
+
+@dataclass
+class SidecarOutput:
+    node: str
+    type: str = "image"
+    optional: bool = False
+
+
+@dataclass
+class Sidecar:
+    name: str
+    path: Path
+    workflow_path: Path
+    description: str = ""
+    inputs: dict[str, SidecarInput] = field(default_factory=dict)
+    outputs: dict[str, SidecarOutput] = field(default_factory=dict)
+
+
+def sidecar_path(name: str, workflows_dir: Path | None = None) -> Path:
+    p = Path(name)
+    if p.suffix == ".json" and p.name.endswith(".inputs.json"):
+        return p if p.is_absolute() else (workflows_dir or settings.workflows_dir) / p
+    return (workflows_dir or settings.workflows_dir) / f"{name}.inputs.json"
+
+
+def load_sidecar(name: str, workflows_dir: Path | None = None) -> Sidecar:
+    path = sidecar_path(name, workflows_dir)
+    if not path.is_file():
+        raise WorkflowMissing(
+            f"Workflow sidecar not found: {path} — the '{Path(name).name.replace('.inputs.json', '')}' workflow has not been delivered yet."
+        )
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise WorkflowError(f"Sidecar {path} is not valid JSON: {exc}") from exc
+    wf_name = data.get("workflow")
+    if not wf_name:
+        raise WorkflowError(f"Sidecar {path} has no 'workflow' key")
+    wf_path = (path.parent / wf_name) if not os.path.isabs(wf_name) else Path(wf_name)
+    if not wf_path.is_file():
+        raise WorkflowMissing(f"Workflow file not found: {wf_path} (referenced by {path.name})")
+
+    inputs: dict[str, SidecarInput] = {}
+    for key, spec in (data.get("inputs") or {}).items():
+        kind = spec.get("kind", "string")
+        if kind not in KINDS:
+            raise WorkflowError(f"Sidecar {path.name}: input '{key}' has unknown kind '{kind}' (expected one of {sorted(KINDS)})")
+        inputs[key] = SidecarInput(
+            node=str(spec["node"]), field=str(spec["field"]), kind=kind,
+            default=spec.get("default", _MISSING), optional=bool(spec.get("optional", False)),
+        )
+    outputs: dict[str, SidecarOutput] = {}
+    for key, spec in (data.get("outputs") or {}).items():
+        outputs[key] = SidecarOutput(node=str(spec["node"]), type=str(spec.get("type", "image")), optional=bool(spec.get("optional", False)))
+    return Sidecar(name=Path(name).name.replace(".inputs.json", ""), path=path, workflow_path=wf_path,
+                   description=data.get("description", ""), inputs=inputs, outputs=outputs)
+
+
+def remote_input_path(value: Any) -> str:
+    rel = str(value).replace("\\", "/")
+    path = PurePosixPath(rel)
+    if path.is_absolute() or ".." in path.parts or not path.parts or ":" in rel:
+        raise WorkflowInputError("Remote input must be a relative ComfyUI input path")
+    return str(path)
+
+
+def coerce(kind: str, value: Any, name: str, *, remote: bool = False) -> Any:
+    try:
+        if kind == "int":
+            return int(round(float(value))) if not isinstance(value, bool) else int(value)
+        if kind == "float":
+            return float(value)
+        if kind == "bool":
+            if isinstance(value, str):
+                return value.strip().lower() in ("1", "true", "yes", "on")
+            return bool(value)
+        if kind == "comfy_input_path":
+            if remote:
+                return remote_input_path(value)
+            rel = str(value).replace("\\", "/")
+            candidate = (settings.comfy_input_dir / rel).resolve()
+            if Path(rel).is_absolute() or not candidate.is_relative_to(settings.comfy_input_dir.resolve()):
+                raise WorkflowInputError(f"input {name}: path must stay inside ComfyUI input")
+            if not (settings.comfy_input_dir / rel).exists():
+                raise WorkflowInputError(f"input '{name}': file not found in ComfyUI input dir: {settings.comfy_input_dir / rel}")
+            return rel
+        return str(value)
+    except (TypeError, ValueError) as exc:
+        raise WorkflowInputError(f"input '{name}': cannot coerce {value!r} to {kind}: {exc}") from exc
+
+
+# ---- asset id decoding (proxy fast path) ----------------------------------------
+
+def decode_asset_id(asset_id: str) -> dict[str, str] | None:
+    """comfy-api-proxy mints output ids as base64url(JSON{j,f,s,t}).<hmac>. Decode the payload."""
+    try:
+        payload = asset_id.split(".", 1)[0]
+        payload += "=" * (-len(payload) % 4)
+        data = json.loads(base64.urlsafe_b64decode(payload.encode()).decode())
+        if isinstance(data, dict) and "f" in data:
+            return {"job": data.get("j", ""), "filename": data["f"], "subfolder": data.get("s", ""), "type": data.get("t", "output")}
+    except Exception:
+        return None
+    return None
+
+
+def local_output_path(ref: dict[str, str]) -> Path | None:
+    base = {"output": settings.comfy_output_dir, "temp": settings.comfy_dir / "temp", "input": settings.comfy_input_dir}.get(ref.get("type", "output"))
+    if base is None:
+        return None
+    p = (base / ref.get("subfolder", "") / ref["filename"]).resolve()
+    try:
+        p.relative_to(base.resolve())
+    except ValueError:
+        return None
+    return p if p.is_file() else None
+
+
+# ---- runner ---------------------------------------------------------------------
+
+@dataclass
+class RunResult:
+    name: str
+    job_id: str
+    status: str
+    outputs: dict[str, list[Path]]
+    timing: dict[str, float]
+    raw_outputs: list[dict[str, Any]] = field(default_factory=list)
+
+    def first(self, key: str) -> Path | None:
+        files = self.outputs.get(key) or []
+        return files[0] if files else None
+
+
+def read_text_output(paths: list[Path]) -> str:
+    if not paths:
+        raise WorkflowRunError("text output has no files")
+    return Path(paths[0]).read_text(encoding="utf-8")
+
+
+def read_json_output(paths: list[Path]) -> Any:
+    text = read_text_output(paths).strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise WorkflowRunError(f"text output {paths[0].name} is not valid JSON: {exc}") from exc
+
+
+class ComfyRunner:
+    def __init__(self, *, base_url: str | None = None, comfyui_url: str | None = None,
+                 api_key: str | None = None, remote: bool = False) -> None:
+        self._client = None
+        self._client_lock = threading.Lock()
+        self.base_url = (base_url or settings.comfy_base_url).rstrip("/")
+        self.comfyui_url = (comfyui_url or settings.comfyui_url).rstrip("/")
+        self.api_key = api_key or settings.comfy_api_key
+        self.remote = remote
+
+    def client(self):
+        with self._client_lock:
+            if self._client is None:
+                from comfy_sdk import Comfy
+
+                # This SDK version takes its URL from the environment only at construction.
+                # Serialize construction and restore it so local/remote clients cannot bleed.
+                with _SDK_ENV_LOCK:
+                    previous = os.environ.get("COMFY_BASE_URL")
+                    try:
+                        os.environ["COMFY_BASE_URL"] = self.base_url
+                        self._client = Comfy(api_key=self.api_key, timeout=120)
+                    finally:
+                        if previous is None:
+                            os.environ.pop("COMFY_BASE_URL", None)
+                        else:
+                            os.environ["COMFY_BASE_URL"] = previous
+            return self._client
+
+    def reset_client(self) -> None:
+        with self._client_lock:
+            try:
+                if self._client is not None:
+                    self._client.close()
+            finally:
+                self._client = None
+
+    # -- health --------------------------------------------------------------------
+    def health(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"proxy": False, "comfyui": False, "proxyUrl": self.base_url, "comfyuiUrl": self.comfyui_url}
+        try:
+            r = httpx.get(f"{self.base_url}/api/v2/health", timeout=3)
+            out["proxy"] = r.status_code == 200
+        except Exception as exc:
+            out["proxyError"] = str(exc)
+        try:
+            r = httpx.get(f"{self.comfyui_url}/system_stats", timeout=3)
+            out["comfyui"] = r.status_code == 200
+            if out["comfyui"]:
+                out["comfyuiVersion"] = r.json().get("system", {}).get("comfyui_version")
+        except Exception as exc:
+            out["comfyuiError"] = str(exc)
+        return out
+
+    def stage_image(self, src: Path, project_id: str, *parts: str) -> str:
+        if not self.remote:
+            from .media import stage_to_comfy_input
+            return stage_to_comfy_input(src, project_id, *parts)
+        rel = remote_input_path("/".join(["typeset", project_id, *(parts or (src.name,))]))
+        path = PurePosixPath(rel)
+        with src.open("rb") as file:
+            response = httpx.post(f"{self.comfyui_url}/upload/image",
+                data={"type": "input", "subfolder": str(path.parent), "overwrite": "false"},
+                files={"image": (path.name, file, "image/png")}, timeout=120)
+        response.raise_for_status()
+        uploaded = response.json()
+        if uploaded.get("type", "input") != "input":
+            raise WorkflowRunError("Remote upload did not return an input file")
+        return remote_input_path("/".join(filter(None, [uploaded.get("subfolder", ""), uploaded["name"]])))
+
+    def preflight(self, name: str, workflows_dir: Path | None = None) -> None:
+        sidecar = load_sidecar(name, workflows_dir)
+        self.preflight_graph(json.loads(sidecar.workflow_path.read_text()))
+
+    def preflight_graph(self, graph: dict) -> None:
+        """Check the chosen remote host before uploading or submitting expensive work."""
+        try:
+            proxy = httpx.get(f"{self.base_url}/api/v2/health", timeout=5)
+            proxy.raise_for_status()
+            upstream = str(proxy.json().get("upstream", "")).rstrip("/")
+            if upstream != self.comfyui_url:
+                raise WorkflowRunError(f"Remote proxy upstream is {upstream!r}; expected {self.comfyui_url}. Start a separate proxy on 8190; do not repoint the local 8189 proxy.")
+            response = httpx.get(f"{self.comfyui_url}/object_info", timeout=30)
+            response.raise_for_status()
+            registry = response.json()
+        except WorkflowRunError:
+            raise
+        except Exception as exc:
+            raise WorkflowRunError(f"Cannot reach remote ComfyUI/proxy. Start the separate remote proxy at {self.base_url} targeting {self.comfyui_url}: {exc}") from exc
+        missing = []
+        model_fields = {"ckpt_name", "unet_name", "clip_name", "vae_name", "lora_name", "model_name"}
+        for node in graph.values():
+            kind = node["class_type"]
+            if kind not in registry:
+                missing.append(f"node {kind}")
+                continue
+            schema = registry[kind].get("input", {})
+            specs = {**schema.get("required", {}), **schema.get("optional", {})}
+            for name, value in node.get("inputs", {}).items():
+                spec = specs.get(name)
+                if name in model_fields and isinstance(value, str) and spec and isinstance(spec[0], list) and value not in spec[0]:
+                    missing.append(f"{kind}.{name}={value}")
+        if missing:
+            raise WorkflowRunError(f"Remote ComfyUI is not ready: install missing nodes/weights on {self.comfyui_url}: " + "; ".join(dict.fromkeys(missing)))
+
+    # -- main entry ----------------------------------------------------------------
+    def run(
+        self,
+        name: str,
+        inputs: dict[str, Any],
+        out_dir: Path,
+        *,
+        progress: ProgressFn | None = None,
+        timeout: float | None = None,
+        poll_interval: float = 0.5,
+        workflows_dir: Path | None = None,
+    ) -> RunResult:
+        sidecar = load_sidecar(name, workflows_dir)
+        timeout = timeout or settings.comfy_timeout
+        client = self.client()
+        wf = client.workflows.from_file(str(sidecar.workflow_path))
+
+        # bind inputs by kind
+        bound: dict[str, Any] = {}
+        unknown = [k for k in inputs if k not in sidecar.inputs]
+        if unknown:
+            log.warning("workflow %s: ignoring inputs not in sidecar: %s", sidecar.name, unknown)
+        for key, spec in sidecar.inputs.items():
+            value = inputs.get(key, _MISSING)
+            if value is _MISSING or value is None:
+                if spec.default is not _MISSING:
+                    value = spec.default
+                elif spec.optional:
+                    continue
+                else:
+                    raise WorkflowInputError(f"workflow '{sidecar.name}': required input '{key}' (node {spec.node}.{spec.field}) was not provided")
+            value = coerce(spec.kind, value, key, remote=self.remote)
+            node = wf.json.get(spec.node)
+            if node is None:
+                raise WorkflowError(f"workflow '{sidecar.name}': sidecar input '{key}' points at node {spec.node} which is not in {sidecar.workflow_path.name}")
+            wf.set_input(spec.node, spec.field, value)
+            bound[key] = value
+        log.info("workflow %s: inputs %s", sidecar.name, {k: (v if not isinstance(v, str) or len(v) < 80 else v[:77] + "...") for k, v in bound.items()})
+        if self.remote:
+            self.preflight_graph(wf.json)
+
+        # submit + poll with grace
+        t0 = time.monotonic()
+        try:
+            job = client.submit(wf)
+        except Exception as exc:
+            raise WorkflowRunError(f"workflow '{sidecar.name}': submit failed: {type(exc).__name__}: {exc}") from exc
+        t_submitted = time.monotonic()
+        log.info("workflow %s: submitted job %s", sidecar.name, job.id)
+
+        expired_strikes = 0
+        last = None
+        status = job.status
+        while True:
+            elapsed = time.monotonic() - t0
+            if elapsed > timeout:
+                try:
+                    job.cancel()
+                except Exception:
+                    pass
+                raise WorkflowRunError(f"workflow '{sidecar.name}': job {job.id} timed out after {timeout:.0f}s (status={status})")
+            try:
+                job.refresh()
+                status = job.status
+            except Exception as exc:  # transient proxy hiccup
+                log.warning("workflow %s: refresh failed (%s); retrying", sidecar.name, exc)
+                time.sleep(poll_interval * 2)
+                continue
+            if status != last:
+                log.info("workflow %s: %6.1fs %s", sidecar.name, elapsed, status)
+                last = status
+            if progress:
+                progress(status, elapsed)
+            if status in TERMINAL:
+                break
+            if status == "expired":
+                expired_strikes += 1
+                if expired_strikes >= 10:
+                    break
+            else:
+                expired_strikes = 0
+            time.sleep(poll_interval)
+        t_done = time.monotonic()
+
+        if status != "succeeded":
+            err = job.error
+            detail = ""
+            if isinstance(err, dict):
+                detail = f" — {err.get('message') or ''} (node {err.get('node_id')} {err.get('class_type') or ''})".rstrip()
+            elif err:
+                detail = f" — {err}"
+            raise WorkflowRunError(f"workflow '{sidecar.name}': job {job.id} ended '{status}'{detail}")
+
+        # collect outputs
+        out_dir.mkdir(parents=True, exist_ok=True)
+        results: dict[str, list[Path]] = {}
+        raw = [{"node_id": o.node_id, "name": o.name, "type": o.type, "id": o.id} for o in job.outputs]
+        for key, spec in sidecar.outputs.items():
+            outs = job.get_outputs(spec.node)
+            files: list[Path] = []
+            dest_dir = out_dir / key
+            if outs:
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                for o in outs:
+                    files.append(self._fetch_output(o, dest_dir))
+            elif spec.type == "text":
+                text = self._history_text(job.id, spec.node)
+                if text is not None:
+                    dest_dir.mkdir(parents=True, exist_ok=True)
+                    ext = ".json" if _looks_like_json(text) else ".txt"
+                    p = dest_dir / f"{key}{ext}"
+                    p.write_text(text, encoding="utf-8")
+                    files.append(p)
+            if not files and not spec.optional:
+                produced = sorted({o.node_id for o in job.outputs})
+                raise WorkflowRunError(
+                    f"workflow '{sidecar.name}': no '{spec.type}' output on node {spec.node} ('{key}'). "
+                    f"Nodes that produced outputs: {produced or 'none'}. The node must save a file and return "
+                    f"ui.images/gifs/audio/text/files entries with filename/subfolder/type."
+                )
+            files.sort(key=lambda p: p.name)
+            results[key] = files
+        t_fetched = time.monotonic()
+        timing = {
+            "submit": round(t_submitted - t0, 3),
+            "run": round(t_done - t_submitted, 3),
+            "download": round(t_fetched - t_done, 3),
+            "total": round(t_fetched - t0, 3),
+        }
+        log.info("workflow %s: done job %s timing=%s files=%s", sidecar.name, job.id, timing, {k: len(v) for k, v in results.items()})
+        return RunResult(name=sidecar.name, job_id=job.id, status=status, outputs=results, timing=timing, raw_outputs=raw)
+
+    # -- helpers -------------------------------------------------------------------
+    def _fetch_output(self, output, dest_dir: Path) -> Path:
+        dest = dest_dir / Path(output.name).name
+        ref = decode_asset_id(output.id)
+        src = local_output_path(ref) if ref and not self.remote else None
+        if src is not None:
+            try:
+                if dest.exists():
+                    dest.unlink()
+                try:
+                    os.link(src, dest)
+                except OSError:
+                    shutil.copy2(src, dest)
+                return dest
+            except OSError as exc:
+                log.warning("local copy of %s failed (%s); downloading instead", src, exc)
+        output.to_file(dest)
+        return dest
+
+    def _history_text(self, job_id: str, node: str) -> str | None:
+        """Fallback for text outputs the proxy cannot see (plain-string ui.text entries)."""
+        try:
+            r = httpx.get(f"{self.comfyui_url}/history/{job_id}", timeout=10)
+            if r.status_code != 200:
+                return None
+            entry = r.json().get(job_id) or {}
+            node_out = (entry.get("outputs") or {}).get(node) or {}
+        except Exception as exc:
+            log.warning("history fallback failed: %s", exc)
+            return None
+        for key in ("text", "string", "strings", "json", "result"):
+            items = node_out.get(key)
+            if isinstance(items, list) and items and all(isinstance(i, str) for i in items):
+                return "\n".join(items) if len(items) > 1 else items[0]
+        # some nodes save a file but under a non-standard key — try to read it from disk
+        for items in node_out.values():
+            if isinstance(items, list):
+                for it in items:
+                    if isinstance(it, dict) and "filename" in it:
+                        if self.remote:
+                            response = httpx.get(f"{self.comfyui_url}/view", params={"filename": it["filename"], "subfolder": it.get("subfolder", ""), "type": it.get("type", "output")}, timeout=60)
+                            response.raise_for_status()
+                            return response.text
+                        p = local_output_path({"filename": it["filename"], "subfolder": it.get("subfolder", ""), "type": it.get("type", "output")})
+                        if p is not None:
+                            return p.read_text(encoding="utf-8")
+        return None
+
+
+def _looks_like_json(text: str) -> bool:
+    try:
+        json.loads(text)
+        return True
+    except Exception:
+        return False
+
+
+runner = ComfyRunner()
+remote_runner = ComfyRunner(base_url=settings.remote_comfy_base_url, comfyui_url=settings.remote_comfy_url,
+                           api_key=settings.remote_comfy_api_key, remote=True) if settings.remote_comfy_url else None
+
+
+def generation_runner() -> ComfyRunner:
+    return remote_runner or runner

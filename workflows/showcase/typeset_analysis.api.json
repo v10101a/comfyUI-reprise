@@ -1,0 +1,239 @@
+{
+  "1": {
+    "class_type": "LoadVideo",
+    "inputs": {
+      "file": "typeset_walk_night.mp4"
+    }
+  },
+  "2": {
+    "class_type": "GetVideoComponents",
+    "inputs": {
+      "video": [
+        "1",
+        0
+      ]
+    }
+  },
+  "3": {
+    "class_type": "BiRefNetRMBG",
+    "inputs": {
+      "image": [
+        "2",
+        0
+      ],
+      "model": "BiRefNet_lite",
+      "mask_blur": 0,
+      "mask_offset": 0,
+      "invert_output": false,
+      "refine_foreground": false,
+      "background": "Alpha",
+      "background_color": "#222222",
+      "sensitivity": 1.0,
+      "unload_model": true
+    }
+  },
+  "4": {
+    "class_type": "TypesetOccupancyGrid",
+    "inputs": {
+      "mask": [
+        "3",
+        1
+      ],
+      "images": [
+        "2",
+        0
+      ],
+      "fps": [
+        "2",
+        2
+      ],
+      "long_side_cells": 32,
+      "preview_frames": 6
+    }
+  },
+  "5": {
+    "class_type": "PreviewImage",
+    "inputs": {
+      "images": [
+        "4",
+        1
+      ]
+    }
+  },
+  "6": {
+    "class_type": "MaskToTracks",
+    "inputs": {
+      "mask": [
+        "3",
+        1
+      ],
+      "fps": [
+        "2",
+        2
+      ],
+      "label": "person",
+      "track_id": "person0",
+      "threshold": 0.5,
+      "min_area": 0.002,
+      "smooth": 3,
+      "max_side": 512
+    }
+  },
+  "7": {
+    "class_type": "TypesetReframeCrop",
+    "inputs": {
+      "tracks_json": [
+        "6",
+        0
+      ],
+      "images": [
+        "2",
+        0
+      ],
+      "fps": [
+        "2",
+        2
+      ],
+      "aspect": "9:16",
+      "surfaces_json": [
+        "9",
+        0
+      ],
+      "width": 0,
+      "height": 0,
+      "frames": 0,
+      "track_id": "person0"
+    }
+  },
+  "8": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": [
+        "7",
+        1
+      ],
+      "audio": [
+        "2",
+        1
+      ],
+      "frame_rate": 24,
+      "loop_count": 0,
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "filename_prefix": "typeset/showcase/reframe_9x16"
+    }
+  },
+  "9": {
+    "class_type": "TypesetPlanarTrack",
+    "inputs": {
+      "images": [
+        "2",
+        0
+      ],
+      "subject_mask": [
+        "3",
+        1
+      ],
+      "corners": "[[0.36,0.03],[0.50,0.08],[0.50,0.62],[0.36,0.68]]",
+      "key_frame": 70,
+      "fps": [
+        "2",
+        2
+      ],
+      "feature_region": 1.0,
+      "min_confidence": 0.35,
+      "smooth": 2,
+      "preview_frames": 10000
+    }
+  },
+  "10": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": [
+        "9",
+        1
+      ],
+      "frame_rate": 24,
+      "loop_count": 0,
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "filename_prefix": "typeset/showcase/surface_track"
+    }
+  },
+  "11": {
+    "class_type": "PreviewAny",
+    "inputs": {
+      "source": [
+        "9",
+        0
+      ]
+    }
+  },
+  "12": {
+    "class_type": "LoadAudio",
+    "inputs": {
+      "audio": "typeset_neon_rain.flac"
+    }
+  },
+  "13": {
+    "class_type": "TypesetBeatGrid",
+    "inputs": {
+      "audio": [
+        "12",
+        0
+      ],
+      "beats_per_bar": 4,
+      "section_seconds": 8.0
+    }
+  },
+  "14": {
+    "class_type": "PreviewImage",
+    "inputs": {
+      "images": [
+        "13",
+        2
+      ]
+    }
+  },
+  "15": {
+    "class_type": "PreviewAny",
+    "inputs": {
+      "source": [
+        "13",
+        0
+      ]
+    }
+  },
+  "16": {
+    "class_type": "WhisperWords",
+    "inputs": {
+      "audio": [
+        "12",
+        0
+      ],
+      "model_size": "small",
+      "language": "en",
+      "lyrics": "Walk me through the neon rain\nEvery sign repeats your name\n\nHold on, say it slow\nLouder than the radio\nHold on, let it show\nEvery word I know\n\nEvery word I know",
+      "lyrics_as_prompt": true
+    }
+  },
+  "17": {
+    "class_type": "PreviewAny",
+    "inputs": {
+      "source": [
+        "16",
+        0
+      ]
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "workflow": "text_plate.api.json",
+  "description": "Deterministic readable typography plate prototype. Prompt selects neon/chrome colors, not generative scene editing. LTX supplies motion downstream.",
+  "inputs": {
+    "frame": {
+      "node": "1",
+      "field": "image",
+      "kind": "comfy_input_path"
+    },
+    "text": {
+      "node": "2",
+      "field": "text",
+      "kind": "string"
+    },
+    "prompt": {
+      "node": "2",
+      "field": "prompt",
+      "kind": "string",
+      "default": "pink neon lettering"
+    },
+    "mask_png": {
+      "node": "2",
+      "field": "mask_png",
+      "kind": "comfy_input_path",
+      "optional": true
+    }
+  },
+  "outputs": {
+    "plate": {
+      "node": "3",
+      "type": "image"
+    }
+  }
+}

@@ -1,0 +1,475 @@
+{
+ "version": 1,
+ "id": "sample",
+ "name": "Sample \u2014 Static in the hallway light",
+ "fps": 24,
+ "width": 1280,
+ "height": 720,
+ "duration": 12.0,
+ "media": {
+  "video": {
+   "path": "media/sample.mp4",
+   "duration": 12.0,
+   "width": 1280,
+   "height": 720,
+   "fps": 24,
+   "hasAudio": true
+  },
+  "audio": {
+   "path": "media/sample.wav",
+   "duration": 12.0,
+   "hasAudio": true
+  },
+  "lyrics": "Static in the hallway light\nCount the frames I left behind\nSIGNAL FOUND\nYou were never out of frame\nHold still glass\nTypeset the night"
+ },
+ "analysis": {
+  "words": "analysis/words.json",
+  "matte": "analysis/matte/",
+  "tracks": "analysis/tracks.json"
+ },
+ "style": {
+  "fontFamily": "Inter",
+  "fontWeight": 700,
+  "fontSize": 0.08,
+  "fill": "#ffffff",
+  "stroke": "#000000",
+  "strokeWidth": 0.0,
+  "letterSpacing": 0,
+  "align": "center"
+ },
+ "words": [
+  {
+   "id": "w00",
+   "text": "Static",
+   "start": 0.5,
+   "end": 0.82,
+   "lineId": "l0",
+   "placement": "overlay",
+   "preset": "pop",
+   "style": {
+    "fontFamily": "Inter",
+    "fontWeight": 800
+   }
+  },
+  {
+   "id": "w01",
+   "text": "in",
+   "start": 0.86,
+   "end": 0.98,
+   "lineId": "l0",
+   "placement": "overlay",
+   "preset": "pop",
+   "style": {
+    "fontFamily": "Inter",
+    "fontWeight": 800
+   }
+  },
+  {
+   "id": "w02",
+   "text": "the",
+   "start": 1.0,
+   "end": 1.14,
+   "lineId": "l0",
+   "placement": "overlay",
+   "preset": "pop",
+   "style": {
+    "fontFamily": "Inter",
+    "fontWeight": 800
+   }
+  },
+  {
+   "id": "w03",
+   "text": "hallway",
+   "start": 1.18,
+   "end": 1.7,
+   "lineId": "l0",
+   "placement": "overlay",
+   "preset": "pop",
+   "style": {
+    "fontFamily": "Inter",
+    "fontWeight": 800
+   }
+  },
+  {
+   "id": "w04",
+   "text": "light",
+   "start": 1.76,
+   "end": 2.3,
+   "lineId": "l0",
+   "placement": "overlay",
+   "preset": "pop",
+   "style": {
+    "fontFamily": "Inter",
+    "fontWeight": 800
+   }
+  },
+  {
+   "id": "w05",
+   "text": "Count",
+   "start": 2.6,
+   "end": 2.9,
+   "lineId": "l1",
+   "placement": "behind",
+   "preset": "karaoke",
+   "position": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "style": {
+    "fontFamily": "Inter",
+    "fontWeight": 700,
+    "fontSize": 0.11
+   }
+  },
+  {
+   "id": "w06",
+   "text": "the",
+   "start": 2.92,
+   "end": 3.04,
+   "lineId": "l1",
+   "placement": "behind",
+   "preset": "karaoke",
+   "position": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "style": {
+    "fontFamily": "Inter",
+    "fontWeight": 700,
+    "fontSize": 0.11
+   }
+  },
+  {
+   "id": "w07",
+   "text": "frames",
+   "start": 3.08,
+   "end": 3.5,
+   "lineId": "l1",
+   "placement": "behind",
+   "preset": "karaoke",
+   "position": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "style": {
+    "fontFamily": "Inter",
+    "fontWeight": 700,
+    "fontSize": 0.11
+   }
+  },
+  {
+   "id": "w08",
+   "text": "I",
+   "start": 3.54,
+   "end": 3.64,
+   "lineId": "l1",
+   "placement": "behind",
+   "preset": "karaoke",
+   "position": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "style": {
+    "fontFamily": "Inter",
+    "fontWeight": 700,
+    "fontSize": 0.11
+   }
+  },
+  {
+   "id": "w09",
+   "text": "left",
+   "start": 3.68,
+   "end": 4.0,
+   "lineId": "l1",
+   "placement": "behind",
+   "preset": "karaoke",
+   "position": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "style": {
+    "fontFamily": "Inter",
+    "fontWeight": 700,
+    "fontSize": 0.11
+   }
+  },
+  {
+   "id": "w10",
+   "text": "behind",
+   "start": 4.04,
+   "end": 4.5,
+   "lineId": "l1",
+   "placement": "behind",
+   "preset": "karaoke",
+   "position": {
+    "x": 0.5,
+    "y": 0.5
+   },
+   "style": {
+    "fontFamily": "Inter",
+    "fontWeight": 700,
+    "fontSize": 0.11
+   }
+  },
+  {
+   "id": "w11",
+   "text": "SIGNAL",
+   "start": 4.8,
+   "end": 5.4,
+   "lineId": "l2",
+   "placement": "anchor",
+   "preset": "hud",
+   "anchor": {
+    "trackId": "person0",
+    "dx": 0.14,
+    "dy": -0.1
+   }
+  },
+  {
+   "id": "w12",
+   "text": "FOUND",
+   "start": 5.5,
+   "end": 6.3,
+   "lineId": "l2",
+   "placement": "anchor",
+   "preset": "hud",
+   "anchor": {
+    "trackId": "person0",
+    "dx": 0.14,
+    "dy": -0.1
+   }
+  },
+  {
+   "id": "w13",
+   "text": "You",
+   "start": 6.6,
+   "end": 6.85,
+   "lineId": "l3",
+   "placement": "overlay",
+   "preset": "typewriter",
+   "position": {
+    "x": 0.08,
+    "y": 0.18
+   },
+   "style": {
+    "fontFamily": "Space Mono",
+    "fontWeight": 400,
+    "fontSize": 0.055,
+    "align": "left"
+   }
+  },
+  {
+   "id": "w14",
+   "text": "were",
+   "start": 6.9,
+   "end": 7.15,
+   "lineId": "l3",
+   "placement": "overlay",
+   "preset": "typewriter",
+   "position": {
+    "x": 0.08,
+    "y": 0.18
+   },
+   "style": {
+    "fontFamily": "Space Mono",
+    "fontWeight": 400,
+    "fontSize": 0.055,
+    "align": "left"
+   }
+  },
+  {
+   "id": "w15",
+   "text": "never",
+   "start": 7.2,
+   "end": 7.6,
+   "lineId": "l3",
+   "placement": "overlay",
+   "preset": "typewriter",
+   "position": {
+    "x": 0.08,
+    "y": 0.18
+   },
+   "style": {
+    "fontFamily": "Space Mono",
+    "fontWeight": 400,
+    "fontSize": 0.055,
+    "align": "left"
+   }
+  },
+  {
+   "id": "w16",
+   "text": "out",
+   "start": 7.65,
+   "end": 7.9,
+   "lineId": "l3",
+   "placement": "overlay",
+   "preset": "typewriter",
+   "position": {
+    "x": 0.08,
+    "y": 0.18
+   },
+   "style": {
+    "fontFamily": "Space Mono",
+    "fontWeight": 400,
+    "fontSize": 0.055,
+    "align": "left"
+   }
+  },
+  {
+   "id": "w17",
+   "text": "of",
+   "start": 7.95,
+   "end": 8.1,
+   "lineId": "l3",
+   "placement": "overlay",
+   "preset": "typewriter",
+   "position": {
+    "x": 0.08,
+    "y": 0.18
+   },
+   "style": {
+    "fontFamily": "Space Mono",
+    "fontWeight": 400,
+    "fontSize": 0.055,
+    "align": "left"
+   }
+  },
+  {
+   "id": "w18",
+   "text": "frame",
+   "start": 8.15,
+   "end": 8.6,
+   "lineId": "l3",
+   "placement": "overlay",
+   "preset": "typewriter",
+   "position": {
+    "x": 0.08,
+    "y": 0.18
+   },
+   "style": {
+    "fontFamily": "Space Mono",
+    "fontWeight": 400,
+    "fontSize": 0.055,
+    "align": "left"
+   }
+  },
+  {
+   "id": "w19",
+   "text": "Hold",
+   "start": 8.8,
+   "end": 9.2,
+   "lineId": "l4",
+   "placement": "anchor",
+   "preset": "pop",
+   "anchor": {
+    "trackId": "person0",
+    "dx": 0.0,
+    "dy": -0.2
+   },
+   "style": {
+    "fontFamily": "Bebas Neue",
+    "fontWeight": 400,
+    "fontSize": 0.09
+   }
+  },
+  {
+   "id": "w20",
+   "text": "still",
+   "start": 9.25,
+   "end": 9.8,
+   "lineId": "l4",
+   "placement": "anchor",
+   "preset": "pop",
+   "anchor": {
+    "trackId": "person0",
+    "dx": 0.0,
+    "dy": -0.2
+   },
+   "style": {
+    "fontFamily": "Bebas Neue",
+    "fontWeight": 400,
+    "fontSize": 0.09
+   }
+  },
+  {
+   "id": "w21",
+   "text": "glass",
+   "start": 9.85,
+   "end": 10.3,
+   "lineId": "l4",
+   "placement": "inworld",
+   "preset": "none",
+   "shotId": "s0"
+  },
+  {
+   "id": "w22",
+   "text": "Typeset",
+   "start": 10.5,
+   "end": 10.95,
+   "lineId": "l5",
+   "placement": "behind",
+   "preset": "pop",
+   "position": {
+    "x": 0.5,
+    "y": 0.52
+   },
+   "style": {
+    "fontFamily": "Anton",
+    "fontWeight": 400,
+    "fontSize": 0.22,
+    "fill": "#f5e9d0"
+   }
+  },
+  {
+   "id": "w23",
+   "text": "the",
+   "start": 11.0,
+   "end": 11.2,
+   "lineId": "l5",
+   "placement": "behind",
+   "preset": "pop",
+   "position": {
+    "x": 0.5,
+    "y": 0.52
+   },
+   "style": {
+    "fontFamily": "Anton",
+    "fontWeight": 400,
+    "fontSize": 0.22,
+    "fill": "#f5e9d0"
+   }
+  },
+  {
+   "id": "w24",
+   "text": "night",
+   "start": 11.25,
+   "end": 11.9,
+   "lineId": "l5",
+   "placement": "behind",
+   "preset": "pop",
+   "position": {
+    "x": 0.5,
+    "y": 0.52
+   },
+   "style": {
+    "fontFamily": "Anton",
+    "fontWeight": 400,
+    "fontSize": 0.22,
+    "fill": "#f5e9d0"
+   }
+  }
+ ],
+ "shots": [
+  {
+   "id": "s0",
+   "wordIds": [
+    "w21"
+   ],
+   "start": 9.85,
+   "end": 10.3,
+   "prompt": "the word GLASS as frosted glass letters leaning against the hallway wall, cinematic",
+   "status": "pending",
+   "workflow": "text_plate+ltx_i2v"
+  }
+ ]
+}

@@ -1,0 +1,57 @@
+{
+  "workflow": "ltx_morph.api.json",
+  "description": "LTX-Video 2B distilled, eight steps; frame counts 8k+1 and dimensions multiples of 32. Generated lettering may deform.",
+  "inputs": {
+    "prompt": {
+      "node": "3",
+      "field": "text",
+      "kind": "string"
+    },
+    "length": {
+      "node": "5",
+      "field": "length",
+      "kind": "int",
+      "default": 49
+    },
+    "width": {
+      "node": "5",
+      "field": "width",
+      "kind": "int",
+      "default": 512
+    },
+    "height": {
+      "node": "5",
+      "field": "height",
+      "kind": "int",
+      "default": 320
+    },
+    "seed": {
+      "node": "10",
+      "field": "noise_seed",
+      "kind": "int",
+      "default": 42
+    },
+    "fps": {
+      "node": "30",
+      "field": "value",
+      "kind": "float",
+      "default": 24
+    },
+    "first": {
+      "node": "20",
+      "field": "image",
+      "kind": "comfy_input_path"
+    },
+    "last": {
+      "node": "23",
+      "field": "image",
+      "kind": "comfy_input_path"
+    }
+  },
+  "outputs": {
+    "video": {
+      "node": "12",
+      "type": "video"
+    }
+  }
+}

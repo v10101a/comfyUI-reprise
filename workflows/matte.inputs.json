@@ -1,0 +1,27 @@
+{
+  "workflow": "matte.api.json",
+  "description": "BiRefNet lite RGBA cutouts and mask-derived subject anchor. Caller MUST normalize video to project dimensions and supplied fps before submission.",
+  "inputs": {
+    "video": {
+      "node": "1",
+      "field": "file",
+      "kind": "comfy_input_path"
+    },
+    "fps": {
+      "node": "7",
+      "field": "value",
+      "kind": "float",
+      "default": 24
+    }
+  },
+  "outputs": {
+    "fg_png": {
+      "node": "3",
+      "type": "image"
+    },
+    "tracks_json": {
+      "node": "6",
+      "type": "text"
+    }
+  }
+}

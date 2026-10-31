@@ -1,0 +1,10 @@
+{"song": "outputs/concept-tests/song/neon_rain_00001.flac", "song_in": 0, "fps": 24, "w": 1344, "h": 768, "fade_out": 0.9,
+ "shots": [
+  {"id": "S1 open",   "src": "outputs/hero/plates/s1_open/s1_open_00001-audio.mp4",         "in": 0.30, "start": 0.00,  "end": 4.32,  "note": "Walk me through the neon rain (bar 1-2)"},
+  {"id": "S2 wall",   "src": "outputs/hero/plates/s2_wall_ref/s2_wall_ref_00001-audio.mp4", "in": 1.20, "start": 4.32,  "end": 7.34,  "note": "Every sign repeats your name -> surface"},
+  {"id": "S3 head",   "src": "outputs/hero/plates/s3_head_ref/s3_head_ref_00001-audio.mp4", "in": 0.60, "start": 7.34,  "end": 11.52, "note": "instrumental build -> HUD on head"},
+  {"id": "S4 drop",   "src": "outputs/hero/plates/s4_drop/s4_drop_00001-audio.mp4",         "in": 0.50, "start": 11.52, "end": 13.93, "note": "DROP: Hold on, say it slow (static)"},
+  {"id": "G1 LOUDER", "src": "outputs/hero/gen/gen_louder/gen_louder_00001-audio.mp4", "in": 0.20, "start": 13.93, "end": 16.32, "note": "GENERATED: Qwen edit + MiniMax i2v, Louder than the radio"},
+  {"id": "S5 tunnel", "src": "outputs/hero/plates/s5_tunnel_ref/s5_tunnel_ref_00001-audio.mp4", "in": 1.20, "start": 16.32, "end": 18.74, "note": "Hold on, let it show"},
+  {"id": "S4b end",   "src": "outputs/hero/plates/s4_drop/s4_drop_00001-audio.mp4",         "in": 1.50, "start": 18.74, "end": 22.40, "note": "Every word I know (static bookend), fade"}
+ ]}

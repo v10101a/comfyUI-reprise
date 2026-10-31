@@ -1,0 +1,76 @@
+# Typeset Comfy integration
+
+The five production workflows live in `workflows/`, with matching `*.inputs.json` sidecars. The server binds named inputs through `ComfyRunner`, stages files directly into ComfyUI's input directory, submits via the local Comfy SDK proxy, then copies/downloads outputs. No paid partner nodes are used.
+
+| Workflow | Inputs | Output | Implementation |
+|---|---|---|---|
+| `words` | audio, lyrics (optional), language (auto default), model_size (small default) | words_json | Core LoadAudio → CPU/int8 faster-whisper → SaveTextFile |
+| `matte` | video, fps | fg_png, tracks_json | Core LoadVideo/GetVideoComponents → BiRefNet lite → RGBA PNGs and largest-component anchors |
+| `text_plate` | frame, text, prompt, optional mask_png | plate | Deterministic font plate prototype: neon/chrome styling; not a generative scene edit |
+| `ltx_i2v` | image, prompt, length, width, height, seed, fps | video | Local LTX-Video 2B 0.9.8 distilled, 8 sampling steps |
+| `ltx_morph` | first, last, prompt, length, width, height, seed, fps | video | First/last image guides → LTX → crop guide latents → video |
+
+`matte` requires the server to normalize the source video to project dimensions and fps before submission. Its fps input labels track frame times; it does not resample footage. All frame cutouts are returned in order; the server renames them `fg_%05d.png` and encodes preview VP9 alpha. The original VHS loader was replaced because its lazy audio cache raises errors on silent clips in this installed version.
+
+LTX defaults are 512×320, 49 frames, 24 fps, seed 42. Dimensions must be multiples of 32 and length must be `8k+1`. The shared fps primitive controls both conditioning and output playback. LTX generation is stochastic and can deform text; a completed job is not proof of correct spelling.
+
+## Setup used here
+
+ComfyUI is installed at `~/ComfyUI`, with this repository's `custom_nodes_dev/typeset_nodes` symlinked into `custom_nodes`. Restart ComfyUI after changing node Python. The implementation turn restarted the idle process and verified registration via `/object_info/TextToMask`.
+
+Required packs: Typeset, VideoHelperSuite (video encoding), ComfyUI-RMBG (BiRefNet). GGUF is only needed for separate evaluation workflows. Some optional RMBG SAM modules report missing dependencies; the selected BiRefNet class is independent and operational.
+
+Installed missing dependency: `timm==1.0.30` in `~/ComfyUI/.venv`. BiRefNet lite's 177,634,392-byte weights and required code/config files were downloaded to `~/ComfyUI/models/RMBG/BiRefNet/`. The installed RMBG pack fetches its converted model from [1038lab/BiRefNet](https://huggingface.co/1038lab/BiRefNet), not BRIA RMBG-2.0. Record that exact provenance when packaging; the [original BiRefNet project](https://github.com/ZhengPeng7/BiRefNet) is separate from the node wrapper and converted artifact.
+
+Whisper small was already cached. LTX checkpoint and T5 encoder were already present. First-time installations need those weights and custom-pack dependencies; cloning this repo alone does not install ComfyUI.
+
+## Validation
+
+CPU behavior checks:
+
+```bash
+~/ComfyUI/.venv/bin/python -m unittest discover -s custom_nodes_dev/typeset_nodes/tests -v
+```
+
+Four checks cover empty recognition, lyric correction/interpolation order, missing-mask frame boundaries and largest-component selection, and actual font raster output.
+
+Real SDK integration fixtures use synthesized speech, an existing LTX-generated person clip, and deterministic text plates. Outputs and run records are under ignored `outputs/integration/`. Commands from the repository root:
+
+```bash
+server/.venv/bin/python workflows/tests/run_integration.py words
+server/.venv/bin/python workflows/tests/run_integration.py matte
+server/.venv/bin/python workflows/tests/run_integration.py text_plate
+server/.venv/bin/python workflows/tests/run_integration.py ltx_i2v
+server/.venv/bin/python workflows/tests/run_integration.py ltx_morph
+```
+
+These commands expect this machine's fixtures: `typeset/test/words-test.wav`, `typeset/test/person_short.mp4`, and `eval/{wall,neon,chrome}_768x448.png` under ComfyUI input. Generate the WAV with macOS `say` using “Words belong in the world. Neon light, chrome dreams.” then convert to mono 16kHz WAV. The short person clip is the first 0.5 seconds of `typeset/test/person_speech.mp4`, resized to 512×320 at 24 fps. Eval plates are made by `scripts/eval/make_plates.py`.
+
+Words validation recovered all nine expected tokens in order, with two lyric lines and positive durations. A 12-frame segmentation run produced RGBA PNGs with alpha spanning 0–255 and twelve tracked frames. The plate output was visually inspected: exact NEON text in pink on the brick-wall input. LTX output dimensions/frame counts are checked with ffprobe. Run records include queue time because all workers share one ComfyUI queue; those totals are not model benchmarks.
+
+## Completed SDK runs (2026-10-30)
+
+| Workflow | Job ID | Verified result |
+|---|---|---|
+| words | `e06f3bc9-0dab-4e1b-b546-75da9ce94e94` | Nine expected tokens; ordered positive word durations |
+| matte (final native loader) | `6bfe6128-e8c5-40b3-bb20-dfae54686b46` | Twelve 512×320 RGBA PNGs; alpha 0–255; 12 track frames at 24fps |
+| text_plate | `906a078c-6a73-4778-9790-be72ce8717b8` | PNG with exact readable NEON; visually inspected |
+| ltx_i2v | `65daf2bd-1fb7-4f19-9136-fbc826c625f9` | MP4 512×320×25 frames; middle frame remains readable |
+| ltx_morph | `7f3a4c2d-6111-4904-b951-ac4b46ba26b2` | MP4 512×320×25 frames; middle frame shows silver NEON |
+
+All five graphs were also checked against the running node registry for class availability, required inputs, link references, sidecar bindings, and real output nodes. These small examples establish integration, not general quality across footage. The final matte run took about 8.6 seconds after it began running; its 215-second SDK total includes waiting behind the 13B model evaluation.
+
+## Known limits
+
+- Lyric matching uses `difflib` and interpolation, not acoustic forced alignment. Correct the timings for sung or mismatched lyrics.
+- Tracks describe the largest foreground component per frame, not identity tracking or face landmarks. Multiple people can switch the anchor.
+- BiRefNet processes frames independently. Hair edges and mask flicker need footage-specific review; long clips consume memory and run time.
+- The default plate node guarantees deterministic glyph placement, not physical integration with the scene. Its prompt currently selects simple neon/chrome and color styling. Other wording is passed downstream to LTX by the server.
+- LTX morph is an experimental model effect. Exact letter preservation is not guaranteed.
+
+## 2026-10-31: lyric alignment on the demo song
+
+`WhisperWords` now ignores song-structure tag lines (`[verse]`, `[chorus]`, `(x2)` — ACE-Step lyrics contain them) both for alignment and for the initial prompt, and places missed words next to the recognized word on the same side of a long pause (a missed line start hugs the next recognized word). The node receives a tensor from core `LoadAudio`, so faster-whisper's own PyAV file decoding (the `metadata_errors` incompatibility noted in CONCEPTS.md) is never used by the workflow. On `outputs/concept-tests/song/neon_rain_00001.flac` with the `song.json` lyrics, raw Whisper small (en) hears "say the soul" / "Outer than the radio" / "Every time repeat your name"; aligned output is "Hold on, say it slow" / "Louder than the radio" / "Every sign repeats your name" with Whisper timings. Whisper also glues a line's first word to the end of the previous line across an instrumental pause ("Every" 2.18–5.24 s; the repeated "Every word I know" started at 21.4 s instead of ~24.2 s); line-initial words longer than 1 s are now trimmed to their last second (→ 4.24 s and 24.02 s). This is a heuristic, not acoustic forced alignment. `typeset_nodes` changes need a local ComfyUI restart to load.
+
+## 2026-10-31: analysis nodes and workflows
+`typeset_nodes` now has TypesetOccupancyGrid, TypesetPlanarTrack, TypesetReframeCrop, TypesetBeatGrid and TypesetLoadImageSequence; see the pack README for node docs and screenshots. Server workflows: `occupancy`, `surface_track`, `reframe` and `beats` (`.api.json` + `.inputs.json`). The showcase is `workflows/showcase/typeset_analysis.json`. It was loaded in the real ComfyUI frontend (0.43 / frontend 1.57) with Playwright: 18 nodes and 24 links, and `graphToPrompt()` gives exactly `typeset_analysis.api.json`. Regenerate everything with `scripts/build_typeset_workflows.py` while ComfyUI is running.

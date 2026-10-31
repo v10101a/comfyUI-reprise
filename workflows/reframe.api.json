@@ -1,0 +1,28 @@
+{
+  "1": {
+    "class_type": "TypesetReframeCrop",
+    "inputs": {
+      "aspect": "9:16",
+      "fps": 24.0,
+      "tracks_json": "{}",
+      "surfaces_json": "",
+      "width": 1920,
+      "height": 1080,
+      "frames": 0,
+      "track_id": "person0",
+      "focus_json": ""
+    }
+  },
+  "2": {
+    "class_type": "SaveTextFile",
+    "inputs": {
+      "text": [
+        "1",
+        0
+      ],
+      "filename_prefix": "typeset/crop",
+      "extension": "json",
+      "pretty_json": false
+    }
+  }
+}

@@ -1,0 +1,150 @@
+{
+  "updated": "2026-10-31 02:15 ET",
+  "status": [
+    {
+      "who": "R \u00b7 renderer & looks",
+      "state": "building",
+      "note": "One-click looks (lens-bound, red-glow, paper-cut, ticker, flat-card), hero-word layouts, glow/grade/grain, quiet sections; then motion blur + chroma, lens warp, extrusion."
+    },
+    {
+      "who": "U \u00b7 studio redesign",
+      "state": "building",
+      "note": "Stage-first editor, Ableton-style line lanes, look picker as the hero control, line-level inspector, Pipeline panel that shows the ComfyUI work."
+    },
+    {
+      "who": "S \u00b7 ComfyUI node pack",
+      "state": "building",
+      "note": "Occupancy, planar track, reframe crop, beat grid as real typeset_nodes + workflows; server runs them through the SDK; showcase workflow for judges."
+    },
+    {
+      "who": "C \u00b7 content",
+      "state": "building",
+      "note": "Hero footage + cut to the song + generative beat; final styling waits for looks."
+    }
+  ],
+  "hero": null,
+  "sections": [
+    {
+      "title": "New features \u2014 verified on real frames",
+      "items": [
+        {
+          "title": "Auto-placement: talking head (top = before, bottom = after)",
+          "image": "media/feat_autoplace_talk.jpg",
+          "verdict": "good",
+          "note": "Captions now find the readable space beside her instead of hiding behind her; the HUD stays on screen with a leader line to her head."
+        },
+        {
+          "title": "Auto-placement: walk (before / after)",
+          "image": "media/feat_autoplace_walk.jpg",
+          "verdict": "good",
+          "note": "'the neon rain' no longer vanishes behind her torso."
+        },
+        {
+          "title": "Wall tracking (OpenCV)",
+          "image": "media/feat_surface_track.jpg",
+          "verdict": "good",
+          "note": "The quad drawn at frame 70 stays glued to the shutter while the camera moves (82/124 frames, mean confidence 0.88, 2.6 s). Drops at the frame edge."
+        },
+        {
+          "title": "Text on the wall, behind her",
+          "image": "media/feat_surface_render.png",
+          "verdict": "ok",
+          "note": "HOLD ON painted on the tracked shutter, occluded by her hair; HUD tag 'PERSON0 \u00b7 F0090 \u00b7 0.94'. The test quad is narrow so the text is small \u2014 the hero will use a bigger wall."
+        },
+        {
+          "title": "Placing a surface in the editor",
+          "image": "media/feat_editor_surface.png",
+          "verdict": "good",
+          "note": "Click four corners on the paused frame, drag handles with a perspective grid, 'Place here' \u2192 tracked."
+        },
+        {
+          "title": "Make vertical: crop follows the subject",
+          "image": "media/feat_reframe_talk.jpg",
+          "verdict": "good",
+          "note": "Smoothed virtual camera (\u22640.4% of width per frame) keeps her centred; the text re-lays out for 9:16."
+        },
+        {
+          "title": "Vertical walk with re-laid-out text",
+          "image": "media/feat_vertical_walk.png",
+          "verdict": "good",
+          "note": "Server-made 9:16 project rendered through the crop."
+        },
+        {
+          "title": "Edge shadow for behind words",
+          "image": "media/feat_edge_dancer.png",
+          "verdict": "good",
+          "note": "LOUDER stays readable against the white shirt."
+        }
+      ]
+    },
+    {
+      "title": "Proofs \u2014 existing pipeline on generated footage",
+      "items": [
+        {
+          "title": "Walk: behind + head HUD + karaoke",
+          "video": "media/proofA_walk.mp4",
+          "poster": "media/proofA_walk.jpg",
+          "before": "media/walk_raw.mp4",
+          "project": "beeba9e1-9178-4f24-b9ce-9fb119bb33f6",
+          "verdict": "good",
+          "note": "Words behind her read instantly. HUD held her head 124/124 frames. 'the neon rain' vanished behind her torso \u2192 auto-placement."
+        },
+        {
+          "title": "Dancer: giant LOUDER behind",
+          "video": "media/proofC_dancer.mp4",
+          "poster": "media/proofC_dancer.jpg",
+          "before": "media/dancer_raw.mp4",
+          "project": "eda6abeb-de19-4313-ba38-a83d1d1002bf",
+          "verdict": "good",
+          "note": "Strongest frame so far. White shirt merges with white letters \u2192 outline option."
+        },
+        {
+          "title": "Vertical 9:16",
+          "video": "media/proofA2_vertical.mp4",
+          "poster": "media/proofA2_vertical.jpg",
+          "project": "3a5286d6-01b3-4513-bf13-d4d63e048969",
+          "verdict": "ok",
+          "note": "Same pipeline works vertically."
+        },
+        {
+          "title": "Talking head: captions behind",
+          "video": "media/proofD_talk.mp4",
+          "poster": "media/proofD_talk.jpg",
+          "project": "400b4ae2-270c-490e-80b0-40c963d5045e",
+          "verdict": "fail",
+          "note": "Fixed positions hide the words behind a close-up subject \u2192 the reason for auto-placement."
+        }
+      ]
+    },
+    {
+      "title": "Generative beat \u2014 word becomes part of the wall",
+      "items": [
+        {
+          "title": "Original / Qwen edit / Klein edit",
+          "image": "media/wall_edit_compare.jpg",
+          "verdict": "ok",
+          "note": "Qwen spells HOLD ON but rewrites the wall; Klein keeps the wall but writes HOLIC. \u2192 real text on the wall first, models as optional material."
+        },
+        {
+          "title": "MiniMax continuation from the Qwen frame",
+          "video": "media/wall_continue.mp4",
+          "poster": "media/wall_continue.jpg",
+          "verdict": "ok",
+          "note": "Word stays on the wall with parallax; the street keeps reinventing itself \u2192 2\u20133 s stylized cut only."
+        }
+      ]
+    },
+    {
+      "title": "Original song \u2014 ACE-Step 1.5 (local, open weights)",
+      "items": [
+        {
+          "title": "Neon Rain (32 s)",
+          "audio": "media/neon_rain.mp3",
+          "image": "media/song_waveform.png",
+          "verdict": "good",
+          "note": "Sings our lyrics. Whisper mishears 'say it slow' \u2192 'say the soul' and 'Louder than the radio' \u2192 'Loud as under radio'; lyric alignment should fix."
+        }
+      ]
+    }
+  ]
+}

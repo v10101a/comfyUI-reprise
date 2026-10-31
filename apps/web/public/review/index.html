@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Typeset Review</title>
+<style>
+  :root { --bg:#151815; --panel:#1d211d; --line:#2c312c; --ink:#f4f1ea; --dim:#9aa196; --lime:#d8ff62; --red:#ff7a6b; --amber:#ffc864; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 Inter, system-ui, -apple-system, sans-serif; }
+  header { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:16px; padding:14px 24px; background:rgba(21,24,21,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); }
+  header b { font-size:18px; letter-spacing:-.02em; }
+  header .tag { font:11px/1 "Space Mono", ui-monospace, monospace; color:var(--bg); background:var(--lime); padding:4px 6px; border-radius:3px; }
+  header .upd { color:var(--dim); font:12px "Space Mono", ui-monospace, monospace; margin-left:auto; }
+  header a { color:var(--ink); text-decoration:none; border:1px solid var(--line); padding:6px 10px; border-radius:6px; font-size:13px; }
+  header a:hover { border-color:var(--lime); }
+  main { max-width:1280px; margin:0 auto; padding:24px 16px 80px; }
+  h2 { font-size:13px; font-family:"Space Mono", ui-monospace, monospace; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:40px 0 14px; font-weight:400; }
+  .status { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .status .card { padding:14px 16px; }
+  .status .who { font-weight:600; display:flex; justify-content:space-between; gap:8px; }
+  .pill { font:11px/1 "Space Mono", ui-monospace, monospace; padding:4px 6px; border-radius:3px; border:1px solid var(--line); color:var(--dim); white-space:nowrap; }
+  .pill.good, .pill.done { color:var(--bg); background:var(--lime); border-color:var(--lime); }
+  .pill.fail { color:var(--bg); background:var(--red); border-color:var(--red); }
+  .pill.ok, .pill.building { color:var(--amber); border-color:var(--amber); }
+  .note { color:var(--dim); font-size:13px; margin-top:6px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:16px; }
+  .media { position:relative; background:#000; aspect-ratio:16/9; }
+  .media video, .media img { width:100%; height:100%; object-fit:contain; display:block; }
+  .media .flip { position:absolute; top:10px; left:10px; display:flex; gap:4px; }
+  .media .flip button { font:11px "Space Mono", ui-monospace, monospace; background:rgba(0,0,0,.6); color:var(--ink); border:1px solid var(--line); padding:4px 8px; border-radius:4px; cursor:pointer; }
+  .media .flip button.on { background:var(--lime); color:var(--bg); border-color:var(--lime); }
+  .body { padding:12px 16px 16px; }
+  .body .t { display:flex; justify-content:space-between; gap:12px; font-weight:600; }
+  .body a { color:var(--lime); font-size:13px; text-decoration:none; display:inline-block; margin-top:8px; }
+  audio { width:100%; margin-top:10px; }
+  .hero { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:40px; text-align:center; color:var(--dim); }
+  .hero.has { padding:0; text-align:left; }
+  .hero h1 { margin:0 0 6px; font-size:42px; letter-spacing:-.03em; color:var(--ink); }
+  @media (max-width:500px) { .grid { grid-template-columns:1fr; } header .upd { display:none; } .hero { padding:24px; } }
+</style>
+</head>
+<body>
+<header>
+  <b>typeset</b><span class="tag">REVIEW</span>
+  <span class="upd" id="upd"></span>
+  <a href="/#/studio">Open studio ↗</a>
+</header>
+<main>
+  <h2>Hero example</h2>
+  <div id="hero" class="hero"><h1>Coming up.</h1>The team is shooting and cutting the hero piece; it appears here when it lands.</div>
+  <h2>Team</h2>
+  <div class="status" id="status"></div>
+  <div id="sections"></div>
+</main>
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function mediaBlock(item) {
+  if (item.video) {
+    const flip = item.before ? `<div class="flip"><button class="on" data-src="${esc(item.video)}">Result</button><button data-src="${esc(item.before)}">Before</button></div>` : '';
+    return `<div class="media"><video src="${esc(item.video)}" poster="${esc(item.poster || '')}" controls loop playsinline preload="metadata"></video>${flip}</div>`;
+  }
+  if (item.image) return `<div class="media" style="aspect-ratio:auto"><img src="${esc(item.image)}" alt="" style="height:auto"></div>`;
+  return '';
+}
+function itemCard(item) {
+  return `<div class="card">${mediaBlock(item)}<div class="body">
+    <div class="t"><span>${esc(item.title)}</span>${item.verdict ? `<span class="pill ${esc(item.verdict)}">${esc(item.verdict)}</span>` : ''}</div>
+    ${item.audio ? `<audio src="${esc(item.audio)}" controls preload="none"></audio>` : ''}
+    <div class="note">${esc(item.note)}</div>
+    ${item.project ? `<a href="/#/studio?project=${encodeURIComponent(item.project)}">Open in studio ↗</a>` : ''}
+  </div></div>`;
+}
+async function load() {
+  const m = await fetch('manifest.json?' + Date.now()).then(r => r.json());
+  document.getElementById('upd').textContent = 'updated ' + m.updated;
+  document.getElementById('status').innerHTML = m.status.map(s => `<div class="card"><div class="who"><span>${esc(s.who)}</span><span class="pill ${esc(s.state)}">${esc(s.state)}</span></div><div class="note">${esc(s.note)}</div></div>`).join('');
+  const hero = document.getElementById('hero');
+  if (m.hero) { hero.className = 'hero has'; hero.innerHTML = itemCard(m.hero); }
+  document.getElementById('sections').innerHTML = m.sections.map(sec => `<h2>${esc(sec.title)}</h2><div class="grid">${sec.items.map(itemCard).join('')}</div>`).join('');
+  document.querySelectorAll('.flip').forEach(f => f.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const v = f.parentElement.querySelector('video'); const t = v.currentTime;
+    f.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    v.src = b.dataset.src; v.currentTime = t; v.play().catch(() => {});
+  }));
+}
+load();
+</script>
+</body>
+</html>

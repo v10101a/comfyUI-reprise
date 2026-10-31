@@ -1,0 +1,35 @@
+{
+  "workflow": "words.api.json",
+  "description": "Local CPU Whisper word timestamps; optional heuristic lyric matching, not forced alignment.",
+  "inputs": {
+    "audio": {
+      "node": "1",
+      "field": "audio",
+      "kind": "comfy_input_path"
+    },
+    "lyrics": {
+      "node": "2",
+      "field": "lyrics",
+      "kind": "string",
+      "default": ""
+    },
+    "language": {
+      "node": "2",
+      "field": "language",
+      "kind": "string",
+      "default": "auto"
+    },
+    "model_size": {
+      "node": "2",
+      "field": "model_size",
+      "kind": "string",
+      "default": "small"
+    }
+  },
+  "outputs": {
+    "words_json": {
+      "node": "3",
+      "type": "text"
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "workflow": "surface_track.api.json",
+  "description": "Planar quad tracking (SCHEMA v2 \u00a7A). Caller normalizes the video to project size/fps; matte_dir '' = no subject mask.",
+  "inputs": {
+    "video": {
+      "node": "1",
+      "field": "file",
+      "kind": "comfy_input_path"
+    },
+    "matte_dir": {
+      "node": "3",
+      "field": "directory",
+      "kind": "string",
+      "default": ""
+    },
+    "corners": {
+      "node": "4",
+      "field": "corners",
+      "kind": "string"
+    },
+    "key_frame": {
+      "node": "4",
+      "field": "key_frame",
+      "kind": "int",
+      "default": 0
+    },
+    "fps": {
+      "node": "4",
+      "field": "fps",
+      "kind": "float",
+      "default": 24
+    },
+    "feature_region": {
+      "node": "4",
+      "field": "feature_region",
+      "kind": "float",
+      "default": 1.0
+    },
+    "min_confidence": {
+      "node": "4",
+      "field": "min_confidence",
+      "kind": "float",
+      "default": 0.35
+    }
+  },
+  "outputs": {
+    "surface_json": {
+      "node": "5",
+      "type": "text"
+    }
+  }
+}

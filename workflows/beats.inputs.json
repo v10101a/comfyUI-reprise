@@ -1,0 +1,34 @@
+{
+  "workflow": "beats.api.json",
+  "description": "Beats, downbeats and sections from audio (librosa) + waveform preview.",
+  "inputs": {
+    "audio": {
+      "node": "1",
+      "field": "audio",
+      "kind": "comfy_input_path"
+    },
+    "beats_per_bar": {
+      "node": "2",
+      "field": "beats_per_bar",
+      "kind": "int",
+      "default": 4
+    },
+    "section_seconds": {
+      "node": "2",
+      "field": "section_seconds",
+      "kind": "float",
+      "default": 8.0
+    }
+  },
+  "outputs": {
+    "beats_json": {
+      "node": "3",
+      "type": "text"
+    },
+    "preview": {
+      "node": "4",
+      "type": "image",
+      "optional": true
+    }
+  }
+}

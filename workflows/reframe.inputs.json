@@ -1,0 +1,56 @@
+{
+  "workflow": "reframe.api.json",
+  "description": "Subject-following virtual camera crop (SCHEMA v2 \u00a7C) from tracks.json (+ surface tracks, + focus regions the crop must contain).",
+  "inputs": {
+    "tracks_json": {
+      "node": "1",
+      "field": "tracks_json",
+      "kind": "string"
+    },
+    "surfaces_json": {
+      "node": "1",
+      "field": "surfaces_json",
+      "kind": "string",
+      "default": ""
+    },
+    "aspect": {
+      "node": "1",
+      "field": "aspect",
+      "kind": "string",
+      "default": "9:16"
+    },
+    "fps": {
+      "node": "1",
+      "field": "fps",
+      "kind": "float",
+      "default": 24
+    },
+    "width": {
+      "node": "1",
+      "field": "width",
+      "kind": "int"
+    },
+    "height": {
+      "node": "1",
+      "field": "height",
+      "kind": "int"
+    },
+    "frames": {
+      "node": "1",
+      "field": "frames",
+      "kind": "int"
+    },
+    "focus_json": {
+      "node": "1",
+      "field": "focus_json",
+      "kind": "string",
+      "default": ""
+    }
+  },
+  "outputs": {
+    "crop_json": {
+      "node": "2",
+      "type": "text"
+    }
+  }
+}
