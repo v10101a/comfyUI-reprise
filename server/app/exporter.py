@@ -68,6 +68,20 @@ def capture_frames(project, layer: str, dest: Path, ctx: JobContext, base: float
     return dest / "frame_%05d.png"
 
 
+def frames_dir(store: ProjectStore, pid: str, session: str) -> Path:
+    return store.project_dir(pid) / "export" / "_frames" / session
+
+
+def uploaded_frames(store: ProjectStore, project, session: str, layer: str) -> Path:
+    """Frames the studio rendered and uploaded (same renderer, no Playwright); all must be present."""
+    src = frames_dir(store, project.id, session) / layer
+    frames = max(1, int(project.duration * project.fps + .5))
+    missing = [i for i in range(frames) if not (src / f"frame_{i:05d}.png").is_file()]
+    if missing:
+        raise RuntimeError(f"{len(missing)} of {frames} {layer} frames were not uploaded (first missing: {missing[0]})")
+    return src / "frame_%05d.png"
+
+
 def export_project(store: ProjectStore, pid: str, body: ExportBody, ctx: JobContext):
     # PUT and analysis-result updates use the same lock. The renderer may GET this stable
     # on-disk project while edits queue; it never reads a half-updated project mid-export.
@@ -81,7 +95,8 @@ def export_project(store: ProjectStore, pid: str, body: ExportBody, ctx: JobCont
         formats = set(body.formats)
         if "mp4" in formats:
             # MP4 follows the requested layer; text is flattened on black (H.264 has no alpha).
-            pattern = capture_frames(project, body.layer, dest / "mp4_frames", ctx, .02, .40)
+            pattern = (uploaded_frames(store, project, body.frames, body.layer) if body.frames
+                       else capture_frames(project, body.layer, dest / "mp4_frames", ctx, .02, .40))
             args = ["-framerate", str(project.fps), "-start_number", "0", "-i", pattern]
             audio = project.media.audio or (project.media.video if project.media.video and project.media.video.hasAudio else None)
             if audio:
@@ -94,7 +109,8 @@ def export_project(store: ProjectStore, pid: str, body: ExportBody, ctx: JobCont
             result["mp4"] = f"export/{ctx.id}/final.mp4"
         if formats & {"mov", "webm"}:
             # Transparent delivery is always the text layer, regardless of the UI preview selection.
-            pattern = capture_frames(project, "text", dest / "text_frames", ctx, .48, .40)
+            pattern = (uploaded_frames(store, project, body.frames, "text") if body.frames
+                       else capture_frames(project, "text", dest / "text_frames", ctx, .48, .40))
             if "mov" in formats:
                 ctx.progress(.9, "Encoding ProRes 4444 overlay")
                 encode_prores4444(pattern, project.fps, dest / "text_overlay.mov", start_number=0)
@@ -103,5 +119,8 @@ def export_project(store: ProjectStore, pid: str, body: ExportBody, ctx: JobCont
                 ctx.progress(.95, "Encoding VP9 alpha overlay")
                 encode_alpha_webm(pattern, project.fps, dest / "text_overlay.webm", start_number=0)
                 result["webm"] = f"export/{ctx.id}/text_overlay.webm"
+        if body.frames:
+            import shutil
+            shutil.rmtree(frames_dir(store, pid, body.frames), ignore_errors=True)
         ctx.progress(1, "Export ready")
         return {"files": result, "urls": {k: f"/files/projects/{pid}/{v}" for k, v in result.items()}}

@@ -76,6 +76,31 @@ On the demo song, Whisper hears "say the soul" and the output reads "Hold on, sa
 
 On the demo songs, measured against independent anchors: hero line starts vs pYIN voiced entries are 695 ms → 43 ms mean absolute error, and the Fall For Me hook vs ear-confirmed times is within 31–69 ms. See `docs/comfy-integration.md`. `vocal_start`/`vocal_end` are optional overrides; Fall For Me now aligns the same without them.
 
+### Look and Grade: Typeset styling without the app (`TypesetLook`, `TypesetGrade`)
+The Typeset app splits **look** (text: face, colour, layout, motion, text optics) from **grade** (footage). Both nodes use the app's presets (`look_presets.json`) and output the exact JSON the app stores, so fine-tuning in ComfyUI can be pasted back into a project.
+- `TypesetLook`: preset (`flat-card`, `paper-cut`, `graffiti`, `neon`, `xerox`, `ticker`, `lens-bound`, `night-code`, `scatter`; hidden but kept for old projects: `red-glow`, `dreamy`, `grey-noise`) + every param as a widget (ink/accent/card colours, font/body face from the bundled OFL fonts, case, layout, size, motion, glow, flicker, drips (graffiti), light (neon), outline, halo, soft, cards/tubes/scroll/hooks; "preset"/empty/-1 keeps the preset value) → `look_json` (`{"id","overrides"}` = `project.look`) + a type preview. Connect `look_json` to `TypesetTextPlate` to set the plate in that look (`workflows/text_plate.api.json` has it wired, input `look`, default `default` = prompt colours as before).
+- `TypesetGrade`: IMAGE batch + grade (`none`, `mono`, `xerox`, `teal`, `film`, `wash`, `night`), amount, tint/grain/halation/contrast/flash overrides, optional `beats_json` (from Beat Grid) for the xerox beat flash → graded IMAGE + `grade_json` (= `project.grade`). Same maths as the web renderer (luminance-keeping colour tint, halation, photocopy curve, seeded grain); close, not bit-identical.
+
+### Motion Field and Voice Field: what moves the type (`TypesetFlowField`, `TypesetVoiceField`)
+- **`TypesetFlowField`:** `IMAGE` batch → `flow_json` (DIS optical flow on a coarse grid; CPU, no weights) + an HSV preview.
+  - Typeset turns the camera part into **drift**: the type floats with the shot and settles back.
+  - It turns quick local motion, like a waving hand, into **glass ripples** that refract the type.
+- **`TypesetVoiceField`:** `AUDIO` (or a connected vocal stem, e.g. Align Lyrics' `vocals`) → per-frame vocal loudness, pitch (pYIN), vibrato and onsets.
+  - The sung word swells in weight and width, rides the melody and wobbles on vibrato.
+
+### Typeset Render: words in the shot, in the graph (`TypesetRender`)
+- **In:** `IMAGE` batch + `words_json`, plus optionally `look_json` (Look node), `subject_mask` (the words go behind the person), `voice_json` and `flow_json`.
+- **Out:** the frames with the type burned in, plus the text layer.
+- **Fidelity:** a draft, one line at a time. For walls, HUD labels and pixel-exact export, open the project in the studio at `/typeset`.
+
+### App: words in your shot
+The template **typeset - words in your shot** (`example_workflows/`) is one graph you can use as an App Mode form:
+- **In:** a clip and its lyrics.
+- **Out:** a lyric video.
+- **Controls:** look, grade, voice and flow.
+
+Switch to the graph view to rewire any step.
+
 ### Utilities
 | Node | In → Out |
 |---|---|

@@ -1,0 +1,2737 @@
+{
+ "id": "4fe706a3-f25d-47dd-bc76-f53c5e25e0b5",
+ "revision": 0,
+ "last_node_id": 12,
+ "last_link_id": 23,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "LoadVideo",
+   "pos": [
+    80,
+    110
+   ],
+   "size": [
+    282.798828125,
+    82
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "file",
+     "locked": null,
+     "name": "file",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "file"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "choose file to upload",
+     "locked": null,
+     "name": "upload",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGEUPLOAD",
+     "widget": {
+      "name": "upload"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "VIDEO",
+     "locked": null,
+     "name": "VIDEO",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "VIDEO",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      1
+     ]
+    }
+   ],
+   "title": "your clip",
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.43.0",
+    "Node name for S&R": "LoadVideo"
+   },
+   "widgets_values": [
+    "typeset_demo_dancer.mp4",
+    "image"
+   ],
+   "widgets_values_named": {
+    "file": "typeset_demo_dancer.mp4",
+    "upload": "image"
+   }
+  },
+  {
+   "id": 2,
+   "type": "GetVideoComponents",
+   "pos": [
+    442.798828125,
+    110
+   ],
+   "size": [
+    193.530859375,
+    106
+   ],
+   "flags": {},
+   "order": 2,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "video",
+     "locked": null,
+     "name": "video",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "VIDEO",
+     "pos": null,
+     "link": 1
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "images",
+     "locked": null,
+     "name": "images",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      2,
+      7,
+      9,
+      22
+     ]
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "audio",
+     "locked": null,
+     "name": "audio",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "AUDIO",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      3,
+      4,
+      20
+     ]
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "fps",
+     "locked": null,
+     "name": "fps",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      5,
+      8,
+      10,
+      13,
+      19
+     ]
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "bit_depth",
+     "locked": null,
+     "name": "bit_depth",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "color_space",
+     "locked": null,
+     "name": "color_space",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    }
+   ],
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.43.0",
+    "Node name for S&R": "GetVideoComponents"
+   }
+  },
+  {
+   "id": 3,
+   "type": "BiRefNetRMBG",
+   "pos": [
+    716.3296875,
+    110
+   ],
+   "size": [
+    340,
+    292
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "Image",
+     "locked": null,
+     "name": "image",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "link": 2
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "Model",
+     "locked": null,
+     "name": "model",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "model"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "Sensitivity",
+     "locked": null,
+     "name": "sensitivity",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "FLOAT",
+     "widget": {
+      "name": "sensitivity"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "Mask Blur",
+     "locked": null,
+     "name": "mask_blur",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "INT",
+     "widget": {
+      "name": "mask_blur"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "Mask Offset",
+     "locked": null,
+     "name": "mask_offset",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "INT",
+     "widget": {
+      "name": "mask_offset"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "Invert Output",
+     "locked": null,
+     "name": "invert_output",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "invert_output"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "Refine Foreground",
+     "locked": null,
+     "name": "refine_foreground",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "refine_foreground"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "Unload Model",
+     "locked": null,
+     "name": "unload_model",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "unload_model"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "Background",
+     "locked": null,
+     "name": "background",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "COMBO",
+     "widget": {
+      "name": "background"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "Background Color",
+     "locked": null,
+     "name": "background_color",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "COLORCODE",
+     "widget": {
+      "name": "background_color"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "IMAGE",
+     "locked": null,
+     "name": "IMAGE",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "MASK",
+     "locked": null,
+     "name": "MASK",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "MASK",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      23
+     ]
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "MASK IMAGE",
+     "locked": null,
+     "name": "MASK_IMAGE",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    }
+   ],
+   "title": "subject matte",
+   "properties": {
+    "cnr_id": "comfyui-rmbg",
+    "ver": "a66a5e641a54988d80ed6aad18946081c85f309e",
+    "Node name for S&R": "BiRefNetRMBG"
+   },
+   "widgets_values": [
+    "BiRefNet-general",
+    1,
+    0,
+    0,
+    false,
+    false,
+    true,
+    "Alpha",
+    "#000000"
+   ],
+   "widgets_values_named": {
+    "model": "BiRefNet-general",
+    "sensitivity": 1,
+    "mask_blur": 0,
+    "mask_offset": 0,
+    "invert_output": false,
+    "refine_foreground": false,
+    "unload_model": true,
+    "background": "Alpha",
+    "background_color": "#000000"
+   },
+   "color": "#222e40",
+   "bgcolor": "#364254"
+  },
+  {
+   "id": 4,
+   "type": "TypesetAlignLyrics",
+   "pos": [
+    716.3296875,
+    512
+   ],
+   "size": [
+    400,
+    340
+   ],
+   "flags": {},
+   "order": 4,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "audio",
+     "locked": null,
+     "name": "audio",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "AUDIO",
+     "pos": null,
+     "link": 3
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "vocals",
+     "locked": null,
+     "name": "vocals",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "AUDIO",
+     "pos": null,
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "lyrics",
+     "locked": null,
+     "name": "lyrics",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "STRING",
+     "widget": {
+      "name": "lyrics"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "separator",
+     "locked": null,
+     "name": "separator",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "separator"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "aligner",
+     "locked": null,
+     "name": "aligner",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "aligner"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "onset_window_ms",
+     "locked": null,
+     "name": "onset_window_ms",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "onset_window_ms"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "min_confidence",
+     "locked": null,
+     "name": "min_confidence",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "min_confidence"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "vocal_start",
+     "locked": null,
+     "name": "vocal_start",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "vocal_start"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "vocal_end",
+     "locked": null,
+     "name": "vocal_end",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "vocal_end"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "device",
+     "locked": null,
+     "name": "device",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "device"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "unload_models",
+     "locked": null,
+     "name": "unload_models",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "unload_models"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "words_json",
+     "locked": null,
+     "name": "words_json",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "STRING",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      12
+     ]
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "preview",
+     "locked": null,
+     "name": "preview",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "vocals",
+     "locked": null,
+     "name": "vocals",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "AUDIO",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      6
+     ]
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "word_count",
+     "locked": null,
+     "name": "word_count",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "INT",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    }
+   ],
+   "title": "lyrics",
+   "properties": {
+    "Node name for S&R": "TypesetAlignLyrics"
+   },
+   "widgets_values": [
+    "Hold on, say it slow\nLouder than the radio\nHold on, let it show\nEvery word I know",
+    "hdemucs",
+    "mms_fa",
+    50,
+    0.05,
+    0,
+    0,
+    "cpu",
+    true
+   ],
+   "widgets_values_named": {
+    "lyrics": "Hold on, say it slow\nLouder than the radio\nHold on, let it show\nEvery word I know",
+    "separator": "hdemucs",
+    "aligner": "mms_fa",
+    "onset_window_ms": 50,
+    "min_confidence": 0.05,
+    "vocal_start": 0,
+    "vocal_end": 0,
+    "device": "cpu",
+    "unload_models": true
+   }
+  },
+  {
+   "id": 5,
+   "type": "TypesetVoiceField",
+   "pos": [
+    1196.3296875,
+    322
+   ],
+   "size": [
+    361.6685546875,
+    170
+   ],
+   "flags": {},
+   "order": 8,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "audio",
+     "locked": null,
+     "name": "audio",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "AUDIO",
+     "pos": null,
+     "link": 4
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "vocals",
+     "locked": null,
+     "name": "vocals",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "AUDIO",
+     "pos": null,
+     "link": 6
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "fps",
+     "locked": null,
+     "name": "fps",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "fps"
+     },
+     "link": 5
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "separator",
+     "locked": null,
+     "name": "separator",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "separator"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "duration",
+     "locked": null,
+     "name": "duration",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "FLOAT",
+     "widget": {
+      "name": "duration"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "device",
+     "locked": null,
+     "name": "device",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "COMBO",
+     "widget": {
+      "name": "device"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "voice_json",
+     "locked": null,
+     "name": "voice_json",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "STRING",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      16
+     ]
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "preview",
+     "locked": null,
+     "name": "preview",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "vocals",
+     "locked": null,
+     "name": "vocals",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "AUDIO",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    }
+   ],
+   "title": "voice field",
+   "properties": {
+    "Node name for S&R": "TypesetVoiceField"
+   },
+   "widgets_values": [
+    24,
+    "hdemucs",
+    0,
+    "cpu"
+   ],
+   "widgets_values_named": {
+    "fps": 24,
+    "separator": "hdemucs",
+    "duration": 0,
+    "device": "cpu"
+   }
+  },
+  {
+   "id": 6,
+   "type": "TypesetFlowField",
+   "pos": [
+    716.3296875,
+    962
+   ],
+   "size": [
+    337.21640625,
+    126
+   ],
+   "flags": {},
+   "order": 5,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "images",
+     "locked": null,
+     "name": "images",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "link": 7
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "fps",
+     "locked": null,
+     "name": "fps",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "fps"
+     },
+     "link": 8
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "long_side_cells",
+     "locked": null,
+     "name": "long_side_cells",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "INT",
+     "widget": {
+      "name": "long_side_cells"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "preview_frames",
+     "locked": null,
+     "name": "preview_frames",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "INT",
+     "widget": {
+      "name": "preview_frames"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "flow_json",
+     "locked": null,
+     "name": "flow_json",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "STRING",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      17
+     ]
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "preview",
+     "locked": null,
+     "name": "preview",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    }
+   ],
+   "title": "motion field",
+   "properties": {
+    "Node name for S&R": "TypesetFlowField"
+   },
+   "widgets_values": [
+    24,
+    64,
+    0
+   ],
+   "widgets_values_named": {
+    "fps": 24,
+    "long_side_cells": 64,
+    "preview_frames": 0
+   }
+  },
+  {
+   "id": 7,
+   "type": "TypesetLook",
+   "pos": [
+    80,
+    302
+   ],
+   "size": [
+    272.233984375,
+    534
+   ],
+   "flags": {},
+   "order": 1,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "preset",
+     "locked": null,
+     "name": "preset",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "preset"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "ink",
+     "locked": null,
+     "name": "ink",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "STRING",
+     "widget": {
+      "name": "ink"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "accent",
+     "locked": null,
+     "name": "accent",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "STRING",
+     "widget": {
+      "name": "accent"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "card",
+     "locked": null,
+     "name": "card",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "STRING",
+     "widget": {
+      "name": "card"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "font",
+     "locked": null,
+     "name": "font",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "font"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "body",
+     "locked": null,
+     "name": "body",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "body"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "case",
+     "locked": null,
+     "name": "case",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "case"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "layout",
+     "locked": null,
+     "name": "layout",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "layout"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "scale",
+     "locked": null,
+     "name": "scale",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "scale"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "motion",
+     "locked": null,
+     "name": "motion",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "motion"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "glow",
+     "locked": null,
+     "name": "glow",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "glow"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "flicker",
+     "locked": null,
+     "name": "flicker",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "flicker"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "outline",
+     "locked": null,
+     "name": "outline",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "outline"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "halo",
+     "locked": null,
+     "name": "halo",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "halo"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "soft",
+     "locked": null,
+     "name": "soft",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "soft"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "cards",
+     "locked": null,
+     "name": "cards",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "cards"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "tubes",
+     "locked": null,
+     "name": "tubes",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "tubes"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "scroll",
+     "locked": null,
+     "name": "scroll",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "scroll"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "hooks",
+     "locked": null,
+     "name": "hooks",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "hooks"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "sample",
+     "locked": null,
+     "name": "sample",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "STRING",
+     "widget": {
+      "name": "sample"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "look_json",
+     "locked": null,
+     "name": "look_json",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "STRING",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      14
+     ]
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "preview",
+     "locked": null,
+     "name": "preview",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    }
+   ],
+   "title": "look",
+   "properties": {
+    "Node name for S&R": "TypesetLook"
+   },
+   "widgets_values": [
+    "red-glow",
+    "",
+    "",
+    "",
+    "preset",
+    "preset",
+    "preset",
+    "preset",
+    1,
+    1,
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    "preset",
+    "preset",
+    "preset",
+    "preset",
+    "LOUDER"
+   ],
+   "widgets_values_named": {
+    "preset": "red-glow",
+    "ink": "",
+    "accent": "",
+    "card": "",
+    "font": "preset",
+    "body": "preset",
+    "case": "preset",
+    "layout": "preset",
+    "scale": 1,
+    "motion": 1,
+    "glow": -1,
+    "flicker": -1,
+    "outline": -1,
+    "halo": -1,
+    "soft": -1,
+    "cards": "preset",
+    "tubes": "preset",
+    "scroll": "preset",
+    "hooks": "preset",
+    "sample": "LOUDER"
+   }
+  },
+  {
+   "id": 8,
+   "type": "TypesetGrade",
+   "pos": [
+    716.3296875,
+    1198
+   ],
+   "size": [
+    270.5181640625,
+    318
+   ],
+   "flags": {},
+   "order": 6,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "images",
+     "locked": null,
+     "name": "images",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "link": 9
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "beats_json",
+     "locked": null,
+     "name": "beats_json",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "STRING",
+     "pos": null,
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "grade",
+     "locked": null,
+     "name": "grade",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMBO",
+     "widget": {
+      "name": "grade"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "amount",
+     "locked": null,
+     "name": "amount",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "amount"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "tint",
+     "locked": null,
+     "name": "tint",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "STRING",
+     "widget": {
+      "name": "tint"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "tint_amount",
+     "locked": null,
+     "name": "tint_amount",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "tint_amount"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "grain",
+     "locked": null,
+     "name": "grain",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "grain"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "halation",
+     "locked": null,
+     "name": "halation",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "halation"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "contrast",
+     "locked": null,
+     "name": "contrast",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "contrast"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "flash",
+     "locked": null,
+     "name": "flash",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "flash"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "fps",
+     "locked": null,
+     "name": "fps",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "fps"
+     },
+     "link": 10
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "seed",
+     "locked": null,
+     "name": "seed",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "INT",
+     "widget": {
+      "name": "seed"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "images",
+     "locked": null,
+     "name": "images",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      11
+     ]
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "grade_json",
+     "locked": null,
+     "name": "grade_json",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "STRING",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    }
+   ],
+   "title": "grade",
+   "properties": {
+    "Node name for S&R": "TypesetGrade"
+   },
+   "widgets_values": [
+    "teal",
+    0.6,
+    "",
+    -1,
+    -1,
+    -1,
+    -1,
+    -1,
+    24,
+    0,
+    "randomize"
+   ],
+   "widgets_values_named": {
+    "grade": "teal",
+    "amount": 0.6,
+    "tint": "",
+    "tint_amount": -1,
+    "grain": -1,
+    "halation": -1,
+    "contrast": -1,
+    "flash": -1,
+    "fps": 24,
+    "seed": 0,
+    "control_after_generate": "randomize"
+   }
+  },
+  {
+   "id": 9,
+   "type": "TypesetRender",
+   "pos": [
+    1687.0939453125002,
+    110
+   ],
+   "size": [
+    397.2017578125,
+    254
+   ],
+   "flags": {},
+   "order": 9,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "images",
+     "locked": null,
+     "name": "images",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "link": 11
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "words_json",
+     "locked": null,
+     "name": "words_json",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "STRING",
+     "pos": null,
+     "link": 12
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "look_json",
+     "locked": null,
+     "name": "look_json",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "STRING",
+     "pos": null,
+     "link": 14
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "subject_mask",
+     "locked": null,
+     "name": "subject_mask",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "MASK",
+     "pos": null,
+     "link": 15
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "voice_json",
+     "locked": null,
+     "name": "voice_json",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "STRING",
+     "pos": null,
+     "link": 16
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "flow_json",
+     "locked": null,
+     "name": "flow_json",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "STRING",
+     "pos": null,
+     "link": 17
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "fps",
+     "locked": null,
+     "name": "fps",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "fps"
+     },
+     "link": 13
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "voice",
+     "locked": null,
+     "name": "voice",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "FLOAT",
+     "widget": {
+      "name": "voice"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "flow",
+     "locked": null,
+     "name": "flow",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "FLOAT",
+     "widget": {
+      "name": "flow"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "size",
+     "locked": null,
+     "name": "size",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "FLOAT",
+     "widget": {
+      "name": "size"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "height",
+     "locked": null,
+     "name": "height",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "FLOAT",
+     "widget": {
+      "name": "height"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "images",
+     "locked": null,
+     "name": "images",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      18
+     ]
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "text_layer",
+     "locked": null,
+     "name": "text_layer",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    }
+   ],
+   "title": "typeset",
+   "properties": {
+    "Node name for S&R": "TypesetRender"
+   },
+   "widgets_values": [
+    24,
+    1,
+    1,
+    0.16,
+    0.42
+   ],
+   "widgets_values_named": {
+    "fps": 24,
+    "voice": 1,
+    "flow": 1,
+    "size": 0.16,
+    "height": 0.42
+   }
+  },
+  {
+   "id": 10,
+   "type": "CreateVideo",
+   "pos": [
+    2164.2957031250003,
+    110
+   ],
+   "size": [
+    270,
+    150
+   ],
+   "flags": {},
+   "order": 10,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "images",
+     "locked": null,
+     "name": "images",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "link": 18
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "audio",
+     "locked": null,
+     "name": "audio",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "AUDIO",
+     "pos": null,
+     "link": 20
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "fps",
+     "locked": null,
+     "name": "fps",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "FLOAT",
+     "widget": {
+      "name": "fps"
+     },
+     "link": 19
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "bit_depth",
+     "locked": null,
+     "name": "bit_depth",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "COMBO",
+     "widget": {
+      "name": "bit_depth"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "color_space",
+     "locked": null,
+     "name": "color_space",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "COMBO",
+     "widget": {
+      "name": "color_space"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "codec",
+     "locked": null,
+     "name": "codec",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "COMBO",
+     "widget": {
+      "name": "codec"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "VIDEO",
+     "locked": null,
+     "name": "VIDEO",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "VIDEO",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      21
+     ]
+    }
+   ],
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.43.0",
+    "Node name for S&R": "CreateVideo"
+   },
+   "widgets_values": [
+    30,
+    "auto",
+    "sRGB",
+    "none"
+   ],
+   "widgets_values_named": {
+    "fps": 30,
+    "bit_depth": "auto",
+    "color_space": "sRGB",
+    "codec": "none"
+   }
+  },
+  {
+   "id": 11,
+   "type": "SaveVideo",
+   "pos": [
+    2514.2957031250003,
+    110
+   ],
+   "size": [
+    270,
+    106
+   ],
+   "flags": {},
+   "order": 11,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "video",
+     "locked": null,
+     "name": "video",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "VIDEO",
+     "pos": null,
+     "link": 21
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "filename_prefix",
+     "locked": null,
+     "name": "filename_prefix",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "format",
+     "locked": null,
+     "name": "format",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMFY_DYNAMICCOMBO_V3",
+     "widget": {
+      "name": "format"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "codec",
+     "locked": null,
+     "name": "format.codec",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "COMFY_DYNAMICCOMBO_V3",
+     "widget": {
+      "name": "format.codec"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "codec",
+     "locked": null,
+     "name": "codec",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "COMFY_DYNAMICCOMBO_V3",
+     "widget": {
+      "name": "codec"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "video",
+     "locked": null,
+     "name": "video",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "VIDEO",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    }
+   ],
+   "title": "your lyric video",
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.43.0"
+   },
+   "widgets_values": [
+    "typeset/app",
+    "auto",
+    "auto",
+    "auto"
+   ],
+   "widgets_values_named": {
+    "filename_prefix": "typeset/app",
+    "format": "auto",
+    "format.codec": "auto",
+    "codec": "auto"
+   }
+  },
+  {
+   "id": 12,
+   "type": "TypesetMatteRefine",
+   "pos": [
+    1196.3296875,
+    110
+   ],
+   "size": [
+    410.7642578125,
+    102
+   ],
+   "flags": {},
+   "order": 7,
+   "mode": 0,
+   "showAdvanced": null,
+   "inputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "images",
+     "locked": null,
+     "name": "images",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "link": 22
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "mask",
+     "locked": null,
+     "name": "mask",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "MASK",
+     "pos": null,
+     "link": 23
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "max_hole",
+     "locked": null,
+     "name": "max_hole",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "FLOAT",
+     "widget": {
+      "name": "max_hole"
+     },
+     "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "min_speck",
+     "locked": null,
+     "name": "min_speck",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "FLOAT",
+     "widget": {
+      "name": "min_speck"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "rgba",
+     "locked": null,
+     "name": "rgba",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "IMAGE",
+     "pos": null,
+     "slot_index": null,
+     "links": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "mask",
+     "locked": null,
+     "name": "mask",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "MASK",
+     "pos": null,
+     "slot_index": null,
+     "links": [
+      15
+     ]
+    }
+   ],
+   "title": "fill holes in the subject",
+   "properties": {
+    "Node name for S&R": "TypesetMatteRefine"
+   },
+   "widgets_values": [
+    0.25,
+    0.002
+   ],
+   "widgets_values_named": {
+    "max_hole": 0.25,
+    "min_speck": 0.002
+   }
+  }
+ ],
+ "links": [
+  [
+   1,
+   1,
+   0,
+   2,
+   0,
+   "VIDEO"
+  ],
+  [
+   2,
+   2,
+   0,
+   3,
+   0,
+   "IMAGE"
+  ],
+  [
+   3,
+   2,
+   1,
+   4,
+   0,
+   "AUDIO"
+  ],
+  [
+   4,
+   2,
+   1,
+   5,
+   0,
+   "AUDIO"
+  ],
+  [
+   5,
+   2,
+   2,
+   5,
+   2,
+   "FLOAT"
+  ],
+  [
+   6,
+   4,
+   2,
+   5,
+   1,
+   "AUDIO"
+  ],
+  [
+   7,
+   2,
+   0,
+   6,
+   0,
+   "IMAGE"
+  ],
+  [
+   8,
+   2,
+   2,
+   6,
+   1,
+   "FLOAT"
+  ],
+  [
+   9,
+   2,
+   0,
+   8,
+   0,
+   "IMAGE"
+  ],
+  [
+   10,
+   2,
+   2,
+   8,
+   10,
+   "FLOAT"
+  ],
+  [
+   11,
+   8,
+   0,
+   9,
+   0,
+   "IMAGE"
+  ],
+  [
+   12,
+   4,
+   0,
+   9,
+   1,
+   "STRING"
+  ],
+  [
+   13,
+   2,
+   2,
+   9,
+   6,
+   "FLOAT"
+  ],
+  [
+   14,
+   7,
+   0,
+   9,
+   2,
+   "STRING"
+  ],
+  [
+   15,
+   12,
+   1,
+   9,
+   3,
+   "MASK"
+  ],
+  [
+   16,
+   5,
+   0,
+   9,
+   4,
+   "STRING"
+  ],
+  [
+   17,
+   6,
+   0,
+   9,
+   5,
+   "STRING"
+  ],
+  [
+   18,
+   9,
+   0,
+   10,
+   0,
+   "IMAGE"
+  ],
+  [
+   19,
+   2,
+   2,
+   10,
+   2,
+   "FLOAT"
+  ],
+  [
+   20,
+   2,
+   1,
+   10,
+   1,
+   "AUDIO"
+  ],
+  [
+   21,
+   10,
+   0,
+   11,
+   0,
+   "VIDEO"
+  ],
+  [
+   22,
+   2,
+   0,
+   12,
+   0,
+   "IMAGE"
+  ],
+  [
+   23,
+   3,
+   1,
+   12,
+   1,
+   "MASK"
+  ]
+ ],
+ "floatingLinks": null,
+ "groups": [],
+ "definitions": null,
+ "config": {},
+ "extra": {
+  "ds": {
+   "scale": 0.9,
+   "offset": [
+    416,
+    110
+   ]
+  },
+  "reroutes": null,
+  "linearMode": true,
+  "linearData": {
+   "inputs": [
+    [
+     "1",
+     "file"
+    ],
+    [
+     "4",
+     "lyrics"
+    ],
+    [
+     "7",
+     "preset"
+    ],
+    [
+     "8",
+     "grade"
+    ],
+    [
+     "9",
+     "voice"
+    ],
+    [
+     "9",
+     "flow"
+    ]
+   ],
+   "outputs": [
+    "11"
+   ]
+  }
+ },
+ "version": 0.4
+}

@@ -34,6 +34,7 @@ class Settings:
     ffmpeg: str = "/opt/homebrew/bin/ffmpeg"
     ffprobe: str = "/opt/homebrew/bin/ffprobe"
     render_timeout: float = 120.0
+    comfy_mode: str = "sdk"
 
     @property
     def projects_dir(self) -> Path:
@@ -79,6 +80,7 @@ def load_settings() -> Settings:
         ffmpeg=os.environ.get("FFMPEG", "/opt/homebrew/bin/ffmpeg"),
         ffprobe=os.environ.get("FFPROBE", "/opt/homebrew/bin/ffprobe"),
         render_timeout=float(os.environ.get("TYPESET_RENDER_TIMEOUT", "120")),
+        comfy_mode=os.environ.get("TYPESET_COMFY_MODE", "sdk").strip().lower(),
     )
     for d in (s.projects_dir, s.jobs_dir):
         d.mkdir(parents=True, exist_ok=True)

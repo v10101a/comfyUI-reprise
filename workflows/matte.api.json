@@ -12,7 +12,7 @@
         "4",
         0
       ],
-      "model": "BiRefNet_lite",
+      "model": "BiRefNet-general",
       "sensitivity": 1.0,
       "mask_blur": 0,
       "mask_offset": 0,
@@ -27,7 +27,7 @@
     "class_type": "SaveImage",
     "inputs": {
       "images": [
-        "2",
+        "8",
         0
       ],
       "filename_prefix": "typeset/matte/fg"
@@ -51,7 +51,7 @@
       ],
       "label": "person",
       "mask": [
-        "2",
+        "8",
         1
       ],
       "track_id": "person0",
@@ -75,6 +75,24 @@
     "class_type": "PrimitiveFloat",
     "inputs": {
       "value": 24.0
+    }
+  },
+  "8": {
+    "class_type": "TypesetMatteRefine",
+    "inputs": {
+      "images": [
+        "4",
+        0
+      ],
+      "mask": [
+        "2",
+        1
+      ],
+      "max_hole": 0.25,
+      "min_speck": 0.002
+    },
+    "_meta": {
+      "title": "fill holes in the subject"
     }
   }
 }

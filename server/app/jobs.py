@@ -23,7 +23,7 @@ from .store import write_json_atomic
 log = logging.getLogger("typeset.jobs")
 
 LANES = {"words": "comfy", "matte": "comfy", "inworld": "comfy", "export": "export",
-         "surface": "cpu", "reframe": "cpu", "occupancy": "cpu", "beats": "cpu"}
+         "surface": "cpu", "reframe": "cpu", "occupancy": "cpu", "beats": "cpu", "flow": "cpu", "voice": "comfy"}
 
 
 def _now() -> str:

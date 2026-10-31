@@ -1,0 +1,34 @@
+{
+  "workflow": "voice.api.json",
+  "description": "Song -> vocal stem (HDemucs) -> per-frame loudness, pitch (pYIN), vibrato, onsets: the 'voice' field that animates the type.",
+  "inputs": {
+    "audio": {
+      "node": "1",
+      "field": "audio",
+      "kind": "comfy_input_path"
+    },
+    "fps": {
+      "node": "2",
+      "field": "fps",
+      "kind": "float",
+      "default": 24
+    },
+    "duration": {
+      "node": "2",
+      "field": "duration",
+      "kind": "float",
+      "default": 0
+    }
+  },
+  "outputs": {
+    "voice_json": {
+      "node": "3",
+      "type": "text"
+    },
+    "preview": {
+      "node": "4",
+      "type": "image",
+      "optional": true
+    }
+  }
+}

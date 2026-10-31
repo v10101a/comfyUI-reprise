@@ -64,7 +64,7 @@ def comfy_up() -> bool:
         return False
     from .comfy import runner
     h = runner.health()
-    return bool(h.get("proxy") and h.get("comfyui"))
+    return bool((h.get("proxy") or h.get("transport") == "direct") and h.get("comfyui"))
 
 
 def run_analysis(name: str, label: str, ctx: JobContext | None, comfy_fn, local_fn, base: float = .1, span: float = .8):
@@ -624,3 +624,71 @@ def analyze_beats(store: ProjectStore, pid: str, ctx: JobContext):
                     f"via ComfyUI workflow beats.api.json (job {result.job_id[:8]}, {time.monotonic() - t0:.1f}s)")
     return {"path": "analysis/beats.json", "preview": "analysis/beats.png", "bpm": doc["bpm"], "beats": len(doc["beats"]),
             "downbeats": len(doc["downbeats"]), "sections": len(doc["sections"]), "engine": "comfy"}
+
+
+# ---- F. motion field ----------------------------------------------------------------------
+
+def analyze_flow(store: ProjectStore, pid: str, ctx: JobContext):
+    """analysis/flow.json: per-frame coarse optical flow (TypesetFlowField) that pushes and smears the type."""
+    from .media import stage_to_comfy_input
+    project = store.load(pid)
+    if project.media.video is None:
+        raise ValueError("Upload video first")
+    t0 = time.monotonic()
+    pdir = store.project_dir(pid)
+    ctx.progress(.05, "Motion: preparing footage")
+    video = normalized_video(store, project)
+    run_dir = pdir / "analysis" / f"flow_run_{ctx.id[:8]}"
+
+    def comfy():
+        rel = stage_to_comfy_input(video, pid, video.name)
+        return _run_json("flow", {"video": rel, "fps": project.fps}, run_dir, "flow_json", ctx, "Motion field", .15)
+
+    def local():
+        grays = decode_gray(store, project)
+        cols, rows = vision.flow_dims(project.width, project.height)
+        return vision.flow_doc(vision.flow_grids(grays, cols, rows), project.fps)
+
+    doc, engine, note = run_analysis("flow", "Motion field", ctx, comfy, local, .15)
+    doc["fps"] = project.fps
+    rel = "analysis/flow.json"
+    write_json_atomic(_ppath(store, pid, rel), doc)
+    def update(p):
+        p.analysis.flow = rel
+    store.update(pid, update)
+    ctx.progress(1, f"Motion field ready: {len(doc['frames'])} frames, {doc['cols']}×{doc['rows']} — {note}")
+    return {"path": rel, "frames": len(doc["frames"]), "cols": doc["cols"], "rows": doc["rows"], "engine": engine,
+            "seconds": round(time.monotonic() - t0, 2)}
+
+
+# ---- V. voice field -----------------------------------------------------------------------
+
+def analyze_voice(store: ProjectStore, pid: str, ctx: JobContext):
+    """analysis/voice.json + voice.png: per-frame vocal loudness, pitch, vibrato, onsets (TypesetVoiceField).
+    ComfyUI only (HDemucs + librosa live in the ComfyUI venv)."""
+    from .media import extract_audio_wav, stage_to_comfy_input
+    project = store.load(pid)
+    source = project.media.audio or project.media.video
+    if source is None:
+        raise ValueError("Upload audio or video first")
+    if not comfy_up():
+        raise RuntimeError("Voice analysis runs as a ComfyUI workflow (HDemucs + pYIN); ComfyUI is unreachable")
+    t0 = time.monotonic()
+    pdir = store.project_dir(pid)
+    ctx.progress(.05, "Voice: extracting audio")
+    wav = extract_audio_wav(_ppath(store, pid, source.path), pdir / "analysis" / f"voice_{ctx.id[:8]}.wav", 44100)
+    rel_audio = stage_to_comfy_input(wav, pid, wav.name)
+    from .comfy import runner, read_json_output
+    result = runner.run("voice", {"audio": rel_audio, "fps": project.fps, "duration": project.duration},
+                        pdir / "analysis" / f"voice_run_{ctx.id[:8]}", progress=_comfy_progress(ctx, "Voice field", .2))
+    doc = read_json_output(result.outputs["voice_json"])
+    write_json_atomic(pdir / "analysis" / "voice.json", doc)
+    if result.first("preview"):
+        shutil.copy2(result.first("preview"), pdir / "analysis" / "voice.png")
+    def update(p):
+        p.analysis.voice = "analysis/voice.json"
+    store.update(pid, update)
+    voiced = sum(1 for x in doc["pitch"] if x is not None)
+    ctx.progress(1, f"Voice field: {doc['frames']} frames, {voiced} voiced — via ComfyUI workflow voice.api.json "
+                    f"(job {result.job_id[:8]}, {time.monotonic() - t0:.1f}s)")
+    return {"path": "analysis/voice.json", "preview": "analysis/voice.png", "frames": doc["frames"], "voiced": voiced, "engine": "comfy"}

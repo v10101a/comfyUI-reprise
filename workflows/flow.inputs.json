@@ -1,0 +1,29 @@
+{
+  "workflow": "flow.api.json",
+  "description": "Footage (normalized to project size/fps) -> motion field JSON: DIS optical flow on a coarse grid, the 'motion' field that pushes and smears the type.",
+  "inputs": {
+    "video": {
+      "node": "1",
+      "field": "file",
+      "kind": "comfy_input_path"
+    },
+    "fps": {
+      "node": "3",
+      "field": "fps",
+      "kind": "float",
+      "default": 24
+    },
+    "long_side_cells": {
+      "node": "3",
+      "field": "long_side_cells",
+      "kind": "int",
+      "default": 64
+    }
+  },
+  "outputs": {
+    "flow_json": {
+      "node": "4",
+      "type": "text"
+    }
+  }
+}

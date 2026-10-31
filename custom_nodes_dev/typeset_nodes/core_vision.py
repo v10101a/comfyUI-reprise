@@ -4,6 +4,7 @@ and by the Typeset server's in-process fallback (server/app/vision.py loads this
   occupancy_*      MASK → coarse grid of "how much subject is in each cell" (where text stays readable)
   track_plane      planar homography tracker for a 4-corner quad on a wall/sign, subject masked out
   compute_crop     smoothed virtual camera (dead zone + critically damped follow) for reframing
+  flow_*           dense optical flow (DIS) → coarse per-frame motion field that pushes and smears the type
 
 No torch, no ComfyUI imports: everything here is unit-testable on synthetic data.
 """
@@ -606,3 +607,60 @@ def alignment_score(key_img: np.ndarray, key_mask: np.ndarray, cur: np.ndarray, 
         return 0.0
     a, b = a[mm] - a[mm].mean(), b[mm] - b[mm].mean()
     return float((a @ b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9))
+
+
+# ---- F. motion field -------------------------------------------------------------------
+# Per frame f: the motion from f-1 to f, sampled on a coarse grid, in normalized units (fraction of width /
+# height per frame). Quantized to int8 against one clip-wide `scale`, base64 per frame (like occupancy).
+
+FLOW_LONG = 64  # grid cells along the long edge
+FLOW_WORK = 320  # long edge the flow is computed at (DIS is fast; detail beyond this is noise for type)
+
+
+def flow_dims(width: int, height: int, long_cells: int = FLOW_LONG) -> tuple[int, int]:
+    return occupancy_dims(width, height, long_cells)
+
+
+def flow_grids(grays: Sequence[np.ndarray], cols: int, rows: int, work_long: int = FLOW_WORK) -> list[np.ndarray]:
+    """grays: HxW uint8 frames → rows×cols×2 float32 grids (dx/W, dy/H); frame 0 is zero."""
+    import cv2
+    if not grays:
+        return []
+    h, w = grays[0].shape[:2]
+    k = work_long / max(w, h)
+    size = (max(16, round(w * k)), max(16, round(h * k)))
+    dis = cv2.DISOpticalFlow_create(cv2.DISOPTICAL_FLOW_PRESET_MEDIUM)
+    out = [np.zeros((rows, cols, 2), np.float32)]
+    prev = cv2.resize(grays[0], size, interpolation=cv2.INTER_AREA)
+    for g in grays[1:]:
+        cur = cv2.resize(g, size, interpolation=cv2.INTER_AREA)
+        flow = dis.calc(prev, cur, None)
+        grid = cv2.resize(flow, (cols, rows), interpolation=cv2.INTER_AREA)
+        grid[..., 0] /= size[0]
+        grid[..., 1] /= size[1]
+        out.append(grid.astype(np.float32))
+        prev = cur
+    return out
+
+
+def flow_doc(grids: list[np.ndarray], fps: float) -> dict:
+    rows, cols = grids[0].shape[:2] if grids else (0, 0)
+    mags = np.concatenate([np.abs(g).ravel() for g in grids]) if grids else np.zeros(1)
+    scale = float(max(np.percentile(mags, 99.7), 1e-4))
+    def enc(g):
+        q = np.clip(np.round(g / scale * 127), -127, 127).astype(np.int8)
+        return base64.b64encode(q.tobytes()).decode("ascii")
+    return {"fps": fps, "cols": int(cols), "rows": int(rows), "scale": round(scale, 6), "frames": [enc(g) for g in grids]}
+
+
+def decode_flow(data: str, cols: int, rows: int, scale: float) -> np.ndarray:
+    return np.frombuffer(base64.b64decode(data), np.int8).reshape(rows, cols, 2).astype(np.float32) * (scale / 127)
+
+
+def flow_preview(grid: np.ndarray, scale: float, size: tuple[int, int]) -> np.ndarray:
+    """HSV flow picture (hue = direction, value = speed) at size (w, h), RGB uint8."""
+    import cv2
+    ang = (np.degrees(np.arctan2(grid[..., 1], grid[..., 0])) % 360) / 2
+    mag = np.clip(np.hypot(grid[..., 0], grid[..., 1]) / max(scale, 1e-6), 0, 1) * 255
+    hsv = np.dstack([ang, np.full_like(ang, 200), mag]).astype(np.uint8)
+    return cv2.resize(cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB), size, interpolation=cv2.INTER_NEAREST)

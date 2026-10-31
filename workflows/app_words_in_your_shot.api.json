@@ -1,0 +1,247 @@
+{
+  "1": {
+    "class_type": "LoadVideo",
+    "inputs": {
+      "file": "typeset_demo_dancer.mp4"
+    },
+    "_meta": {
+      "title": "your clip"
+    }
+  },
+  "2": {
+    "class_type": "GetVideoComponents",
+    "inputs": {
+      "video": [
+        "1",
+        0
+      ]
+    }
+  },
+  "3": {
+    "class_type": "BiRefNetRMBG",
+    "inputs": {
+      "image": [
+        "2",
+        0
+      ],
+      "model": "BiRefNet-general",
+      "sensitivity": 1.0,
+      "mask_blur": 0,
+      "mask_offset": 0,
+      "invert_output": false,
+      "refine_foreground": false,
+      "unload_model": true,
+      "background": "Alpha",
+      "background_color": "#000000"
+    },
+    "_meta": {
+      "title": "subject matte"
+    }
+  },
+  "4": {
+    "class_type": "TypesetAlignLyrics",
+    "inputs": {
+      "audio": [
+        "2",
+        1
+      ],
+      "lyrics": "Hold on, say it slow\nLouder than the radio\nHold on, let it show\nEvery word I know",
+      "separator": "hdemucs",
+      "aligner": "mms_fa",
+      "onset_window_ms": 50.0,
+      "min_confidence": 0.05,
+      "vocal_start": 0.0,
+      "vocal_end": 0.0,
+      "device": "cpu",
+      "unload_models": true
+    },
+    "_meta": {
+      "title": "lyrics"
+    }
+  },
+  "5": {
+    "class_type": "TypesetVoiceField",
+    "inputs": {
+      "audio": [
+        "2",
+        1
+      ],
+      "fps": [
+        "2",
+        2
+      ],
+      "separator": "hdemucs",
+      "vocals": [
+        "4",
+        2
+      ],
+      "duration": 0.0,
+      "device": "cpu"
+    },
+    "_meta": {
+      "title": "voice field"
+    }
+  },
+  "6": {
+    "class_type": "TypesetFlowField",
+    "inputs": {
+      "images": [
+        "2",
+        0
+      ],
+      "fps": [
+        "2",
+        2
+      ],
+      "long_side_cells": 64,
+      "preview_frames": 0
+    },
+    "_meta": {
+      "title": "motion field"
+    }
+  },
+  "7": {
+    "class_type": "TypesetLook",
+    "inputs": {
+      "preset": "red-glow",
+      "ink": "",
+      "accent": "",
+      "card": "",
+      "font": "preset",
+      "body": "preset",
+      "case": "preset",
+      "layout": "preset",
+      "scale": 1.0,
+      "motion": 1.0,
+      "glow": -1.0,
+      "flicker": -1.0,
+      "outline": -1.0,
+      "halo": -1.0,
+      "soft": -1.0,
+      "cards": "preset",
+      "tubes": "preset",
+      "scroll": "preset",
+      "hooks": "preset",
+      "sample": "LOUDER"
+    },
+    "_meta": {
+      "title": "look"
+    }
+  },
+  "8": {
+    "class_type": "TypesetGrade",
+    "inputs": {
+      "images": [
+        "2",
+        0
+      ],
+      "grade": "teal",
+      "amount": 0.6,
+      "fps": [
+        "2",
+        2
+      ],
+      "tint": "",
+      "tint_amount": -1.0,
+      "grain": -1.0,
+      "halation": -1.0,
+      "contrast": -1.0,
+      "flash": -1.0,
+      "beats_json": "",
+      "seed": 0
+    },
+    "_meta": {
+      "title": "grade"
+    }
+  },
+  "9": {
+    "class_type": "TypesetRender",
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ],
+      "words_json": [
+        "4",
+        0
+      ],
+      "fps": [
+        "2",
+        2
+      ],
+      "look_json": [
+        "7",
+        0
+      ],
+      "subject_mask": [
+        "12",
+        1
+      ],
+      "voice_json": [
+        "5",
+        0
+      ],
+      "flow_json": [
+        "6",
+        0
+      ],
+      "voice": 1.0,
+      "flow": 1.0,
+      "size": 0.16,
+      "height": 0.42
+    },
+    "_meta": {
+      "title": "typeset"
+    }
+  },
+  "10": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": [
+        "9",
+        0
+      ],
+      "fps": [
+        "2",
+        2
+      ],
+      "audio": [
+        "2",
+        1
+      ]
+    }
+  },
+  "11": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "10",
+        0
+      ],
+      "filename_prefix": "typeset/app",
+      "format": "auto",
+      "codec": "auto"
+    },
+    "_meta": {
+      "title": "your lyric video"
+    }
+  },
+  "12": {
+    "class_type": "TypesetMatteRefine",
+    "inputs": {
+      "images": [
+        "2",
+        0
+      ],
+      "mask": [
+        "3",
+        1
+      ],
+      "max_hole": 0.25,
+      "min_speck": 0.002
+    },
+    "_meta": {
+      "title": "fill holes in the subject"
+    }
+  }
+}

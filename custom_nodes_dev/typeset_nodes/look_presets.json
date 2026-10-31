@@ -1,0 +1,538 @@
+{
+  "version": 4,
+  "looks": {
+    "flat-card": {
+      "name": "Flat card",
+      "description": "Lowercase narrow sans on flat colour cards, slightly soft. Hooks keep their size; verses sit low.",
+      "swatch": [
+        "#2f6bff",
+        "#101010",
+        "#ffffff"
+      ],
+      "fonts": [
+        "Archivo Narrow"
+      ],
+      "look": {
+        "id": "flat-card",
+        "font": {
+          "hero": "Archivo Narrow",
+          "body": "Archivo Narrow",
+          "heroWeight": 500,
+          "bodyWeight": 500,
+          "heroCase": "lower",
+          "bodyCase": "lower"
+        },
+        "palette": {
+          "text": "#101010",
+          "accent": "#101010",
+          "card": "#2f6bff"
+        },
+        "card": true,
+        "texture": "none",
+        "optics": {
+          "blur": 0.3
+        },
+        "layout": "line",
+        "quiet": "none",
+        "heroFill": "text"
+      }
+    },
+    "paper-cut": {
+      "name": "Paper cut",
+      "description": "Cut-paper condensed caps with a hard offset shadow; one red hero word per line, bleeding off the frame.",
+      "swatch": [
+        "#efe6d2",
+        "#c8243a",
+        "#000000"
+      ],
+      "fonts": [
+        "Big Shoulders Display"
+      ],
+      "look": {
+        "id": "paper-cut",
+        "font": {
+          "hero": "Big Shoulders Display",
+          "body": "Big Shoulders Display",
+          "heroWeight": 900,
+          "bodyWeight": 800,
+          "heroCase": "upper",
+          "bodyCase": "upper"
+        },
+        "palette": {
+          "text": "#efe6d2",
+          "accent": "#c8243a",
+          "shadow": "#000000",
+          "card": "#c8243a"
+        },
+        "texture": "paper",
+        "optics": {},
+        "layout": "hero",
+        "quiet": "none",
+        "heroFill": "accent"
+      }
+    },
+    "xerox": {
+      "name": "Xerox",
+      "description": "Off-white cut-paper caps, one red accent; painted walls become repeated photocopy posters.",
+      "swatch": [
+        "#0b0b0b",
+        "#f1eee6",
+        "#e3121b"
+      ],
+      "fonts": [
+        "Big Shoulders Display"
+      ],
+      "look": {
+        "id": "xerox",
+        "font": {
+          "hero": "Big Shoulders Display",
+          "body": "Big Shoulders Display",
+          "heroWeight": 900,
+          "bodyWeight": 800,
+          "heroCase": "upper",
+          "bodyCase": "upper"
+        },
+        "palette": {
+          "text": "#f1eee6",
+          "accent": "#e3121b",
+          "shadow": "#000000"
+        },
+        "texture": "paper",
+        "optics": {},
+        "layout": "hero",
+        "quiet": "none",
+        "heroFill": "text",
+        "wall": "poster"
+      }
+    },
+    "dreamy": {
+      "name": "Dreamy",
+      "description": "Pastel synth-pop: white pixel hooks outlined in pink with sparkles, lowercase italic serif verses on note blocks.",
+      "swatch": [
+        "#ffffff",
+        "#f0a3dc",
+        "#8d93f2",
+        "#5a5fd6"
+      ],
+      "fonts": [
+        "Silkscreen",
+        "Instrument Serif Italic"
+      ],
+      "look": {
+        "id": "dreamy",
+        "font": {
+          "hero": "Silkscreen",
+          "body": "Instrument Serif",
+          "heroCase": "upper",
+          "bodyCase": "lower",
+          "bodyStyle": "italic"
+        },
+        "palette": {
+          "text": "#ffffff",
+          "accent": "#ffffff",
+          "shadow": "#5a5fd6",
+          "outline": "#f0a3dc",
+          "note": "#8d93f2"
+        },
+        "outlineWidth": 0.07,
+        "halo": 0.55,
+        "texture": "none",
+        "optics": {
+          "glow": 0.3,
+          "sparkle": 0.8
+        },
+        "layout": "line",
+        "quiet": "none",
+        "heroFill": "text",
+        "verse": {
+          "max": 0.075,
+          "keepPosition": true
+        }
+      },
+      "hidden": true
+    },
+    "graffiti": {
+      "name": "Graffiti",
+      "description": "Text sprayed onto the walls: stencil caps that take the wall's light, grain and cracks, with overspray and drips; marker script for the rest.",
+      "swatch": [
+        "#f3efe4",
+        "#ff5a36",
+        "#1c1c1c"
+      ],
+      "fonts": [
+        "Bebas Neue",
+        "Permanent Marker"
+      ],
+      "look": {
+        "id": "graffiti",
+        "font": {
+          "hero": "Bebas Neue",
+          "body": "Permanent Marker",
+          "heroCase": "upper",
+          "bodyCase": "lower"
+        },
+        "palette": {
+          "text": "#f3efe4",
+          "accent": "#ff5a36",
+          "shadow": "#000000"
+        },
+        "texture": "none",
+        "optics": {},
+        "layout": "hero",
+        "quiet": "none",
+        "heroFill": "accent",
+        "wall": "spray",
+        "drips": 0.5
+      }
+    },
+    "neon": {
+      "name": "Neon",
+      "description": "A real sign behind the subject: tubes on a back-plate with standoffs and cable, light spilling onto the wall and wet floor, a coloured rim on the subject. Words flicker on.",
+      "swatch": [
+        "#ff3aa8",
+        "#4de8ff",
+        "#0b0710"
+      ],
+      "fonts": [
+        "Big Shoulders Display",
+        "Instrument Serif Italic"
+      ],
+      "look": {
+        "id": "neon",
+        "font": {
+          "hero": "Big Shoulders Display",
+          "body": "Instrument Serif",
+          "heroWeight": 500,
+          "heroCase": "upper",
+          "bodyCase": "lower",
+          "bodyStyle": "italic"
+        },
+        "palette": {
+          "text": "#4de8ff",
+          "accent": "#ff3aa8",
+          "shadow": "#0b0710"
+        },
+        "finish": "neon",
+        "flicker": 0.6,
+        "texture": "none",
+        "optics": {
+          "glow": 0.35
+        },
+        "layout": "hero",
+        "quiet": "none",
+        "heroFill": "accent",
+        "light": 0.8
+      }
+    },
+    "ticker": {
+      "name": "Ticker",
+      "description": "Amber LED dot type scrolling through a dark full-width band, glowing like a sign.",
+      "swatch": [
+        "#ffb000",
+        "#ff6a00",
+        "#0b0703"
+      ],
+      "fonts": [
+        "Silkscreen"
+      ],
+      "look": {
+        "id": "ticker",
+        "font": {
+          "hero": "Silkscreen",
+          "body": "Silkscreen",
+          "heroCase": "upper",
+          "bodyCase": "upper"
+        },
+        "palette": {
+          "text": "#ffb000",
+          "accent": "#ffb000",
+          "shadow": "#140a00",
+          "card": "#0b0703"
+        },
+        "card": true,
+        "texture": "none",
+        "optics": {
+          "glow": 0.6
+        },
+        "layout": "line",
+        "quiet": "none",
+        "heroFill": "text",
+        "motion": "marquee",
+        "verse": {
+          "max": 0.07
+        },
+        "scale": 0.5
+      }
+    },
+    "lens-bound": {
+      "name": "Lens-bound",
+      "description": "White heavy grotesk hooks, lowercase green verses; text takes the camera’s blur, fringing and lens bend.",
+      "swatch": [
+        "#ffffff",
+        "#7dff4a",
+        "#000000"
+      ],
+      "fonts": [
+        "Inter Black"
+      ],
+      "look": {
+        "id": "lens-bound",
+        "font": {
+          "hero": "Inter",
+          "body": "Inter",
+          "heroWeight": 900,
+          "bodyWeight": 600,
+          "heroCase": "upper",
+          "bodyCase": "lower"
+        },
+        "palette": {
+          "text": "#ffffff",
+          "accent": "#7dff4a",
+          "shadow": "#000000"
+        },
+        "texture": "grain",
+        "optics": {
+          "motionBlur": 0.7,
+          "chroma": 0.4,
+          "lensWarp": 0.5,
+          "glow": 0.25,
+          "extrude": 1
+        },
+        "layout": "line",
+        "quiet": "none",
+        "heroFill": "text"
+      }
+    },
+    "red-glow": {
+      "name": "Red glow",
+      "description": "One condensed red face with bloom; one huge word per line behind the subject. Kept for older projects (paper cut covers it).",
+      "swatch": [
+        "#ff1a1a",
+        "#ff4a3d",
+        "#1a0000"
+      ],
+      "fonts": [
+        "Anton"
+      ],
+      "look": {
+        "id": "red-glow",
+        "font": {
+          "hero": "Anton",
+          "body": "Anton",
+          "heroCase": "upper",
+          "bodyCase": "upper"
+        },
+        "palette": {
+          "text": "#ff1a1a",
+          "accent": "#ff4a3d",
+          "shadow": "#1a0000"
+        },
+        "texture": "grain",
+        "optics": {
+          "glow": 0.8
+        },
+        "layout": "hero",
+        "quiet": "none",
+        "heroFill": "text"
+      },
+      "hidden": true
+    },
+    "grey-noise": {
+      "name": "Blue serif",
+      "description": "Lowercase blue serif hooks in italic on a lavender halo; mono verses set like subtitles.",
+      "swatch": [
+        "#2e00fd",
+        "#c8c8ff",
+        "#ffffff"
+      ],
+      "fonts": [
+        "Newsreader Italic",
+        "IBM Plex Mono"
+      ],
+      "look": {
+        "id": "grey-noise",
+        "font": {
+          "hero": "Newsreader",
+          "body": "IBM Plex Mono",
+          "heroWeight": 400,
+          "bodyWeight": 400,
+          "heroCase": "lower",
+          "bodyCase": "lower",
+          "heroStyle": "italic"
+        },
+        "palette": {
+          "text": "#2e00fd",
+          "accent": "#2e00fd",
+          "shadow": "#c8c8ff",
+          "outline": "#ffffff"
+        },
+        "outlineWidth": 0,
+        "halo": 0.45,
+        "texture": "none",
+        "optics": {
+          "glow": 0.15
+        },
+        "layout": "line",
+        "quiet": "none",
+        "heroFill": "accent",
+        "verse": {
+          "max": 0.04,
+          "keepPosition": true
+        }
+      },
+      "hidden": true
+    },
+    "night-code": {
+      "name": "Night code",
+      "description": "Lavender pixel words stacked one per row in a corner, glowing like a livecode screen.",
+      "swatch": [
+        "#1b1f11",
+        "#b2a2cd",
+        "#c7c7c7"
+      ],
+      "fonts": [
+        "Sixtyfour"
+      ],
+      "look": {
+        "id": "night-code",
+        "font": {
+          "hero": "Sixtyfour",
+          "body": "IBM Plex Mono",
+          "bodyWeight": 500,
+          "heroCase": "lower",
+          "bodyCase": "lower"
+        },
+        "palette": {
+          "text": "#b2a2cd",
+          "accent": "#b2a2cd",
+          "shadow": "#1b1f11",
+          "note": "#949bfb"
+        },
+        "halo": 0.3,
+        "texture": "none",
+        "optics": {
+          "glow": 0.55,
+          "chroma": 0.15
+        },
+        "layout": "stack",
+        "quiet": "none",
+        "heroFill": "accent",
+        "scale": 0.85
+      }
+    },
+    "scatter": {
+      "name": "Scatter",
+      "description": "Small lowercase italic serif words drifting through the empty parts of the frame.",
+      "swatch": [
+        "#f4f1ea",
+        "#000000",
+        "#ffd84a"
+      ],
+      "fonts": [
+        "Instrument Serif Italic"
+      ],
+      "look": {
+        "id": "scatter",
+        "font": {
+          "hero": "Instrument Serif",
+          "body": "Instrument Serif",
+          "heroCase": "lower",
+          "bodyCase": "lower",
+          "heroStyle": "italic",
+          "bodyStyle": "italic"
+        },
+        "palette": {
+          "text": "#f4f1ea",
+          "accent": "#ffd84a",
+          "shadow": "#000000"
+        },
+        "halo": 0.5,
+        "texture": "none",
+        "optics": {
+          "glow": 0.12
+        },
+        "layout": "constellation",
+        "quiet": "none",
+        "heroFill": "text",
+        "scale": 1.5
+      }
+    }
+  },
+  "grades": {
+    "none": {
+      "name": "None",
+      "grade": {}
+    },
+    "mono": {
+      "name": "Mono",
+      "grade": {
+        "mono": {
+          "contrast": 1.2,
+          "crush": 0.02
+        },
+        "grain": 0.12
+      }
+    },
+    "xerox": {
+      "name": "Xerox",
+      "grade": {
+        "mono": {
+          "contrast": 1.75,
+          "crush": 0.06,
+          "keep": {
+            "hue": 338,
+            "width": 42,
+            "minSat": 0.38
+          }
+        },
+        "flash": {
+          "amount": 0.55,
+          "decay": 0.2,
+          "beat": 0.35
+        },
+        "grain": 0.6
+      }
+    },
+    "teal": {
+      "name": "Teal",
+      "grade": {
+        "tint": {
+          "color": "#0f6f7a",
+          "amount": 0.35
+        },
+        "grain": 0.25
+      }
+    },
+    "film": {
+      "name": "Film",
+      "grade": {
+        "tint": {
+          "color": "#7a4a22",
+          "amount": 0.1
+        },
+        "halation": 0.5,
+        "grain": 0.22
+      }
+    },
+    "wash": {
+      "name": "Wash",
+      "grade": {
+        "tint": {
+          "color": "#c7c7c7",
+          "amount": 0.45
+        },
+        "grain": 0.4
+      }
+    },
+    "night": {
+      "name": "Night",
+      "grade": {
+        "tint": {
+          "color": "#1b1f11",
+          "amount": 0.35
+        },
+        "grain": 0.2
+      }
+    }
+  }
+}

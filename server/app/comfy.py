@@ -1,4 +1,7 @@
-"""Sidecar-driven ComfyUI workflow runner (Comfy SDK → comfy-api-proxy → local ComfyUI).
+"""Sidecar-driven ComfyUI workflow runner.
+
+Two transports: `direct` posts the API graph to ComfyUI's own /prompt and reads /history (no extra
+process; the default when Typeset runs inside ComfyUI), `sdk` goes Comfy SDK → comfy-api-proxy → ComfyUI.
 
 A workflow is addressed by *name*: `<workflows_dir>/<name>.inputs.json` (SCHEMA §3) names
 the API-format graph, the inputs (node/field/kind) and the outputs (node/type). The server
@@ -23,6 +26,7 @@ import os
 import shutil
 import threading
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -39,6 +43,10 @@ KINDS = {"comfy_input_path", "string", "int", "float", "bool"}
 _MISSING = object()
 ProgressFn = Callable[[str, float], None]  # (status, elapsed_seconds)
 _SDK_ENV_LOCK = threading.Lock()
+
+
+class _SkipProxy(Exception):
+    pass
 
 
 class WorkflowError(RuntimeError):
@@ -217,8 +225,9 @@ def read_json_output(paths: list[Path]) -> Any:
 
 class ComfyRunner:
     def __init__(self, *, base_url: str | None = None, comfyui_url: str | None = None,
-                 api_key: str | None = None, remote: bool = False) -> None:
+                 api_key: str | None = None, remote: bool = False, direct: bool | None = None) -> None:
         self._client = None
+        self.direct = settings.comfy_mode == "direct" if direct is None else direct
         self._client_lock = threading.Lock()
         self.base_url = (base_url or settings.comfy_base_url).rstrip("/")
         self.comfyui_url = (comfyui_url or settings.comfyui_url).rstrip("/")
@@ -254,10 +263,15 @@ class ComfyRunner:
 
     # -- health --------------------------------------------------------------------
     def health(self) -> dict[str, Any]:
-        out: dict[str, Any] = {"proxy": False, "comfyui": False, "proxyUrl": self.base_url, "comfyuiUrl": self.comfyui_url}
+        out: dict[str, Any] = {"proxy": False, "comfyui": False, "proxyUrl": self.base_url, "comfyuiUrl": self.comfyui_url,
+                               "transport": "direct" if self.direct else "sdk"}
         try:
+            if self.direct:
+                raise _SkipProxy
             r = httpx.get(f"{self.base_url}/api/v2/health", timeout=3)
             out["proxy"] = r.status_code == 200
+        except _SkipProxy:
+            pass
         except Exception as exc:
             out["proxyError"] = str(exc)
         try:
@@ -292,9 +306,10 @@ class ComfyRunner:
     def preflight_graph(self, graph: dict) -> None:
         """Check the chosen remote host before uploading or submitting expensive work."""
         try:
-            proxy = httpx.get(f"{self.base_url}/api/v2/health", timeout=5)
-            proxy.raise_for_status()
-            upstream = str(proxy.json().get("upstream", "")).rstrip("/")
+            proxy = None if self.direct else httpx.get(f"{self.base_url}/api/v2/health", timeout=5)
+            if proxy is not None:
+                proxy.raise_for_status()
+            upstream = self.comfyui_url if proxy is None else str(proxy.json().get("upstream", "")).rstrip("/")
             if upstream != self.comfyui_url:
                 raise WorkflowRunError(f"Remote proxy upstream is {upstream!r}; expected {self.comfyui_url}. Start a separate proxy on 8190; do not repoint the local 8189 proxy.")
             response = httpx.get(f"{self.comfyui_url}/object_info", timeout=30)
@@ -334,30 +349,11 @@ class ComfyRunner:
     ) -> RunResult:
         sidecar = load_sidecar(name, workflows_dir)
         timeout = timeout or settings.comfy_timeout
+        if self.direct:
+            return self._run_direct(sidecar, inputs, out_dir, progress=progress, timeout=timeout, poll_interval=poll_interval)
         client = self.client()
         wf = client.workflows.from_file(str(sidecar.workflow_path))
-
-        # bind inputs by kind
-        bound: dict[str, Any] = {}
-        unknown = [k for k in inputs if k not in sidecar.inputs]
-        if unknown:
-            log.warning("workflow %s: ignoring inputs not in sidecar: %s", sidecar.name, unknown)
-        for key, spec in sidecar.inputs.items():
-            value = inputs.get(key, _MISSING)
-            if value is _MISSING or value is None:
-                if spec.default is not _MISSING:
-                    value = spec.default
-                elif spec.optional:
-                    continue
-                else:
-                    raise WorkflowInputError(f"workflow '{sidecar.name}': required input '{key}' (node {spec.node}.{spec.field}) was not provided")
-            value = coerce(spec.kind, value, key, remote=self.remote)
-            node = wf.json.get(spec.node)
-            if node is None:
-                raise WorkflowError(f"workflow '{sidecar.name}': sidecar input '{key}' points at node {spec.node} which is not in {sidecar.workflow_path.name}")
-            wf.set_input(spec.node, spec.field, value)
-            bound[key] = value
-        log.info("workflow %s: inputs %s", sidecar.name, {k: (v if not isinstance(v, str) or len(v) < 80 else v[:77] + "...") for k, v in bound.items()})
+        bound = self._bind(sidecar, inputs, wf.json, wf.set_input)
         if self.remote:
             self.preflight_graph(wf.json)
 
@@ -451,6 +447,144 @@ class ComfyRunner:
         }
         log.info("workflow %s: done job %s timing=%s files=%s", sidecar.name, job.id, timing, {k: len(v) for k, v in results.items()})
         return RunResult(name=sidecar.name, job_id=job.id, status=status, outputs=results, timing=timing, raw_outputs=raw)
+
+    def _bind(self, sidecar: Sidecar, inputs: dict[str, Any], graph: dict, set_input: Callable[[str, str, Any], None]) -> dict[str, Any]:
+        """Bind named inputs onto graph nodes by sidecar kind."""
+        bound: dict[str, Any] = {}
+        unknown = [k for k in inputs if k not in sidecar.inputs]
+        if unknown:
+            log.warning("workflow %s: ignoring inputs not in sidecar: %s", sidecar.name, unknown)
+        for key, spec in sidecar.inputs.items():
+            value = inputs.get(key, _MISSING)
+            if value is _MISSING or value is None:
+                if spec.default is not _MISSING:
+                    value = spec.default
+                elif spec.optional:
+                    continue
+                else:
+                    raise WorkflowInputError(f"workflow '{sidecar.name}': required input '{key}' (node {spec.node}.{spec.field}) was not provided")
+            value = coerce(spec.kind, value, key, remote=self.remote)
+            node = graph.get(spec.node)
+            if node is None:
+                raise WorkflowError(f"workflow '{sidecar.name}': sidecar input '{key}' points at node {spec.node} which is not in {sidecar.workflow_path.name}")
+            set_input(spec.node, spec.field, value)
+            bound[key] = value
+        log.info("workflow %s: inputs %s", sidecar.name, {k: (v if not isinstance(v, str) or len(v) < 80 else v[:77] + "...") for k, v in bound.items()})
+        return bound
+
+
+    def _run_direct(self, sidecar: Sidecar, inputs: dict[str, Any], out_dir: Path, *, progress: ProgressFn | None,
+                    timeout: float, poll_interval: float) -> RunResult:
+        """POST /prompt to ComfyUI itself, poll /history, collect files the output nodes reported."""
+        graph = json.loads(sidecar.workflow_path.read_text(encoding="utf-8"))
+        def set_input(node: str, field: str, value: Any) -> None:
+            graph[node]["inputs"][field] = value
+        self._bind(sidecar, inputs, graph, set_input)
+        if self.remote:
+            self.preflight_graph(graph)
+        t0 = time.monotonic()
+        try:
+            r = httpx.post(f"{self.comfyui_url}/prompt", json={"prompt": graph, "client_id": f"typeset-{uuid.uuid4().hex[:8]}"}, timeout=60)
+        except Exception as exc:
+            raise WorkflowRunError(f"workflow '{sidecar.name}': submit failed: {type(exc).__name__}: {exc}") from exc
+        if r.status_code != 200:
+            try:
+                detail = r.json()
+                err = detail.get("error") or {}
+                msg = err.get("message", "") + (f" — {err.get('details')}" if err.get("details") else "")
+                for nid, ne in (detail.get("node_errors") or {}).items():
+                    msg += f"; node {nid} {ne.get('class_type', '')}: " + ", ".join(e.get("details") or e.get("message", "") for e in ne.get("errors", []))
+            except Exception:
+                msg = r.text[:400]
+            raise WorkflowRunError(f"workflow '{sidecar.name}': ComfyUI rejected the graph: {msg}")
+        job_id = r.json()["prompt_id"]
+        t_submitted = time.monotonic()
+        log.info("workflow %s: queued prompt %s", sidecar.name, job_id)
+        entry: dict[str, Any] = {}
+        while True:
+            elapsed = time.monotonic() - t0
+            if elapsed > timeout:
+                try:
+                    httpx.post(f"{self.comfyui_url}/queue", json={"delete": [job_id]}, timeout=5)
+                    httpx.post(f"{self.comfyui_url}/interrupt", json={"prompt_id": job_id}, timeout=5)
+                except Exception:
+                    pass
+                raise WorkflowRunError(f"workflow '{sidecar.name}': prompt {job_id} timed out after {timeout:.0f}s")
+            try:
+                h = httpx.get(f"{self.comfyui_url}/history/{job_id}", timeout=10)
+                entry = (h.json() or {}).get(job_id) or {} if h.status_code == 200 else {}
+            except Exception as exc:
+                log.warning("workflow %s: history poll failed (%s); retrying", sidecar.name, exc)
+                entry = {}
+            status = entry.get("status") or {}
+            if status.get("completed") or status.get("status_str") == "error":
+                break
+            if progress:
+                progress("running" if entry else "queued", elapsed)
+            time.sleep(poll_interval)
+        t_done = time.monotonic()
+        if status.get("status_str") != "success":
+            detail = ""
+            for kind, data in status.get("messages") or []:
+                if kind == "execution_error":
+                    detail = f" — {data.get('exception_message', '').strip()} (node {data.get('node_id')} {data.get('node_type', '')})"
+            raise WorkflowRunError(f"workflow '{sidecar.name}': prompt {job_id} failed{detail}")
+        if progress:
+            progress("succeeded", t_done - t0)
+        node_outputs = entry.get("outputs") or {}
+        out_dir.mkdir(parents=True, exist_ok=True)
+        results: dict[str, list[Path]] = {}
+        for key, spec in sidecar.outputs.items():
+            node_out = node_outputs.get(spec.node) or {}
+            files: list[Path] = []
+            dest_dir = out_dir / key
+            refs = [it for items in node_out.values() if isinstance(items, list) for it in items if isinstance(it, dict) and "filename" in it]
+            for ref in refs:
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                files.append(self._fetch_ref(ref, dest_dir))
+            if not files and spec.type == "text":
+                text = self._text_of(node_out)
+                if text is not None:
+                    dest_dir.mkdir(parents=True, exist_ok=True)
+                    p = dest_dir / f"{key}{'.json' if _looks_like_json(text) else '.txt'}"
+                    p.write_text(text, encoding="utf-8")
+                    files.append(p)
+            if not files and not spec.optional:
+                raise WorkflowRunError(f"workflow '{sidecar.name}': no '{spec.type}' output on node {spec.node} ('{key}'). "
+                                       f"Nodes that produced outputs: {sorted(node_outputs) or 'none'}.")
+            files.sort(key=lambda p: p.name)
+            results[key] = files
+        t_fetched = time.monotonic()
+        timing = {"submit": round(t_submitted - t0, 3), "run": round(t_done - t_submitted, 3),
+                  "download": round(t_fetched - t_done, 3), "total": round(t_fetched - t0, 3)}
+        log.info("workflow %s: done prompt %s timing=%s files=%s", sidecar.name, job_id, timing, {k: len(v) for k, v in results.items()})
+        raw = [{"node_id": n, "keys": sorted(o)} for n, o in node_outputs.items()]
+        return RunResult(name=sidecar.name, job_id=job_id, status="succeeded", outputs=results, timing=timing, raw_outputs=raw)
+
+    def _fetch_ref(self, ref: dict[str, Any], dest_dir: Path) -> Path:
+        ref = {"filename": ref["filename"], "subfolder": ref.get("subfolder", ""), "type": ref.get("type", "output")}
+        dest = dest_dir / Path(ref["filename"]).name
+        src = None if self.remote else local_output_path(ref)
+        if dest.exists():
+            dest.unlink()
+        if src is not None:
+            try:
+                os.link(src, dest)
+            except OSError:
+                shutil.copy2(src, dest)
+            return dest
+        r = httpx.get(f"{self.comfyui_url}/view", params=ref, timeout=120)
+        r.raise_for_status()
+        dest.write_bytes(r.content)
+        return dest
+
+    @staticmethod
+    def _text_of(node_out: dict[str, Any]) -> str | None:
+        for key in ("text", "string", "strings", "json", "result"):
+            items = node_out.get(key)
+            if isinstance(items, list) and items and all(isinstance(i, str) for i in items):
+                return "\n".join(items) if len(items) > 1 else items[0]
+        return None
 
     # -- helpers -------------------------------------------------------------------
     def _fetch_output(self, output, dest_dir: Path) -> Path:

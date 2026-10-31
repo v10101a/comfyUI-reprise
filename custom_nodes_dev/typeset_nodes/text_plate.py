@@ -13,15 +13,28 @@ class TypesetTextPlate:
     def INPUT_TYPES(cls):
         return {'required': {'image': ('IMAGE',), 'text': ('STRING', {'default': 'NEON'}),
                              'prompt': ('STRING', {'default': 'pink neon lettering'})},
-                'optional': {'mask_png': ('STRING', {'default': ''})}}
+                'optional': {'mask_png': ('STRING', {'default': ''}),
+                             'look_json': ('STRING', {'default': '', 'forceInput': True,
+                                                      'tooltip': 'From Look (typeset): sets face, case, colours, card, halo and glow; prompt is then ignored'})}}
     RETURN_TYPES = ('IMAGE',)
     FUNCTION = 'run'
     CATEGORY = 'typeset/text'
 
-    def run(self, image, text, prompt='', mask_png=''):
+    def run(self, image, text, prompt='', mask_png='', look_json=''):
+        import json
+        h, w = image.shape[1:3]
+        if look_json:
+            from .looks import resolve_look, draw_look_text
+            look = resolve_look(json.loads(look_json))
+            if look:
+                rows = []
+                for frame in image:
+                    base = Image.fromarray((frame.detach().cpu().numpy()[..., :3].clip(0,1)*255).astype('uint8')).convert('RGB')
+                    out, _ = draw_look_text(base, text, look, size=min(.24, 1.35 / max(len(text), 1)) * (look.get('scale') or 1))
+                    rows.append(torch.from_numpy(np.asarray(out).copy()).float()/255)
+                return (torch.stack(rows),)
         import folder_paths
         from pathlib import Path
-        h, w = image.shape[1:3]
         if mask_png:
             root = Path(folder_paths.get_input_directory()).resolve()
             path = (root / mask_png).resolve()

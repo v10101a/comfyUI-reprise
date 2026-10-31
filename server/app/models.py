@@ -102,6 +102,8 @@ class Analysis(Base):
     depth: Optional[str] = None
     occupancy: Optional[str] = None      # v2 §B: "analysis/occupancy.json"
     beats: Optional[str] = None          # "analysis/beats.json" (TypesetBeatGrid)
+    flow: Optional[str] = None           # "analysis/flow.json" (TypesetFlowField): motion field for the type
+    voice: Optional[str] = None          # "analysis/voice.json" (TypesetVoiceField): loudness/pitch per frame
 
 
 SurfaceStatus = Literal["drawn", "tracking", "tracked", "failed"]
@@ -150,7 +152,7 @@ class Project(Base):
 
 # ---- §4 Job ----------------------------------------------------------------------
 
-JobKind = Literal["words", "matte", "inworld", "export", "surface", "reframe", "occupancy", "beats"]
+JobKind = Literal["words", "matte", "inworld", "export", "surface", "reframe", "occupancy", "beats", "flow", "voice"]
 JobStatus = Literal["queued", "running", "done", "failed"]
 
 
@@ -243,3 +245,5 @@ ExportFormat = Literal["mp4", "mov", "webm"]
 class ExportBody(Base):
     layer: ExportLayer = "text"
     formats: list[ExportFormat] = Field(default_factory=lambda: ["mp4", "mov", "webm"])
+    # Frames the studio rendered itself (browser capture, no Playwright): a session from POST .../export/frames.
+    frames: Optional[str] = Field(default=None, pattern=r"^[a-f0-9]{12}$")
