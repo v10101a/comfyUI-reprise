@@ -1,4 +1,6 @@
-# Studio restyle plan (v3 → "viola.city" skin)
+# Studio restyle plan (v3 → paper skin, viola.city sentiment)
+
+**Read first: `DESIGN_LANGUAGE.md` → "Rule #1: NO UNNECESSARY TEXT". Overrides anything below that adds copy.**
 
 Scope: `apps/web/src/studio/studio.css` (all selectors scoped under `.studio`), plus label text in `Studio.tsx`, `Timeline.tsx`, `LookPicker.tsx`, `PipelinePanel.tsx` and `LineInspector.tsx`. Token source: `docs/design/tokens.css`. Copy table: `DESIGN_LANGUAGE.md § Copy voice`.
 

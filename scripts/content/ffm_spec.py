@@ -42,8 +42,13 @@ def apply_times(words, aligned):
     return report
 
 def build(tag, v, times=None):
-    table = json.loads(TABLE.read_text()); words = table["words"]; layout = table["layout"]
+    table = json.loads(TABLE.read_text()); words = [w for w in table["words"] if w["role"] not in v.get("drop_roles", ())]; layout = table["layout"]
+    if v.get("duration"): table["duration"] = v["duration"]
     report = apply_times(words, load_times(times)) if times else []
+    if v.get("shift"):   # v7: the clip starts later; every word (hooks too) and numeric "until" move by the same amount
+        for w in words: w["start"], w["end"] = round(w["start"] + v["shift"], 3), round(w["end"] + v["shift"], 3)
+        for L in layout.values():
+            if isinstance(L.get("until"), (int, float)): L["until"] = round(L["until"] + v["shift"], 3)
     by_line = {}
     for w in words: by_line.setdefault(w["lineId"], []).append(w)
     lines = sorted(by_line.items(), key=lambda kv: min(w["start"] for w in kv[1]))
@@ -82,6 +87,13 @@ VARIANTS = {
 VARIANTS["v4"] = VARIANTS["v3"]
 # v5: A's acoustic alignment (--times) + perceived-sync lead; vocalStart keeps future words jobs out of the intro.
 VARIANTS["v5"] = {**VARIANTS["v3"], "timing": {"leadMs": 40, "vocalStart": 17.9}}
+# v6: user feedback on v5. Times from outputs/align/ffm_words_v6.json (stop/thinking + both "i'll" later). The video now ends
+# at 37.16 s (beat after the second hook), so the "for me" tag lines are dropped and holds run to the new end.
+VARIANTS["v6"] = {**VARIANTS["v5"], "drop_roles": ("tag",), "duration": 37.16}
+# v7: user cut the instrumental intro. The audio starts at clip 11.45 s (see ffm_project.py prep7), so every v6 time moves by -11.45.
+VARIANTS["v7"] = {**VARIANTS["v6"], "shift": -11.45, "duration": 25.70, "timing": {"leadMs": 40, "vocalStart": 6.45}}
+# v8: + the verse line v0 "i'll make you fall for me" (17.15-19.08 clip = 5.70-7.63 in v7 time), right before "stop thinking".
+VARIANTS["v8"] = {**VARIANTS["v7"], "timing": {"leadMs": 40, "vocalStart": 5.6}}
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="Build outputs/ffm/spec_<tag>.json")

@@ -2,6 +2,8 @@
 
   server/.venv/bin/python scripts/content/ffm_project.py prep               # 30 fps extended cut (ffm-6 + ffm-5) + synced audio
   server/.venv/bin/python scripts/content/ffm_project.py remedia            # swap the project media to that cut
+  server/.venv/bin/python scripts/content/ffm_project.py prep7              # v7: trimmed cut (frames 150+, audio from clip 11.45 s)
+  server/.venv/bin/python scripts/content/ffm_project.py remedia v7; ... matte_shift outputs/ffm/work/key2   # v7 media + shifted matte/occupancy
   server/.venv/bin/python scripts/content/ffm_project.py matte <key_dir>    # install key matte + occupancy
   server/.venv/bin/python scripts/content/ffm_project.py create             # project + media + lyrics + words + matte
   server/.venv/bin/python scripts/content/ffm_project.py apply <spec.json>  # words/look/lineMeta from a spec, PUT
@@ -53,10 +55,38 @@ def prep():
     subprocess.run([FF, "-v", "error", "-y", "-ss", str(OFFSET), "-t", str(DUR), "-i", SRC_SONG,
                     "-af", f"afade=t=in:d=0.03,afade=t=out:st={DUR-.6:.2f}:d=0.6", "-c:a", "pcm_s24le", str(WORK / "ffm_ext_audio.wav")], check=True)
 
-def remedia():
-    """Swap the project's media to the extended cut (clears the matte; re-key + occupancy afterwards)."""
+# v7 (user: drop the instrumental intro). The audio starts at clip 11.45 s (master 138.307), with a 0.2 s fade-in that ends
+# on the beat at 11.65. The video starts at cut frame 150 (5.0 s), so the footage runs 6.45 s ahead of v6 relative to the audio
+# (the TD stars aren't music-synced). It ends 0.5 s after the v6 end-beat (clip 37.16 = v7 25.71): 771 frames = 25.70 s.
+V7_A = 11.45; V7_F0 = 150; V7_N = 771
+
+def prep7():
+    subprocess.run([FF, "-v", "error", "-y", "-i", str(WORK / "ffm_ext_30.mp4"), "-vf", f"trim=start_frame={V7_F0}:end_frame={V7_F0+V7_N},setpts=PTS-STARTPTS",
+                    "-an", "-c:v", "libx264", "-preset", "slow", "-crf", "14", "-g", "30", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(WORK / "ffm_v7_30.mp4")], check=True)
+    d = V7_N / 30
+    subprocess.run([FF, "-v", "error", "-y", "-ss", f"{OFFSET+V7_A:.3f}", "-t", f"{d:.4f}", "-i", SRC_SONG,
+                    "-af", f"afade=t=in:d=0.2,afade=t=out:st={d-.5:.3f}:d=0.5", "-c:a", "pcm_s24le", str(WORK / "ffm_v7_audio.wav")], check=True)
+
+def matte_shift(key_dir, f0=V7_F0, n=V7_N):
+    """Install the existing key matte shifted by f0 frames (new fg_00001 = old fg_{f0+1}) and slice occupancy.json the same way
+    (no re-key, no occupancy job)."""
+    pid = PIDF.read_text().strip(); pd = ROOT / "data/projects" / pid; d = pd / "analysis/matte"
+    if d.exists(): shutil.rmtree(d)
+    d.mkdir(parents=True)
+    for i in range(1, n + 1): shutil.copy(Path(key_dir) / f"fg_{i+f0:05d}.png", d / f"fg_{i:05d}.png")
+    subprocess.run([FF, "-v", "error", "-y", "-framerate", "30", "-start_number", "1", "-i", str(d / "fg_%05d.png"), "-c:v", "libvpx-vp9",
+                    "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", "-b:v", "0", "-crf", "30", "-row-mt", "1", "-deadline", "good", "-cpu-used", "4",
+                    "-r", "30", str(d / "fg.webm")], check=True)
+    occ = json.loads((OUT / "work/occupancy_ext.json").read_text()); occ["frames"] = occ["frames"][f0:f0 + n]
+    (pd / "analysis/occupancy.json").write_text(json.dumps(occ))
+    p = c.get(f"{API}/api/projects/{pid}").json(); p["analysis"]["matte"] = "analysis/matte/"; p["analysis"]["occupancy"] = "analysis/occupancy.json"
+    c.put(f"{API}/api/projects/{pid}", json=p).raise_for_status(); print("matte", n, "frames from", f0, "; occupancy", len(occ["frames"]))
+
+def remedia(tag="ext"):
+    """Swap the project's media to the extended cut, or `remedia v7` (clears the matte; re-key + occupancy afterwards, or matte_shift)."""
     pid = PIDF.read_text().strip()
-    for kind, path, mime in [("video", WORK / "ffm_ext_30.mp4", "video/mp4"), ("audio", WORK / "ffm_ext_audio.wav", "audio/wav")]:
+    v, a = ("ffm_v7_30.mp4", "ffm_v7_audio.wav") if tag == "v7" else ("ffm_ext_30.mp4", "ffm_ext_audio.wav")
+    for kind, path, mime in [("video", WORK / v, "video/mp4"), ("audio", WORK / a, "audio/wav")]:
         with path.open("rb") as fh: r = c.post(f"{API}/api/projects/{pid}/media", files={"file": (path.name, fh, mime)}, data={"kind": kind}); r.raise_for_status(); print(kind, r.json())
 
 def matte(key_dir):
@@ -105,4 +135,4 @@ def export(tag="v"):
     subprocess.run([str(ROOT / "scripts/content/sheet.sh"), str(dst), str(OUT / f"iter/{tag}_sheet.jpg"), "16", "8", "270"], check=True)
 
 if __name__ == "__main__":
-    {"prep": prep, "remedia": remedia, "matte": lambda: matte(sys.argv[2]), "create": create, "words": words, "apply": lambda: apply(sys.argv[2]), "export": lambda: export(*(sys.argv[2:3] or ["v"]))}[sys.argv[1]]()
+    {"prep": prep, "prep7": prep7, "remedia": lambda: remedia(*sys.argv[2:3]), "matte_shift": lambda: matte_shift(sys.argv[2]), "matte": lambda: matte(sys.argv[2]), "create": create, "words": words, "apply": lambda: apply(sys.argv[2]), "export": lambda: export(*(sys.argv[2:3] or ["v"]))}[sys.argv[1]]()

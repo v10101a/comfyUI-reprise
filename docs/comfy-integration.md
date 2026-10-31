@@ -88,3 +88,29 @@ New node `TypesetAlignLyrics` (`custom_nodes_dev/typeset_nodes/lyric_align.py`) 
 - Fall For Me (master 126.857 s + 45.733 s): the first FALL FOR ME lands within -31/-51/+69 ms of the ear-confirmed hook. "Stop thinking" moves 17.22 → 18.27 with no `vocal_start`: the global pass drops it into intro bleed at 14.68, and the duration-cap re-anchoring moves it back. A hand-set `vocal_start` of 17.9 gives the identical result. "For a minute" moves 18.34 → 20.79. Later lines move +0.03…+0.65 s.
 - Nearest-onset distances (dense broadband flux, so a random time is ~90 ms from an onset) are a weak metric. They are in the reports, but the anchors above are the real check.
 - Known limits: the MMS posteriors on a separated singing stem are low (0.01–0.5), and sustained vowels give little evidence. A long intro with vocal-like bleed can attract a line in the global pass; re-anchoring catches it when the misplacement leaves a > 2.5 s voiced hold before the next line. `vocal_start` remains as an override. RoFormer separation is not wired in (W's option 4): HDemucs is the only separator registered. MMS_FA weights are CC-BY-NC (W). Dense mixes leave bleed in the stem.
+
+## 2026-10-31: Typeset runs inside ComfyUI (`/typeset`)
+
+The node pack now hosts the whole studio. With `custom_nodes_dev/typeset_nodes` symlinked into `ComfyUI/custom_nodes` and `apps/web` built (`pnpm build`), start ComfyUI and open `http://127.0.0.1:8188/typeset/`. No FastAPI server, no comfy-api-proxy and no Playwright are needed.
+
+- **API.** `studio_host.py` mounts the project API on ComfyUI's aiohttp server under `/typeset/api/…`. The logic is shared with the FastAPI adapter through `server/app/service.py`, imported as `typeset_server` because ComfyUI owns a top-level `app` package.
+- **Queue.** The runner's `direct` transport (`TYPESET_COMFY_MODE=direct`, the default inside ComfyUI) posts the API graph to `/prompt`, polls `/history` and copies outputs from the output dir. The `sdk` transport (comfy-sdk → proxy) is unchanged for the standalone server.
+- **Export.** When `/api/health` reports `capture: "browser"`, the studio renders each frame through the same `#/render` route Playwright used and uploads PNGs (`POST …/export/frames`, `PUT …/frames/{session}/{layer}/{i}`). ffmpeg encodes them as before. On a 1344×768 × 124-frame project the canvas readback is pixel-identical to the Playwright screenshot (PSNR ∞), and both layers took about 30 s.
+- **Graph glue.** `web/typeset.js` adds a `typeset` sidebar tab (open the studio, recent projects, and videos or songs saved by graphs this session) and an **open in typeset** node-menu item. Both call `POST /typeset/api/import`, which turns a ComfyUI output file into a new project.
+- **Verified on a second instance (:8198):** a project imported from `output/eval/ltx13b_t2v_00001.mp4`, then a 49-frame matte run through `/typeset` on the direct transport, then a browser-capture export (mp4 + ProRes 4444 + VP9 alpha).
+- **Caveat:** projects and jobs share `data/` with the :8787 server. A starting host marks unfinished jobs in `data/jobs` as failed, so don't run both while a job is in flight.
+
+## 2026-10-31: fields, the in-graph render node, and App Mode
+
+- **`TypesetFlowField`** (`flow_field.py`, `workflows/flow.*`, job `/analyze/flow`): DIS optical flow on a 64-cell grid, CPU only, no weights. The studio splits it into two effects:
+  - **camera drift:** the type drifts with the frame's median motion and settles back;
+  - **glass ripples:** quick local motion (residual above 6 px/frame on a 1000 px frame) spreads out as expanding rings that refract the type.
+
+  Bodies walking do not drag letters around. Walls, anchors and HUD lines are excluded, because they are already tracked. Implemented in `apps/web/src/flow.ts` and `render_node.py`.
+- **`TypesetVoiceField`** (`voice_field.py`, `workflows/voice.*`, job `/analyze/voice`): HDemucs vocal stem (or a connected stem), then per-frame loudness, pYIN pitch, vibrato and onsets. Each word's weight and width swell with loudness, its baseline follows the melody relative to the line's median pitch, and vibrato makes it wobble. Sung words relax back. Implemented in `apps/web/src/voice.ts`.
+- **Studio:** a `fields` group (flow, voice: 0..1) in the look params writes `look.overrides.fields`. With 0 or absent, frames are pixel-identical to before (checked on 5 frames across 2 projects).
+- **`TypesetRender`** (`render_node.py`): words + look + matte + fields burned into an IMAGE batch. One line at a time, behind the subject. It is draft fidelity; the studio does walls, HUD and exact export. Measured at 3.7 s for 192 frames at 672×384.
+- **App Mode** (`workflows/app_words_in_your_shot.api.json`, UI graph `workflows/showcase/typeset_app_words_in_your_shot.json`, also shipped as the node-pack template `example_workflows/typeset - words in your shot.json`):
+  - The graph runs LoadVideo → BiRefNet matte + TypesetAlignLyrics → VoiceField (re-using the aligner's stem) + FlowField → TypesetLook + TypesetGrade → TypesetRender → CreateVideo → SaveVideo.
+  - It is one graph with two views. `extra.linearMode` plus `linearData` expose file, lyrics, preset, grade, voice and flow.
+  - On the 8 s dancer chorus at 1344×768, the whole graph took 81 s on an M5 Max (:8198).

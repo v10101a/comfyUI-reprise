@@ -1,8 +1,49 @@
-# Typeset design language (from viola he / v10101a)
+# Typeset design language
 
-Tokens: `docs/design/tokens.css`. Restyle plan: `docs/design/studio-redesign.md`. Screenshots: `docs/design/refs/`.
+Live tokens: `.studio` and `.showcase` custom properties in `apps/web/src/studio/studio.css` and `apps/web/src/showcase.css`. Those files are the source of truth. `tokens.css` and `studio-redesign.md` describe the v1 viola.city skin and are kept for history only.
 
-## Evidence
+## v2 direction (current)
+
+**Professional first, with a little whimsy.** Typeset should feel like a polished creative tool, with the clarity of Figma, Linear or Ableton, set on a warm paper-grey ground. viola.city (viola he / v10101a) is loose inspiration only, for the paper calm and the one blue voice. We do not adopt its design language.
+
+- **Type.** Inter is the UI face: 13px base, 12px labels, 14–16px values and titles. Plex Mono is only for numbers, timecode and code. The Newsreader serif is only for the wordmark and for project, look and piece names. Italics are for emphasis only. Labels are sentence case with no trailing slashes.
+- **Hierarchy.** Panel titles are 12px semibold in muted ink. Values sit in ink. The one primary action per area uses the accent fill.
+- **Structure.** Group with solid 1px hairlines and surface tones (bg, then panel, raised, field). No dotted rules and no tree glyphs. Spacing follows an 8px grid.
+- **Controls look like controls.** Buttons are 28px high with 6px radius and a visible border. Segmented controls sit in a recessed well. Inputs are filled fields. Every hit area is at least 28px.
+- **Colour.** One accent: #2e00fd by day, lavender #b8a8d6 by night. Role colours appear only in the timeline and role dots. Night mode is olive-black.
+- **Media is sharp.** Look thumbnails, the filmstrip and demo-page tiles never blur. Hover lifts or outlines them.
+- **Whimsy, deliberately rationed.** It shows up in three places only: the italic serif wordmark that leans on hover, the ink-drop playhead, and a faint paper grain on page backgrounds (never on panels or media).
+
+## ⚠️ Rule #1: NO UNNECESSARY TEXT
+
+The user's top priority. Every word on screen must earn its place.
+
+- No helper sentences, explainers, subtitles, hints, or "what this does" copy. If a control needs a sentence to explain it, fix the control.
+- One short label per control, or an icon. No label when the content is self-evident (a video thumbnail, a waveform, a word on the timeline).
+- No status chatter, no repeated headings, no badges unless they change a decision. Empty states: one line max.
+- Tooltips are allowed for detail; the default view stays quiet.
+- Before adding any text, delete two.
+
+## Timeline must show the video
+
+The timeline gets a **filmstrip of video thumbnails** above the word and line lanes, so you can see what the words are aligned to (plus the waveform). Scrubbing shows the frame. Implementation: `apps/web/src/studio/Filmstrip.tsx`, all in the browser, cropped through the reframe for 9:16 projects.
+
+## Copy voice
+
+- Sentence case. Short. Verbs first ("Export", "Draw wall", "Make 9:16").
+- Numbers in mono. No "AI" boasting, no "magic".
+- Status is a toast that appears only when there is something to say: "Saved", "Exported", or an error. Errors are plain.
+- Detail goes in tooltips, never in the default view.
+
+## Do / don't
+
+**Do:** use a paper-grey ground with one accent; Inter for UI; serif for names; solid hairlines and surface tones; clear buttons and segmented controls; sharp media; one or two whimsical moments.
+
+**Don't:** use dotted rules everywhere, slash-suffixed labels, tree listings, italic mono for every control, blurred thumbnails in the editor, kaomoji or sparkles in the UI, stars, gadgets, guestbooks, gradients in panels, or a second accent hue.
+
+## Appendix: v1 evidence (viola.city research)
+
+Kept for reference. This is not a spec.
 
 | Source | What it showed |
 |---|---|
@@ -18,63 +59,3 @@ Tokens: `docs/design/tokens.css`. Restyle plan: `docs/design/studio-redesign.md`
 | https://github.com/v10101a | 🍉, "im making a new portfolio website!" Lowercase and casual. |
 
 Not accessed: individual Instagram posts and reels (login wall), and Vimeo/YouTube performance video. The Chrome extension was offline, so I captured screenshots with headless Chrome instead.
-
-## Principles
-
-1. **Grey is the canvas, blue is the voice.** Use a flat mid-grey ground with one saturated accent (#2e00fd) for anything you can act on. No gradients in chrome and no second accent.
-2. **Mono for doing, serif for naming.** Plex Mono carries every control, number and label. Newsreader names things: projects, looks, the current line. Pixel faces (Silkscreen, Sixtyfour) are seasoning, at most one moment per screen.
-3. **Dotted, not boxed.** Divide with 2px dotted rules and leave space. Use few borders, few cards and no heavy panels.
-4. **Soft until touched.** Media rests blurred, grainy and desaturated, and sharpens into colour on hover or selection. Hover gives a lavender glow; it doesn't darken. Reserve full clarity for the thing in focus.
-5. **The computer as a personal place.** Show status like a diary ("currently: transcribing"), use tree listings, timestamps and `[source]` links, and expose live code and node graphs instead of hiding them.
-6. **Lowercase, terse, a little funny.** Use sentence fragments and arrows (→ ⇢ ↗). Kaomoji and sparkles (✧ ✦) appear rarely and only in idle or empty states, never in errors.
-7. **Light by default, night as a mode.** Night mode is olive-black with lavender, not neutral black with neon.
-8. **Y2K software as material, not pastiche.** Borrow its honesty (visible windows, pixel clocks, tree views) but keep the layout calm.
-
-## Tokens (summary; full values in tokens.css)
-
-- **Fonts.** `IBM Plex Mono` 400/500/600 plus italic for the UI, `Newsreader` (opsz 6..72) 400/500 plus italic for titles, `Silkscreen` for pixel badges, and `Sixtyfour` for a rare display moment. Load them from `https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Silkscreen&family=Sixtyfour&display=swap`. All are OFL. Silkscreen is already bundled in `apps/web/public/fonts`.
-- **Type scale.** 11 / 12 / 14 / 16 / 18 / 24 / 60 (drop cap). Studio density: 12px mono body, 11px meta, 18px serif section names. Line height 1.1 for lists, 1.45 for panels, 2 for prose. Mono is never letter-spaced and labels are never uppercase.
-- **Light colours.** Background #c7c7c7, surface #cacaca, ink #2e2e2e / #5e5e5e / #8e8e8e, rule #767676 (dotted), accent #2e00fd, glow #949bfb / #6c76ff / halo #c8c8ffe6.
-- **Night colours.** Background #1b1f11, surface #3b4028, ink #c7c7c7, accent #b2a2cd, halo #647864e6.
-- **Spacing.** 4px base (4, 8, 12, 16, 24, 32).
-- **Radii.** 0 by default, 2px for active pills, 4px for icons. A card reaches 12px **only while hovered**.
-- **Borders.** `2px dotted #767676` for section dividers and `1px dotted` for dense rows. A solid 1px `rgba(20,20,17,.25)` frames media only.
-- **Motion.** 150ms `cubic-bezier(.4,0,.2,1)` for UI and 200ms for image focus. Hover can scale to 1.05. The live/busy indicator uses a 1s glow pulse (alternate) instead of a spinner.
-
-## Copy voice
-
-Rules: lowercase sentence case, short, verbs first, no "AI" boasting, arrows instead of chevrons, numbers in mono. Make status personal ("currently") and keep errors plain with no cuteness.
-
-| Now | Her voice |
-|---|---|
-| `typeset` + `STUDIO` badge | `typeset` (serif, blue) + `studio ✦` (italic mono) |
-| `Pipeline` / `Media` / `Projects` tabs | `pipeline/` `media/` `projects/` (tree-style) |
-| `Output` | `export ↗` |
-| `Render` | `render →` |
-| `Save` / "Save now (autosave is on)" | `saved 10:22` (click to save) |
-| `+ New project` | `+ new` |
-| `Add your footage` / "Video or audio · stored locally" | `drop a video or a song here` / `stays on this computer` |
-| `Lyrics / script` + "Optional: paste the words you expect to hear. Whisper aligns to them." | `lyrics (optional)` + `paste what they sing. whisper lines it up.` |
-| `Transcribe` / `Isolate subject` / `Detect beats` | `listen` / `cut out the subject` / `find the beat` |
-| `Re-run` | `again ↺` |
-| `Workflow ↗` | `see the graph ↗` |
-| `ComfyUI` · "3 Comfy workflows ran for this project" | `comfyui · connected` · `3 workflows ran · 41 s of model time` |
-| "server offline" | `server's asleep. start it with npm run dev` |
-| `Look` + `Compare all ⤢` | `look` + `see them all →` |
-| `Looks` sheet: "Same footage, same frame, one click…" | `same frame, every look. 1–8 to pick.` |
-| `Arrangement` | `arrangement` |
-| `No lines yet` / "Transcribe in the Pipeline panel, or add a word." | `nothing here yet ✧` / `listen to the song first, or + word` |
-| "Select a line on the stage or in the arrangement." | `pick a line on the stage or below.` |
-| `Hook` / `HOOK` tag | `hook` (blue italic) |
-| `Hide word` / `Remove word` | `hide` / `remove` |
-| `Find readable space` | `find a quiet spot` |
-| `Generate in ComfyUI · LTX` | `generate a shot (ltx) →` |
-| `Make vertical` | `make it 9:16` |
-| `Loading composition…` | `loading…` with a pixel-clock glow |
-| `Back to showcase ↗` | `← showcase` |
-
-## Do / don't
-
-**Do:** keep a grey ground and one blue accent; use Plex Mono everywhere functional; use serif for names; use dotted rules; rest media blurred and grainy and sharpen it on hover; use an italic-mono link style; give hover a lavender glow; show timestamps and status like a diary; use tree listings (`├──`); put one pixel or kaomoji moment in an empty state; offer a night mode in olive and lavender.
-
-**Don't:** use lime or neon on near-black (the current studio look); uppercase letter-spaced micro-labels; glassmorphism or gradients in panels; rounded cards everywhere; more than one accent hue for UI state; sparkle emoji in errors; "AI-powered" or "magic" copy; drop shadows heavier than tw `shadow-md`; Inter for UI.

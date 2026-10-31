@@ -1,8 +1,62 @@
 {
- "_about": "Fall For Me word timing table. Video seconds (= master - 126.857). Verse/tag times are hand-merged estimates, to be replaced by acoustic alignment (outputs/align/ffm_words.json via ffm_spec.py --times). Hook times are final (user-approved). Tag lyric 'for me' is unconfirmed (raw Whisper: 'don't leave'). layout.until: seconds, a lineId (until it starts), or null = end of video.",
+ "_about": "Fall For Me word timing table. Video seconds (= master - 126.857). Verse/tag times are hand-merged estimates, to be replaced by acoustic alignment (outputs/align/ffm_words.json via ffm_spec.py --times). Hook times are final (user-approved). Tag lyric 'for me' is unconfirmed (raw Whisper: 'don't leave'). layout.until: seconds, a lineId (until it starts), or null = end of video. v0 (\"i'll make you fall for me\", sung just before 'stop thinking') was added in v8 from Whisper word times on the BS-RoFormer stem (outputs/align/ffm_vocals_roformer.flac); the i'll onset is the vowel burst at 17.15.",
  "offset": 126.857,
  "duration": 45.733,
  "words": [
+  {
+   "id": "v0_0",
+   "lineId": "v0",
+   "role": "verse",
+   "text": "i'll",
+   "start": 17.15,
+   "end": 17.4,
+   "note": "a3"
+  },
+  {
+   "id": "v0_1",
+   "lineId": "v0",
+   "role": "verse",
+   "text": "make",
+   "start": 17.42,
+   "end": 17.64,
+   "note": "bb3"
+  },
+  {
+   "id": "v0_2",
+   "lineId": "v0",
+   "role": "verse",
+   "text": "you",
+   "start": 17.66,
+   "end": 17.78,
+   "note": "a3"
+  },
+  {
+   "id": "v0_3",
+   "lineId": "v0",
+   "role": "verse",
+   "text": "fall",
+   "start": 17.8,
+   "end": 18.2,
+   "note": "a3"
+  },
+  {
+   "id": "v0_4",
+   "lineId": "v0",
+   "role": "verse",
+   "text": "for",
+   "start": 18.22,
+   "end": 18.54,
+   "note": "a3"
+  },
+  {
+   "id": "v0_5",
+   "lineId": "v0",
+   "role": "verse",
+   "text": "me",
+   "start": 18.56,
+   "end": 19.08,
+   "note": "a3"
+  },
   {
    "id": "v1_0",
    "lineId": "v1",
@@ -301,6 +355,10 @@
   }
  ],
  "layout": {
+  "v0": {
+   "group": "Z",
+   "y": 0.875
+  },
   "v1": {
    "group": "A",
    "y": 0.74
