@@ -1,0 +1,47 @@
+{
+  "1": {
+    "class_type": "LoadVideo",
+    "inputs": {
+      "file": "typeset/test/person_short.mp4"
+    },
+    "_meta": {
+      "title": "Footage"
+    }
+  },
+  "2": {
+    "class_type": "GetVideoComponents",
+    "inputs": {
+      "video": [
+        "1",
+        0
+      ]
+    }
+  },
+  "3": {
+    "class_type": "TypesetFlowField",
+    "inputs": {
+      "images": [
+        "2",
+        0
+      ],
+      "fps": 24.0,
+      "long_side_cells": 64,
+      "preview_frames": 0
+    },
+    "_meta": {
+      "title": "Motion field"
+    }
+  },
+  "4": {
+    "class_type": "SaveTextFile",
+    "inputs": {
+      "text": [
+        "3",
+        0
+      ],
+      "filename_prefix": "typeset/flow",
+      "extension": "json",
+      "pretty_json": false
+    }
+  }
+}

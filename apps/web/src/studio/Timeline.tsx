@@ -1,9 +1,10 @@
 // Arrangement timeline: one lane per line (Ableton-style), word clips that never overlap, waveform, beat grid,
 // snap, zoom, loop brace, quiet/hook visibility.
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
-import type {Project,Word} from '../types';
+import type {Project,Word,CropData} from '../types';
 import {lineIsHook,heroWordId,wordIsShown} from '../looks';
 import type {Beats} from './pipeline';
+import {Filmstrip} from './Filmstrip';
 
 export type LineInfo = {id:string;index:number;words:Word[];start:number;end:number;text:string;role:Role;hook:boolean;hidden:boolean;heroId?:string};
 export type Role = 'behind'|'caption'|'hud'|'wall'|'inworld'|'anchor';
@@ -26,7 +27,7 @@ export function lineInfos(p:Project):LineInfo[]{
 /** Visual end of a word clip: the next word's onset in the same line, so clips tile instead of stacking. */
 function clipEnd(line:LineInfo,i:number){const w=line.words[i];const next=line.words[i+1];return next?Math.max(w.start+.001,Math.min(w.end,next.start)):w.end;}
 
-const HEADER=236;
+const HEADER=180;
 type Drag = {kind:'onset'|'line'|'end'|'scrub'|'loop';lineId?:string;wordId?:string;x0:number;t0:number;orig?:Word[];moved?:boolean};
 
 export function Timeline(props:{
@@ -34,17 +35,19 @@ export function Timeline(props:{
   waveform:Float32Array|null;beats?:Beats;loop:{a:number;b:number}|null;loopOn:boolean;snap:boolean;zoom:number;
   setZoom:(z:number)=>void;setSnap:(s:boolean)=>void;setLoop:(l:{a:number;b:number}|null)=>void;setLoopOn:(b:boolean)=>void;
   onSelect:(wordId:string,seek?:boolean)=>void;onSeek:(frame:number)=>void;onEdit:(update:(p:Project)=>Project)=>void;onToggleHidden:(lineId:string)=>void;onAddWord:()=>void;
+  /** Source video for the filmstrip (project media) and the reframe crop, if any. */
+  videoSrc?:string;crop?:CropData;
 }){
   const {project:p,frame,beats,zoom,loop}=props;
   const scroller=useRef<HTMLDivElement>(null);const wave=useRef<HTMLCanvasElement>(null);
-  const [width,setWidth]=useState(900);const [height,setHeight]=useState(200);
+  const [width,setWidth]=useState(900);const [height,setHeight]=useState(200);const [scrollX,setScrollX]=useState(0);
   const lines=useMemo(()=>lineInfos(p),[p]);
   useLayoutEffect(()=>{const el=scroller.current;if(!el)return;const ro=new ResizeObserver(()=>{setWidth(el.clientWidth);setHeight(el.clientHeight);});ro.observe(el);setWidth(el.clientWidth);setHeight(el.clientHeight);return()=>ro.disconnect();},[]);
   const dur=Math.max(.001,p.duration);const bodyW=Math.max(200,(width-HEADER-2)*zoom);const pps=bodyW/dur;
   const X=(t:number)=>t*pps;const T=(x:number)=>Math.max(0,Math.min(dur,x/pps));
   const time=frame/p.fps;
   // Lanes share the free height (Ableton-like: few lines → tall clips), clamped to stay scannable.
-  const audioH=lines.length>5?36:52;const laneH=Math.round(Math.max(22,Math.min(46,(height-40-audioH-2)/Math.max(1,lines.length))));
+  const audioH=lines.length>5?36:52;const filmH=props.videoSrc?46:0;const laneH=Math.round(Math.max(22,Math.min(46,(height-40-filmH-audioH-2)/Math.max(1,lines.length))));
 
   // Keep the playhead in view while playing / when it jumps outside.
   useEffect(()=>{const el=scroller.current;if(!el)return;const x=X(time)+HEADER;const left=el.scrollLeft,right=left+el.clientWidth;
@@ -54,7 +57,7 @@ export function Timeline(props:{
   useEffect(()=>{const c=wave.current;if(!c)return;const w=Math.min(16000,Math.round(bodyW));const h=44;const dpr=Math.min(2,window.devicePixelRatio||1);
     c.width=w*dpr;c.height=h*dpr;c.style.width=`${w}px`;const g=c.getContext('2d')!;g.scale(dpr,dpr);g.clearRect(0,0,w,h);
     const data=props.waveform;if(!data||!data.length)return;const bins=data.length/2;
-    g.fillStyle='#8fa66a';for(let x=0;x<w;x++){const i0=Math.floor(x/w*bins),i1=Math.max(i0+1,Math.floor((x+1)/w*bins));let lo=0,hi=0;for(let i=i0;i<i1;i++){lo=Math.min(lo,data[i*2]);hi=Math.max(hi,data[i*2+1]);}
+    g.fillStyle='#2e2e2e';/* ink; CSS sets opacity and inverts it at night */for(let x=0;x<w;x++){const i0=Math.floor(x/w*bins),i1=Math.max(i0+1,Math.floor((x+1)/w*bins));let lo=0,hi=0;for(let i=i0;i<i1;i++){lo=Math.min(lo,data[i*2]);hi=Math.max(hi,data[i*2+1]);}
       const y0=h/2-hi*h*.46,y1=h/2-lo*h*.46;g.fillRect(x,y0,1,Math.max(1,y1-y0));}
   },[props.waveform,bodyW]);
 
@@ -102,65 +105,67 @@ export function Timeline(props:{
   const sel=props.selectedLine;
   return <section className="tl" aria-label="Arrangement timeline" style={{['--lane' as string]:`${laneH}px`,['--audio' as string]:`${audioH}px`}}>
     <div className="tl-bar">
-      <div className="tl-title"><b>Arrangement</b><span>{lines.length} lines · {p.words.length} words{beats?` · ${beats.bpm?Math.round(beats.bpm)+' BPM · ':''}${beats.beats.length} beats`:''}</span></div>
-      <div className="tl-hint" title="Space play · ←/→ frame · ⇧←/→ 1 s · Home/End · L loop line · H hide line · ⌘/Ctrl+scroll zoom · drag a clip to slip its onset · drag the strip to move the line · ⇧ drag bypasses snap · 1–6 looks · G compare looks · O subject · W wall"><kbd>Space</kbd><kbd>←→</kbd><kbd>L</kbd> loop <kbd>H</kbd> hide <kbd>⌘</kbd>+scroll zoom <kbd>1–6</kbd> looks</div>
+      <button className="ghost tl-keyhelp" aria-label="Shortcuts" title="space play · ←/→ frame · ⇧←/→ 1 s · home/end · L loop line · H hide line · ⌘/ctrl+scroll zoom · drag a word to slip it · drag a line to move it · ⇧ drag skips snap · 1–9 looks · G all looks · O subject · W wall">?</button>
       <div className="tl-tools">
-        <button className={`tog ${props.snap?'on':''}`} onClick={()=>props.setSnap(!props.snap)} title="Snap to beats, word edges and frames (hold Shift to bypass)"><i className="ico-snap"/>Snap{beats?' · beat':''}</button>
-        <button className={`tog ${props.loopOn?'on':''}`} onClick={()=>{if(!props.loopOn&&!loop){const l=lines.find(x=>x.id===sel);props.setLoop(l?{a:l.start,b:l.end}:{a:0,b:dur});}props.setLoopOn(!props.loopOn);}} title="Loop region (L). Drag in the top strip of the ruler to set it"><i className="ico-loop"/>Loop</button>
+        <button className={`tog ${props.snap?'on':''}`} onClick={()=>props.setSnap(!props.snap)} title="snap to beats, word edges and frames (⇧ to bypass)">Snap</button>
+        <button className={`tog ${props.loopOn?'on':''}`} onClick={()=>{if(!props.loopOn&&!loop){const l=lines.find(x=>x.id===sel);props.setLoop(l?{a:l.start,b:l.end}:{a:0,b:dur});}props.setLoopOn(!props.loopOn);}} title="loop (L). drag the top of the ruler to set it">Loop</button>
         <span className="sep"/>
         <button className="ghost" aria-label="Zoom out" onClick={()=>props.setZoom(Math.max(1,zoom/1.5))}>−</button>
         <input className="zoom" type="range" min={0} max={1} step={.01} value={Math.log(zoom)/Math.log(24)} onChange={e=>props.setZoom(Math.pow(24,Number(e.target.value)))} aria-label="Timeline zoom"/>
         <button className="ghost" aria-label="Zoom in" onClick={()=>props.setZoom(Math.min(24,zoom*1.5))}>+</button>
-        <button className="ghost" onClick={()=>props.setZoom(1)} title="Fit the whole song">Fit</button>
+        <button className="ghost" onClick={()=>props.setZoom(1)} title="fit the whole song">Fit</button>
         <span className="sep"/>
         <button className="ghost" onClick={props.onAddWord}>+ Word</button>
       </div>
     </div>
-    <div className="tl-scroll" ref={scroller} onWheel={wheel}>
+    <div className="tl-scroll" ref={scroller} onWheel={wheel} onScroll={e=>setScrollX(e.currentTarget.scrollLeft)}>
       <div className="tl-inner" style={{width:HEADER+bodyW}}>
         <div className="tl-row tl-ruler-row">
-          <div className="tl-head tl-corner"><span>{String(Math.floor(time/60)).padStart(2,'0')}:{(time%60).toFixed(2).padStart(5,'0')}</span><small>F{String(frame).padStart(4,'0')}</small></div>
+          <div className="tl-head tl-corner"/>
           <div className="tl-ruler" style={{width:bodyW}} onPointerDown={e=>begin(e,{kind:'scrub'})} onPointerMove={move} onPointerUp={end}>
-            <div className="tl-loopstrip" onPointerDown={e=>begin(e,{kind:'loop'})} onPointerMove={move} onPointerUp={end} title="Drag to set the loop region">
+            <div className="tl-loopstrip" onPointerDown={e=>begin(e,{kind:'loop'})} onPointerMove={move} onPointerUp={end} title="drag to loop">
               {loop&&<div className={`tl-loop ${props.loopOn?'on':''}`} style={{left:X(loop.a),width:Math.max(2,X(loop.b)-X(loop.a))}}/>}
             </div>
             <div className="tl-map">
               {beats?.sections?.map((sec,i)=><div key={`s${i}`} className={`tl-section sec-${(sec.label||'').toLowerCase()}`} style={{left:X(sec.start),width:Math.max(2,X(sec.end)-X(sec.start)-2)}}><span>{sec.label||`§${i+1}`}</span></div>)}
-              {lines.filter(l=>l.hook&&!l.hidden).map(l=><i key={`h${l.id}`} className="tl-hookmark" style={{left:X(l.start),width:Math.max(2,X(l.end)-X(l.start))}} title={`Hook: ${l.text}`}/>)}
+              {lines.filter(l=>l.hook&&!l.hidden).map(l=><i key={`h${l.id}`} className="tl-hookmark" style={{left:X(l.start),width:Math.max(2,X(l.end)-X(l.start))}} title={`hook · ${l.text}`}/>)}
             </div>
             {ticks.out.map(t=><span key={t} className="tl-tick" style={{left:X(t)}}>{fmt(t)}</span>)}
           </div>
         </div>
+        {props.videoSrc&&<div className="tl-row tl-film" style={{['--film' as string]:`${filmH}px`}}>
+          <div className="tl-head"/>
+          <div className="tl-body" style={{width:bodyW}} onPointerDown={e=>begin(e,{kind:'scrub'})} onPointerMove={move} onPointerUp={end}>
+            <Filmstrip src={props.videoSrc} fps={p.fps} aspect={p.width/p.height} crop={props.crop} pps={pps} bodyW={bodyW} height={filmH-6} viewLeft={Math.max(0,scrollX)} viewWidth={Math.max(1,width-HEADER)}/>
+          </div>
+        </div>}
         {lines.map(l=>{const active=time>=l.start&&time<l.end;const narrow=l.words.some((w,i)=>(X(clipEnd(l,i))-X(w.start))<Math.max(22,w.text.length*6.2));return <div key={l.id} className={`tl-row tl-lane role-${l.role} ${sel===l.id?'sel':''} ${l.hidden?'hidden':''} ${l.hook?'hook':''} ${narrow?'compact':''}`}>
           <div className="tl-head" onClick={()=>props.onSelect(l.words[0].id,true)}>
-            <span className="tl-idx">{String(l.index+1).padStart(2,'0')}</span>
-            <span className="tl-name" title={l.text}>{l.text}</span>
-            <span className={`role-tag role-${l.role}`}>{ROLE_LABEL[l.role]}</span>
-            {l.hook&&<span className="hook-tag" title="Hook: repeated or marked line">HOOK</span>}
-            <button className={`eye ${l.hidden?'off':''}`} aria-label={l.hidden?'Show line':'Hide line'} title={l.hidden?'Show line':'Hide line (quiet)'} onClick={e=>{e.stopPropagation();props.onToggleHidden(l.id);}}>{l.hidden?'○':'●'}</button>
+            <span className="tl-name" title={`${String(l.index+1).padStart(2,'0')} · ${ROLE_LABEL[l.role]}${l.hook?' · hook':''} · ${l.text}`}>{l.text}</span>
+            <button className={`eye ${l.hidden?'off':''}`} aria-label={l.hidden?'Show line':'Hide line'} title={l.hidden?'show':'hide (H)'} onClick={e=>{e.stopPropagation();props.onToggleHidden(l.id);}}>{l.hidden?'○':'●'}</button>
             {active&&<i className="tl-live"/>}
           </div>
           <div className="tl-body" style={{width:bodyW}} onPointerDown={e=>begin(e,{kind:'scrub'})} onPointerMove={move} onPointerUp={end}>
-            <div className="tl-region" style={{left:X(l.start),width:Math.max(3,X(l.end)-X(l.start))}} onPointerDown={e=>{props.onSelect(sel===l.id?props.selectedWord:l.words[0].id);begin(e,{kind:'line',lineId:l.id});}} onPointerMove={move} onPointerUp={end} title="Drag to move the line in time">
+            <div className="tl-region" style={{left:X(l.start),width:Math.max(3,X(l.end)-X(l.start))}} onPointerDown={e=>{props.onSelect(sel===l.id?props.selectedWord:l.words[0].id);begin(e,{kind:'line',lineId:l.id});}} onPointerMove={move} onPointerUp={end} >
               {narrow&&<span className="tl-region-label">{l.words.map(w=>w.text).join(' ')}</span>}
-              <div className="tl-region-end" onPointerDown={e=>begin(e,{kind:'end',lineId:l.id})} onPointerMove={move} onPointerUp={end} title="Drag to change when the line leaves"/>
+              <div className="tl-region-end" onPointerDown={e=>begin(e,{kind:'end',lineId:l.id})} onPointerMove={move} onPointerUp={end} />
             </div>
             {l.words.map((w,i)=>{const a=X(w.start),b=X(clipEnd(l,i));let shown=true;try{shown=wordIsShown(p,w);}catch{/* look API */}
               return <button key={w.id} className={`word-chip ${props.selectedWord===w.id?'selected':''} ${l.heroId===w.id?'hero':''} ${shown?'':'quiet'} ${w.placement}`} style={{left:a,width:Math.max(3,b-a-1)}}
-                title={`${w.text} · ${w.start.toFixed(2)}–${w.end.toFixed(2)}s · drag to slip the onset`}
+                title={`${w.text} · ${w.start.toFixed(2)}–${w.end.toFixed(2)}s`}
                 onPointerDown={e=>{props.onSelect(w.id);begin(e,{kind:'onset',lineId:l.id,wordId:w.id});}} onPointerMove={move} onPointerUp={e=>{const d=drag.current;end(e);if(d&&!d.moved)props.onSeek(Math.round((w.start+.04)*p.fps));}}>
                 {l.heroId===w.id&&<i className="hero-dot"/>}<span>{w.text}</span></button>;})}
           </div>
         </div>;})}
-        {!lines.length&&<div className="tl-row tl-empty"><div className="tl-head"><span className="tl-name">No lines yet</span></div><div className="tl-body" style={{width:bodyW}}><span>Transcribe in the Pipeline panel, or add a word.</span></div></div>}
+        {!lines.length&&<div className="tl-row tl-empty"><div className="tl-head"/><div className="tl-body" style={{width:bodyW}}><span>No words yet</span></div></div>}
         <div className="tl-row tl-audio">
-          <div className="tl-head"><span className="tl-idx">♪</span><span className="tl-name">Audio</span>{beats&&<span className="role-tag">beats</span>}</div>
+          <div className="tl-head" title={beats?`audio · ${beats.bpm?Math.round(beats.bpm)+' bpm · ':''}${beats.beats.length} beats`:'audio'}><span className="tl-idx">♪</span></div>
           <div className="tl-body" style={{width:bodyW}} onPointerDown={e=>begin(e,{kind:'scrub'})} onPointerMove={move} onPointerUp={end}>
-            <canvas ref={wave} className="tl-wave"/>{!props.waveform&&<span className="tl-nowave">No audio waveform</span>}
+            <canvas ref={wave} className="tl-wave"/>
           </div>
         </div>
         <div className="tl-overlay" style={{left:HEADER,width:bodyW}}>
-          {quiet.map(([a,b],i)=><div key={`q${i}`} className="tl-quiet" style={{left:X(a),width:X(b)-X(a)}}>{X(b)-X(a)>44&&<span>quiet</span>}</div>)}
+          {quiet.map(([a,b],i)=><div key={`q${i}`} className="tl-quiet" title="quiet" style={{left:X(a),width:X(b)-X(a),top:38+filmH}}></div>)}
           {beats?.beats.map((b,i)=>{const down=beats.downbeats?beats.downbeats.some(d=>Math.abs(d-b)<.02):i%4===0;return <i key={i} className={`tl-beat ${down?'down':''}`} style={{left:X(b)}}/>;})}
           {loop&&props.loopOn&&<><i className="tl-loopedge" style={{left:X(loop.a)}}/><i className="tl-loopedge" style={{left:X(loop.b)}}/></>}
           <div className="playhead" style={{left:X(time)}}><span/></div>

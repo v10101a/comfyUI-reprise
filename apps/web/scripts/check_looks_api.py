@@ -10,7 +10,7 @@ async def main():
         r = await pg.evaluate('''async()=>{
           const L=await import('/src/looks.ts');const {StageRenderer}=await import('/src/renderer.ts');
           const base=await fetch('/sample/project.json').then(r=>r.json());const fails=[];const ok=(c,m)=>{if(!c)fails.push(m)};
-          ok(L.LOOKS.length===7&&L.LOOKS.every(l=>l.id&&l.name&&l.swatch.length&&l.fonts.length&&l.description),'LOOKS shape');
+          ok(L.LOOKS.length>=7&&L.LOOKS.every(l=>l.id&&l.name&&l.swatch.length&&l.fonts.length&&l.description),'LOOKS shape');
           ok(!L.LOOKS.some(l=>/brat/i.test(l.id+l.name+l.description)),'no artist-branded names');
           ok(L.lookOf(base)===undefined,'no look by default');
           const p1=L.setLook(base,'red-glow');ok(base.look===undefined&&p1.look.id==='red-glow','setLook pure');

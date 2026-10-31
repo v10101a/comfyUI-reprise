@@ -1,9 +1,10 @@
 // The perception/generation pipeline as the studio shows it: which analysis ran, on which engine, how long it took.
 // Job records come from GET /api/jobs?projectId=… (kind, status, message, result.elapsedSeconds, createdAt).
 import type {Project,Job} from '../types';
+import {at} from '../base';
 
 export type Engine = 'comfy'|'cpu'|'remote'|'browser';
-export type StepId = 'words'|'matte'|'occupancy'|'surface'|'reframe'|'beats'|'generate';
+export type StepId = 'words'|'matte'|'occupancy'|'surface'|'reframe'|'beats'|'flow'|'voice'|'generate';
 export type JobRecord = Job & {createdAt?:string|null;updatedAt?:string|null};
 export type StepState = 'done'|'running'|'failed'|'fallback'|'idle'|'n/a';
 
@@ -19,19 +20,23 @@ export type StepDef = {
 
 export const STEPS:StepDef[] = [
   {id:'words',title:'Words',model:'Lyric forced alignment: HDemucs vocals → MMS_FA CTC (Whisper without lyrics / on failure)',engine:'comfy',nodes:['LoadAudio','TypesetAlignLyrics','SaveTextFile','SaveImage'],
-    workflow:{href:'/workflows/align.api.json',repo:'workflows/align.api.json'},jobKinds:['words'],produces:'analysis/words.json → editable words'},
-  {id:'matte',title:'Subject matte',model:'BiRefNet RMBG + mask→tracks',engine:'comfy',nodes:['LoadVideo','GetVideoComponents','BiRefNetRMBG','SaveImage','MaskToTracks','SaveTextFile'],
-    workflow:{href:'/workflows/matte.api.json',repo:'workflows/matte.api.json'},jobKinds:['matte'],produces:'fg.webm alpha cutout + person tracks'},
+    workflow:{href:at('/workflows/align.api.json'),repo:'workflows/align.api.json'},jobKinds:['words'],produces:'analysis/words.json → editable words'},
+  {id:'matte',title:'Subject matte',model:'BiRefNet general + hole fill + mask→tracks',engine:'comfy',nodes:['LoadVideo','GetVideoComponents','BiRefNetRMBG','TypesetMatteRefine','SaveImage','MaskToTracks','SaveTextFile'],
+    workflow:{href:at('/workflows/matte.api.json'),repo:'workflows/matte.api.json'},jobKinds:['matte'],produces:'fg.webm alpha cutout + person tracks'},
   {id:'occupancy',title:'Occupancy',model:'matte → 32×18 coverage grid',engine:'comfy',nodes:['TypesetLoadImageSequence','TypesetOccupancyGrid','SaveTextFile'],
-    workflow:{href:'/workflows/occupancy.api.json',repo:'workflows/occupancy.api.json'},jobKinds:['occupancy'],produces:'where the subject is not — drives auto-placement'},
+    workflow:{href:at('/workflows/occupancy.api.json'),repo:'workflows/occupancy.api.json'},jobKinds:['occupancy'],produces:'where the subject is not — drives auto-placement'},
   {id:'surface',title:'Planar track',model:'LK flow + RANSAC homography',engine:'comfy',nodes:['LoadVideo','GetVideoComponents','TypesetLoadImageSequence','TypesetPlanarTrack','SaveTextFile'],
-    workflow:{href:'/workflows/surface_track.api.json',repo:'workflows/surface_track.api.json'},jobKinds:['surface'],produces:'wall quads that stay on the wall'},
+    workflow:{href:at('/workflows/surface_track.api.json'),repo:'workflows/surface_track.api.json'},jobKinds:['surface'],produces:'wall quads that stay on the wall'},
   {id:'reframe',title:'Reframe 9:16',model:'subject-follow crop, damped spring',engine:'comfy',nodes:['TypesetReframeCrop','SaveTextFile'],
-    workflow:{href:'/workflows/reframe.api.json',repo:'workflows/reframe.api.json'},jobKinds:['reframe'],produces:'vertical project + crop.json'},
+    workflow:{href:at('/workflows/reframe.api.json'),repo:'workflows/reframe.api.json'},jobKinds:['reframe'],produces:'vertical project + crop.json'},
   {id:'beats',title:'Beats',model:'librosa beat grid, bars + sections',engine:'comfy',nodes:['LoadAudio','TypesetBeatGrid','SaveTextFile','SaveImage'],
-    workflow:{href:'/workflows/beats.api.json',repo:'workflows/beats.api.json'},jobKinds:['beats'],produces:'analysis/beats.json → timeline grid + snap'},
+    workflow:{href:at('/workflows/beats.api.json'),repo:'workflows/beats.api.json'},jobKinds:['beats'],produces:'analysis/beats.json → timeline grid + snap'},
+  {id:'flow',title:'Motion field',model:'DIS optical flow → coarse field (CPU, no weights)',engine:'comfy',nodes:['LoadVideo','GetVideoComponents','TypesetFlowField','SaveTextFile'],
+    workflow:{href:at('/workflows/flow.api.json'),repo:'workflows/flow.api.json'},jobKinds:['flow'],produces:'analysis/flow.json → look · flow pushes the type'},
+  {id:'voice',title:'Voice field',model:'HDemucs vocals → loudness, pYIN pitch, vibrato, onsets',engine:'comfy',nodes:['LoadAudio','TypesetVoiceField','SaveTextFile','SaveImage'],
+    workflow:{href:at('/workflows/voice.api.json'),repo:'workflows/voice.api.json'},jobKinds:['voice'],produces:'analysis/voice.json → look · voice moves the type'},
   {id:'generate',title:'In-world shot',model:'Text plate → LTX I2V · or Qwen edit → MiniMax',engine:'comfy',nodes:['LoadImage','TypesetTextPlate','LTXVImgToVideo','SamplerCustom','VAEDecode','VHS_VideoCombine'],
-    workflow:{href:'/workflows/ltx_i2v.api.json',repo:'workflows/ltx_i2v.api.json'},jobKinds:['inworld'],produces:'generated shot with the word in the world'},
+    workflow:{href:at('/workflows/ltx_i2v.api.json'),repo:'workflows/ltx_i2v.api.json'},jobKinds:['inworld'],produces:'generated shot with the word in the world'},
 ];
 
 export type StepStatus = {state:StepState;path:string;engineNote:string;seconds?:number;message?:string;progress?:number;job?:JobRecord;count?:number};
@@ -90,6 +95,12 @@ export function stepStatus(step:StepDef,p:Project,jobs:Map<string,JobRecord>,ctx
     case 'beats':
       if(ctx.hasBeats)return via({...base,state:'done',path:'ComfyUI',engineNote:ctx.beatsNote||'beat grid on the timeline'});
       return {...base,state:'idle',path:'—',engineNote:'no beats.json yet'};
+    case 'flow':
+      if(p.analysis.flow)return via({...base,state:'done',path:'ComfyUI',engineNote:'motion field · look → flow'});
+      return {...base,state:'idle',path:'—',engineNote:job?.status==='failed'?'failed':'not run · optional'};
+    case 'voice':
+      if(p.analysis.voice)return {...base,state:'done',path:'ComfyUI',engineNote:'voice field · look → voice'};
+      return {...base,state:job?.status==='failed'?'failed':'idle',path:job?.status==='failed'?'ComfyUI':'—',engineNote:job?.status==='failed'?'failed':'not run · optional'};
     case 'generate':{
       const shots=p.shots||[];const done=shots.filter(s=>s.status==='done');
       if(done.length)return {...base,state:'done',path:done.some(s=>/minimax/i.test(s.workflow))?'ComfyUI · remote':'ComfyUI',engineNote:`${done.length} shot${done.length>1?'s':''} · ${done[0].workflow}`,count:done.length};

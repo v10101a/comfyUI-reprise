@@ -6,6 +6,8 @@ declare const process: {env: Record<string,string|undefined>};
 const SERVER = process.env.TYPESET_SERVER ?? 'http://localhost:8787';
 
 export default defineConfig({
+  // Relative base: the same build serves at / (FastAPI :8787) and at /typeset/ inside ComfyUI.
+  base: './',
   plugins: [react()],
   server: {
     port: 5173,

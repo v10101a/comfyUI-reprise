@@ -71,9 +71,8 @@ export function StageGuides({renderer,project:p,frame,guides,selectedLine,onSele
   const s=W/Math.max(1,box.width);// one screen pixel in project px
   return <>
     {guides.occupancy&&<canvas ref={heat} className="guide-heat" aria-hidden="true"/>}
-    {guides.occupancy&&<span className="guide-caption">Subject · {p.analysis.occupancy?<><b>BiRefNet matte</b> via ComfyUI → occupancy grid</>:renderer?.occupancy?'fixture occupancy grid':renderer?.tracks?'fallback: track boxes':'no matte yet'}</span>}
     <svg ref={svg} className="stage-guides" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{['--px' as string]:s}}>
-      {surfaces.map(q=><g key={q.id} className={`g-wall ${q.sel?'sel':''}`}><polygon points={q.quad.map(p=>p.join(',')).join(' ')} style={{strokeWidth:s*1.2}}/><text x={q.quad[0][0]+s*6} y={q.quad[0][1]+s*16} style={{fontSize:s*10}}>▱ {q.label.toUpperCase()}</text></g>)}
+      {surfaces.map(q=><g key={q.id} className={`g-wall ${q.sel?'sel':''}`}><polygon points={q.quad.map(p=>p.join(',')).join(' ')} style={{strokeWidth:s*1.2}}/><title>{q.label}</title></g>)}
       {(guides.regions||guides.anchor)&&boxes.map(b=>{const sel=b.lineId===selectedLine;return <g key={b.key} className={`g-line ${sel?'sel':''} ${b.quiet?'quiet':''} p-${b.placement} ${guides.regions?'':'nobox'}`}>
         {b.pad&&<rect className="g-pad" x={b.pad.x} y={b.pad.y} width={b.pad.w} height={b.pad.h} style={{strokeWidth:s}}/>}
         {b.hint&&sel&&<><line className="g-leader" x1={b.hint.x} y1={b.hint.y} x2={b.x+b.w/2} y2={b.y+b.h/2} style={{strokeWidth:s}}/><circle className="g-hint" cx={b.hint.x} cy={b.hint.y} r={s*4} style={{strokeWidth:s*1.2}}/></>}
@@ -82,8 +81,8 @@ export function StageGuides({renderer,project:p,frame,guides,selectedLine,onSele
           onPointerMove={e=>{const d=drag.current;if(!d)return;const [x,y]=toPx(e);onDragLine(d.lineId,d.placement,(x-d.x0)/W,(y-d.y0)/H,'move');}}
           onPointerUp={e=>{const d=drag.current;drag.current=null;(e.currentTarget as Element).releasePointerCapture(e.pointerId);if(d){const [x,y]=toPx(e);onDragLine(d.lineId,d.placement,(x-d.x0)/W,(y-d.y0)/H,'end');}}}/>
         {sel&&[[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]].map(([x,y],i)=><rect key={i} className="g-knob" x={x-s*3} y={y-s*3} width={s*6} height={s*6}/>)}
-        <text className="g-label" x={b.x} y={b.placement==='anchor'?b.y+b.h+s*13:b.y-s*5} style={{fontSize:s*9.5}}>{b.role&&!['line','hud'].includes(b.role)?`${b.role==='sat'?'SATELLITE':b.role.toUpperCase()} · `:''}{b.placement==='anchor'?'HUD':b.placement.toUpperCase()}{b.auto?` · AUTO${b.coverage!=null?` · ${Math.round(b.coverage*100)}% covered`:''}`:' · FIXED'}{b.front?' · PROMOTED TO FRONT':''}{b.quiet?' · QUIET':''}</text>
-        {b.anchorPt&&guides.anchor&&<g className="g-anchor"><line x1={b.anchorPt[0]-s*10} y1={b.anchorPt[1]} x2={b.anchorPt[0]+s*10} y2={b.anchorPt[1]} style={{strokeWidth:s}}/><line x1={b.anchorPt[0]} y1={b.anchorPt[1]-s*10} x2={b.anchorPt[0]} y2={b.anchorPt[1]+s*10} style={{strokeWidth:s}}/><circle cx={b.anchorPt[0]} cy={b.anchorPt[1]} r={s*6} style={{strokeWidth:s}}/><text x={b.anchorPt[0]+s*9} y={b.anchorPt[1]+s*14} style={{fontSize:s*9}}>HEAD · {(p.words.find(w=>w.lineId===b.lineId)?.anchor?.trackId||'person0').toUpperCase()}</text></g>}
+        <title>{b.role&&!['line','hud'].includes(b.role)?`${b.role==='sat'?'SATELLITE':b.role.toUpperCase()} · `:''}{b.placement==='anchor'?'HUD':b.placement.toUpperCase()}{b.auto?` · AUTO${b.coverage!=null?` · ${Math.round(b.coverage*100)}% covered`:''}`:' · FIXED'}{b.front?' · PROMOTED TO FRONT':''}{b.quiet?' · QUIET':''}</title>
+        {b.anchorPt&&guides.anchor&&<g className="g-anchor"><line x1={b.anchorPt[0]-s*10} y1={b.anchorPt[1]} x2={b.anchorPt[0]+s*10} y2={b.anchorPt[1]} style={{strokeWidth:s}}/><line x1={b.anchorPt[0]} y1={b.anchorPt[1]-s*10} x2={b.anchorPt[0]} y2={b.anchorPt[1]+s*10} style={{strokeWidth:s}}/><circle cx={b.anchorPt[0]} cy={b.anchorPt[1]} r={s*6} style={{strokeWidth:s}}/><title>head · {p.words.find(w=>w.lineId===b.lineId)?.anchor?.trackId||'person0'}</title></g>}
       </g>;})}
     </svg>
   </>;

@@ -1,0 +1,49 @@
+{
+  "1": {
+    "class_type": "LoadAudio",
+    "inputs": {
+      "audio": "typeset/test/song.wav"
+    },
+    "_meta": {
+      "title": "Song"
+    }
+  },
+  "2": {
+    "class_type": "TypesetVoiceField",
+    "inputs": {
+      "audio": [
+        "1",
+        0
+      ],
+      "fps": 24.0,
+      "separator": "hdemucs",
+      "duration": 0.0,
+      "device": "cpu"
+    },
+    "_meta": {
+      "title": "Voice field"
+    }
+  },
+  "3": {
+    "class_type": "SaveTextFile",
+    "inputs": {
+      "text": [
+        "2",
+        0
+      ],
+      "filename_prefix": "typeset/voice",
+      "extension": "json",
+      "pretty_json": false
+    }
+  },
+  "4": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "2",
+        1
+      ],
+      "filename_prefix": "typeset/voice"
+    }
+  }
+}

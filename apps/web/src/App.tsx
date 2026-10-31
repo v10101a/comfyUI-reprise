@@ -1,8 +1,9 @@
 import {useState,useEffect,useRef,lazy,Suspense} from 'react';
-import type {Project,Layer,RendererAPI,Aspect,CropData,LookId} from './types';
+import type {Project,Layer,RendererAPI,Aspect,CropData,LookId,GradeId} from './types';
 import {request,getProject,assetUrl} from './api';
 import {StageRenderer,loadFonts} from './renderer';
 import {reframeProject} from './reframe';
+import {migrateProject,setGrade} from './looks';
 import Showcase from './Showcase';
 // Lazy: the #/render export route must never import studio code (a studio edit/syntax error must not break exports).
 const Studio=lazy(()=>import('./studio/Studio'));
@@ -15,7 +16,10 @@ function RenderPage(){
     const api:RendererAPI={frames:0,ready:Promise.resolve(),renderFrame:async(_frame:number)=>{throw new Error('Renderer is not ready');}};
     api.ready=(async()=>{let p:Project=src?await request<Project>(src):id==='sample'?await request<Project>('/sample/project.json'):await getProject(id,server);if(!alive)return;
       // look=<id> previews a look without saving it (verification / contact sheets).
-      const lookId=query.get('look');if(lookId)p={...p,look:lookId==='default'?null:{id:lookId as LookId}};
+      // grade=<id>[:amount] and overrides=<json> (look params) likewise; the grade is migrated before the look swap.
+      p=migrateProject(p);const lookId=query.get('look');if(lookId)p={...p,look:lookId==='default'?null:{id:lookId as LookId}};
+      const gradeQ=query.get('grade');if(gradeQ){const [gid,amt]=gradeQ.split(':');p=setGrade(p,gid as GradeId,amt?Number(amt):1);}
+      const ovQ=query.get('overrides');if(ovQ&&p.look)p={...p,look:{...p.look,overrides:JSON.parse(ovQ)}};
       let crop:CropData|undefined;
       if(aspect){await loadFonts();const tracks=p.analysis.tracks?await fetch(assetUrl(p,p.analysis.tracks,server)).then(r=>r.json()):undefined;({project:p,crop}=reframeProject(p,aspect,tracks));}
       renderer=new StageRenderer(p,server);renderer.crop=crop;renderer.autoPlace=query.get('autoplace')!=='0';await renderer.load(layer);api.frames=Math.round(p.duration*p.fps);api.renderFrame=async frame=>{await renderer!.render(canvas.current!,frame,layer);};document.documentElement.classList.add('render-mode');document.body.classList.add('render-mode');await api.renderFrame(0);})();

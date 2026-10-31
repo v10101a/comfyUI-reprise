@@ -21,17 +21,23 @@
  *   heroWordId(project, lineId): string | undefined        (Word.hero, lineMeta.heroWordId, else longest non-stopword)
  *   wordIsShown(project, word): boolean                    (false if hidden by Word.hidden, lineMeta.hidden or look.quiet)
  *
+ *   v4 grade split: project.grade (GRADES, gradeOf, setGrade, setGradeAmount, migrateProject, legacyGrade) is the
+ *   footage treatment; looks are text only. LOOK_PARAMS / lookParam / setLookParam: the editable param set.
+ *
  *   Fonts: FONTS (family, file, license) — registered by the renderer's loadFonts(); the UI may list them in a
  *   font menu. All are bundled OFL/Apache faces in public/fonts with their license files.
  * ─────────────────────────────────────────────────────────────────────────────────────────────────
  */
-import type {Project,Word,Look,LookId,LookRef,LineMeta} from './types';
+import type {Project,Word,Look,LookId,LookRef,LineMeta,Grade,GradeId,GradeRef} from './types';
+import PRESET_FILE from './look-presets.json';
 
 export type LookInfo = {id:LookId;name:string;description:string;swatch:string[];fonts:string[]};
+export type GradeInfo = {id:GradeId;name:string};
 
-/** Bundled faces. `weight` is the CSS weight range of the file (variable fonts cover a range). */
+/** Bundled faces. `weight` is the CSS weight range of the file (variable fonts cover a range).
+ *  Bracket-free file names (Inter-Variable.ttf etc. are byte-identical copies of the upstream [axes] files). */
 export const FONTS:{family:string;file:string;weight:string;style?:string;license:string}[] = [
-  {family:'Inter',file:'Inter[opsz,wght].ttf',weight:'100 900',license:'OFL-Inter.txt'},
+  {family:'Inter',file:'Inter-Variable.ttf',weight:'100 900',license:'OFL-Inter.txt'},
   {family:'Space Mono',file:'SpaceMono-Regular.ttf',weight:'400',license:'OFL-SpaceMono.txt'},
   {family:'Space Mono',file:'SpaceMono-Bold.ttf',weight:'700',license:'OFL-SpaceMono.txt'},
   {family:'Anton',file:'Anton-Regular.ttf',weight:'400',license:'OFL-Anton.txt'},
@@ -43,64 +49,173 @@ export const FONTS:{family:string;file:string;weight:string;style?:string;licens
   {family:'Rubik Wet Paint',file:'RubikWetPaint-Regular.ttf',weight:'400',license:'OFL-RubikWetPaint.txt'},
   {family:'Archivo Narrow',file:'ArchivoNarrow[wght].ttf',weight:'400 700',license:'OFL-ArchivoNarrow.txt'},
   {family:'Silkscreen',file:'Silkscreen-Regular.ttf',weight:'400',license:'OFL-Silkscreen.txt'},
+  {family:'IBM Plex Mono',file:'IBMPlexMono-Regular.ttf',weight:'400',license:'OFL-IBMPlexMono.txt'},
+  {family:'IBM Plex Mono',file:'IBMPlexMono-Italic.ttf',weight:'400',style:'italic',license:'OFL-IBMPlexMono.txt'},
+  {family:'IBM Plex Mono',file:'IBMPlexMono-Medium.ttf',weight:'500',license:'OFL-IBMPlexMono.txt'},
+  {family:'IBM Plex Mono',file:'IBMPlexMono-MediumItalic.ttf',weight:'500',style:'italic',license:'OFL-IBMPlexMono.txt'},
+  {family:'IBM Plex Mono',file:'IBMPlexMono-SemiBold.ttf',weight:'600 700',license:'OFL-IBMPlexMono.txt'},
+  {family:'Newsreader',file:'Newsreader-Variable.ttf',weight:'200 800',license:'OFL-Newsreader.txt'},
+  {family:'Newsreader',file:'Newsreader-Italic-Variable.ttf',weight:'200 800',style:'italic',license:'OFL-Newsreader.txt'},
+  {family:'Sixtyfour',file:'Sixtyfour-Variable.ttf',weight:'400',license:'OFL-Sixtyfour.txt'},
 ];
+/** One entry per family, for font menus. */
+export const FONT_FAMILIES=[...new Set(FONTS.map(f=>f.family))];
 
-/** Presets live in code: tuning one restyles every project that references it. Names describe rules, not artists. */
-const PRESETS:Record<Exclude<LookId,'default'>,Look> = {
-  'red-glow':{id:'red-glow',
-    font:{hero:'Anton',body:'Anton',heroCase:'upper',bodyCase:'upper'},
-    palette:{text:'#ff1a1a',accent:'#ff4a3d',shadow:'#1a0000'},
-    texture:'grain',optics:{glow:.8,grain:.25},grade:{tint:'#0f6f7a',amount:.35},layout:'hero',quiet:'none',heroFill:'text'},
-  'lens-bound':{id:'lens-bound',
-    font:{hero:'Inter',body:'Inter',heroWeight:900,bodyWeight:600,heroCase:'upper',bodyCase:'lower'},
-    palette:{text:'#ffffff',accent:'#7dff4a',shadow:'#000000'},
-    texture:'grain',optics:{motionBlur:.7,chroma:.4,lensWarp:.5,grain:.18,glow:.25,extrude:1},grade:{tint:'#1b3a2a',amount:.18},layout:'line',quiet:'none',heroFill:'text'},
-  'paper-cut':{id:'paper-cut',
-    font:{hero:'Big Shoulders Display',body:'Big Shoulders Display',heroWeight:900,bodyWeight:800,heroCase:'upper',bodyCase:'upper'},
-    palette:{text:'#efe6d2',accent:'#c8243a',shadow:'#000000',card:'#c8243a'},
-    texture:'paper',optics:{grain:.35},grade:{tint:'#c8243a',amount:.16},layout:'hero',quiet:'none',heroFill:'accent'},
-  'ticker':{id:'ticker',
-    font:{hero:'Silkscreen',body:'Silkscreen',heroCase:'upper',bodyCase:'upper'},
-    palette:{text:'#ffb000',accent:'#ff6a00',shadow:'#140a00'},
-    texture:'grain',optics:{glow:.6,grain:.15},grade:{tint:'#2a1a00',amount:.2},layout:'line',quiet:'none',heroFill:'text',motion:'marquee'},
-  'flat-card':{id:'flat-card',
-    font:{hero:'Archivo Narrow',body:'Archivo Narrow',heroWeight:500,bodyWeight:500,heroCase:'lower',bodyCase:'lower'},
-    palette:{text:'#101010',accent:'#101010',card:'#2f6bff'},
-    texture:'none',optics:{blur:.3},grade:null,layout:'line',quiet:'none',heroFill:'text'},
-  // Pastel synth-pop over light footage: white type outlined in pink (like a sticker / the cartoon stars), a soft
-  // periwinkle halo for legibility on pale skies, pixel hooks, lowercase italic serif verses that can ride MIDI note
-  // blocks (Word.note), sparkles on hook words. Footage ungraded.
-  'dreamy':{id:'dreamy',
-    font:{hero:'Silkscreen',body:'Instrument Serif',heroCase:'upper',bodyCase:'lower',bodyStyle:'italic'},
-    palette:{text:'#ffffff',accent:'#ffffff',shadow:'#5a5fd6',outline:'#f0a3dc',note:'#8d93f2'},outlineWidth:.07,halo:.55,
-    texture:'none',optics:{glow:.3,sparkle:.8},grade:null,layout:'line',quiet:'none',heroFill:'text',verse:{max:.075,keepPosition:true}},
-};
+/**
+ * Presets live in look-presets.json (shared with the ComfyUI node pack's TypesetLook / TypesetGrade nodes; a node
+ * test keeps the two copies equal). Tuning one restyles every project that references it. Names describe rules,
+ * not artists. Looks are text only (type, colour, layout, motion, text optics); the footage treatment is a Grade.
+ */
+type PresetFile={looks:Record<string,LookInfo&{look:Look;hidden?:boolean}>;grades:Record<string,{name:string;grade:Grade}>};
+const FILE=PRESET_FILE as unknown as PresetFile;
+const PRESETS=Object.fromEntries(Object.entries(FILE.looks).map(([id,x])=>[id,x.look])) as Record<Exclude<LookId,'default'>,Look>;
+export const GRADE_PRESETS=Object.fromEntries(Object.entries(FILE.grades).map(([id,x])=>[id,x.grade])) as Record<GradeId,Grade>;
 
-export const LOOKS:LookInfo[] = [
+/** Every look, including hidden ones kept only for older projects (red-glow). */
+export const ALL_LOOKS:LookInfo[] = [
   {id:'default',name:'Default',description:'Your per-word styles, no art direction.',swatch:['#f4f1ea','#d8ff62'],fonts:['Inter']},
-  {id:'red-glow',name:'Red glow',description:'One condensed red face with bloom over cyan-graded footage; one huge word per line behind the subject.',swatch:['#ff1a1a','#0f6f7a','#1a0000'],fonts:['Anton']},
-  {id:'lens-bound',name:'Lens-bound',description:'White heavy grotesk hooks, lowercase green verses; text takes the camera’s blur, fringing and lens bend.',swatch:['#ffffff','#7dff4a','#000000'],fonts:['Inter Black']},
-  {id:'paper-cut',name:'Paper cut',description:'Rough condensed cut-paper type in cream, black and red with paper grain; hero words bleed off the frame.',swatch:['#efe6d2','#c8243a','#000000'],fonts:['Big Shoulders Display']},
-  {id:'ticker',name:'Ticker',description:'Amber LED dot type that scrolls through its box and glows like a sign.',swatch:['#ffb000','#ff6a00','#140a00'],fonts:['Silkscreen']},
-  {id:'flat-card',name:'Flat card',description:'Lowercase narrow sans on one flat colour card, slightly soft.',swatch:['#2f6bff','#101010','#ffffff'],fonts:['Archivo Narrow']},
-  {id:'dreamy',name:'Dreamy',description:'Pastel synth-pop: white pixel hooks outlined in pink with sparkles, lowercase italic serif verses on periwinkle note blocks.',swatch:['#ffffff','#f0a3dc','#8d93f2','#5a5fd6'],fonts:['Silkscreen','Instrument Serif Italic']},
+  ...Object.entries(FILE.looks).map(([id,{name,description,swatch,fonts}])=>({id:id as LookId,name,description,swatch,fonts})),
 ];
+/** The picker's looks, in order. */
+export const LOOKS:LookInfo[] = ALL_LOOKS.filter(l=>!FILE.looks[l.id]?.hidden);
+export const GRADES:GradeInfo[] = Object.entries(FILE.grades).map(([id,{name}])=>({id:id as GradeId,name}));
 
 export function lookOf(p:Pick<Project,'look'>):Look|undefined{
   const ref=p.look;if(!ref||ref.id==='default')return undefined;
   const base=PRESETS[ref.id as Exclude<LookId,'default'>];if(!base)return undefined;
   const o=ref.overrides||{};
-  return {...base,...o,id:base.id,font:{...base.font,...(o.font||{})},palette:{...base.palette,...(o.palette||{})},optics:{...base.optics,...(o.optics||{})},
-    grade:o.grade===undefined?base.grade:o.grade};
+  const font={...base.font,...(o.font||{})};
+  // A swapped face drops the preset's weight for it (the preset weight may not exist in the new face).
+  if(o.font?.hero&&o.font.hero!==base.font.hero&&o.font.heroWeight===undefined)delete font.heroWeight;
+  if(o.font?.body&&o.font.body!==base.font.body&&o.font.bodyWeight===undefined)delete font.bodyWeight;
+  return {...base,...o,id:base.id,font,palette:{...base.palette,...(o.palette||{})},optics:{...base.optics,...(o.optics||{})}};
+}
+
+// ---------- grade (footage) ----------
+/** Pre-v4 footage treatment of each look (frozen copy of the old presets' grade / mono / flash / optics.grain). */
+const LEGACY_FOOTAGE:Partial<Record<LookId,Grade>>={
+  'red-glow':{tint:{color:'#0f6f7a',amount:.35},grain:.25},
+  'lens-bound':{tint:{color:'#1b3a2a',amount:.18},grain:.18},
+  'paper-cut':{tint:{color:'#c8243a',amount:.16},grain:.35},
+  'ticker':{tint:{color:'#2a1a00',amount:.2},grain:.15},
+  'grey-noise':{tint:{color:'#c7c7c7',amount:.45},grain:.4},
+  'night-code':{tint:{color:'#1b1f11',amount:.35},grain:.2},
+  'xerox':{mono:{contrast:1.75,crush:.06,keep:{hue:338,width:42,minSat:.38}},flash:{amount:.55,decay:.2,beat:.35},grain:.6},
+};
+const canon=(g:Grade)=>JSON.stringify({tint:g.tint||null,mono:g.mono||null,flash:g.flash||null,grain:g.grain||0,halation:g.halation||0});
+/**
+ * The grade a pre-v4 project's look implied (its old footage treatment, including old look overrides of grade /
+ * mono / flash / optics.grain), as a GradeRef: a named grade when one matches exactly, else 'film' with explicit
+ * overrides. Renders are unchanged by construction.
+ */
+export function legacyGrade(ref:LookRef|null|undefined):GradeRef|null{
+  if(!ref||ref.id==='default')return null;
+  const o=(ref.overrides||{}) as Partial<Look>;const g:Grade={...(LEGACY_FOOTAGE[ref.id]||{})};
+  if(o.grade!==undefined)g.tint=o.grade?{color:o.grade.tint,amount:o.grade.amount}:null;
+  if(o.mono!==undefined)g.mono=o.mono;if(o.flash!==undefined)g.flash=o.flash;if(o.optics?.grain!==undefined)g.grain=o.optics.grain;
+  const key=canon(g);if(key===canon({}))return null;
+  const named=(Object.keys(GRADE_PRESETS) as GradeId[]).find(id=>canon(GRADE_PRESETS[id])===key);
+  if(named)return {id:named,amount:1};
+  return {id:'film',amount:1,overrides:{tint:g.tint||null,mono:g.mono||null,flash:g.flash||null,grain:g.grain||0,halation:0}};
+}
+/** The project's grade ref: project.grade when present (null = none), else the legacy grade of its look. */
+export function gradeRefOf(p:Pick<Project,'look'|'grade'>):GradeRef|null{return p.grade===undefined?legacyGrade(p.look):p.grade;}
+/** Resolved footage grade with `amount` (0..1) applied: tint, grain, halation and flash scale; mono cross-fades
+ *  (monoMix). undefined = ungraded footage. */
+export function gradeOf(p:Pick<Project,'look'|'grade'>):(Grade&{monoMix:number})|undefined{
+  const ref=gradeRefOf(p);if(!ref||ref.id==='none'&&!ref.overrides)return undefined;
+  const base=GRADE_PRESETS[ref.id]||{};const g:Grade={...base,...(ref.overrides||{})};const a=Math.max(0,Math.min(1,ref.amount??1));
+  if(a<=0)return undefined;
+  if(a===1)return {...g,monoMix:1};
+  return {tint:g.tint?{color:g.tint.color,amount:g.tint.amount*a}:null,mono:g.mono,flash:g.flash?{...g.flash,amount:g.flash.amount*a}:null,
+    grain:(g.grain||0)*a,halation:(g.halation||0)*a,monoMix:a};
+}
+/** Load-time migration (v4 grade split): a project without a `grade` key gets the grade its look used to imply, so
+ *  switching looks later keeps the footage as it was. Pure; returns the same object when nothing changes. */
+export function migrateProject<T extends Project>(p:T):T{
+  if(p.grade!==undefined)return p;
+  return {...p,grade:legacyGrade(p.look)};
+}
+export function setGrade(p:Project,id:GradeId|null,amount?:number):Project{
+  if(!id||id==='none')return {...p,grade:null};
+  return {...p,grade:{id,amount:amount??p.grade?.amount??1,overrides:null}};
+}
+export function setGradeAmount(p:Project,amount:number):Project{
+  const ref=gradeRefOf(p);if(!ref)return p;return {...p,grade:{...ref,amount}};
+}
+
+// ---------- editable look params (studio panel + TypesetLook node) ----------
+/**
+ * The shared, small parameter set a look exposes for editing. Each param reads from the resolved Look and writes
+ * into project.look.overrides (deep-merged into palette / font / optics). Same keys as the TypesetLook node's widgets.
+ */
+export type LookParamKey='ink'|'accent'|'card'|'cards'|'font'|'body'|'case'|'layout'|'scale'|'motion'|'glow'|'flicker'|'drips'|'light'|'outline'|'halo'|'soft'|'tubes'|'scroll'|'hooks'|'flow'|'voice';
+export type LookParam={key:LookParamKey;label:string;kind:'color'|'font'|'select'|'range'|'toggle';options?:string[];min?:number;max?:number;step?:number};
+export const LOOK_PARAMS:LookParam[]=[
+  {key:'ink',label:'Ink',kind:'color'},
+  {key:'accent',label:'Accent',kind:'color'},
+  {key:'card',label:'Card',kind:'color'},
+  {key:'font',label:'Font',kind:'font'},
+  {key:'body',label:'Body',kind:'font'},
+  {key:'case',label:'Case',kind:'select',options:['upper','lower','as-is']},
+  {key:'layout',label:'Layout',kind:'select',options:['line','hero','stack','constellation']},
+  {key:'scale',label:'Size',kind:'range',min:.4,max:2,step:.05},
+  {key:'motion',label:'Motion',kind:'range',min:0,max:2,step:.05},
+  {key:'glow',label:'Glow',kind:'range',min:0,max:1,step:.05},
+  {key:'flicker',label:'Flicker',kind:'range',min:0,max:1,step:.05},
+  {key:'drips',label:'Drips',kind:'range',min:0,max:1,step:.05},
+  {key:'light',label:'Light',kind:'range',min:0,max:1,step:.05},
+  {key:'outline',label:'Outline',kind:'range',min:0,max:.15,step:.005},
+  {key:'halo',label:'Halo',kind:'range',min:0,max:1,step:.05},
+  {key:'soft',label:'Soft',kind:'range',min:0,max:1,step:.05},
+  {key:'cards',label:'Cards',kind:'toggle'},
+  {key:'tubes',label:'Tubes',kind:'toggle'},
+  {key:'scroll',label:'Scroll',kind:'toggle'},
+  {key:'hooks',label:'Hooks',kind:'toggle'},
+  {key:'flow',label:'Flow',kind:'range',min:0,max:1,step:.05},
+  {key:'voice',label:'Voice',kind:'range',min:0,max:1,step:.05},
+];
+export function lookParam(look:Look,key:LookParamKey):string|number|boolean{
+  switch(key){
+    case 'ink':return look.palette.text;case 'accent':return look.palette.accent;case 'card':return look.palette.card||'#2f6bff';
+    case 'cards':return !!look.card;case 'font':return look.font.hero;case 'body':return look.font.body;
+    case 'case':return look.font.heroCase||'as-is';case 'layout':return look.layout;case 'scale':return look.scale??1;
+    case 'motion':return look.intensity??1;case 'glow':return look.optics.glow||0;case 'outline':return look.outlineWidth??0;
+    case 'halo':return look.halo??0;case 'soft':return look.optics.blur||0;case 'scroll':return look.motion==='marquee';
+    case 'hooks':return look.quiet==='hooks-only';case 'flicker':return look.flicker??0;case 'drips':return look.drips??.5;case 'light':return look.light??.8;case 'tubes':return look.finish==='neon';
+    case 'flow':return look.fields?.motion??0;case 'voice':return look.fields?.voice??0;
+  }
+}
+type Overrides=NonNullable<LookRef['overrides']>;
+/** The overrides patch for one param (deep parts merged by setLookOverrides). */
+export function lookParamPatch(look:Look,key:LookParamKey,v:string|number|boolean):Overrides{
+  switch(key){
+    case 'ink':return {palette:{text:String(v)} as Look['palette']};case 'accent':return {palette:{accent:String(v)} as Look['palette']};
+    case 'card':return {palette:{card:String(v)} as Look['palette'],card:true};case 'cards':return v&&!look.palette.card?{card:true,palette:{card:'#2f6bff'} as Look['palette']}:{card:!!v};
+    case 'font':return {font:{hero:String(v)} as Look['font']};case 'body':return {font:{body:String(v)} as Look['font']};
+    case 'case':return {font:{heroCase:v,bodyCase:v} as Look['font']};case 'layout':return {layout:v as Look['layout']};
+    case 'scale':return {scale:Number(v)};case 'motion':return {intensity:Number(v)};case 'glow':return {optics:{glow:Number(v)}};
+    case 'outline':return {outlineWidth:Number(v)};case 'halo':return {halo:Number(v)};case 'soft':return {optics:{blur:Number(v)}};
+    case 'scroll':return {motion:v?'marquee':'none'};case 'hooks':return {quiet:v?'hooks-only':'none'};
+    case 'flicker':return {flicker:Number(v)};case 'drips':return {drips:Number(v)};case 'light':return {light:Number(v)};case 'tubes':return {finish:v?'neon':null};
+    case 'flow':return {fields:{...look.fields,motion:Number(v)}};case 'voice':return {fields:{...look.fields,voice:Number(v)}};
+  }
+}
+export function setLookParam(p:Project,key:LookParamKey,v:string|number|boolean):Project{
+  const look=lookOf(p);if(!look)return p;return setLookOverrides(p,lookParamPatch(look,key,v));
 }
 
 // ---------- mutators (pure) ----------
 export function setLook(p:Project,id:LookId|null,overrides?:LookRef['overrides']):Project{
   return {...p,look:!id||id==='default'?null:{id,overrides:overrides??null}};
 }
+/** Merge into project.look.overrides (palette / font / optics / verse merge one level deep). */
 export function setLookOverrides(p:Project,partial:NonNullable<LookRef['overrides']>):Project{
-  if(!p.look)return p;return {...p,look:{...p.look,overrides:{...(p.look.overrides||{}),...partial}}};
+  if(!p.look)return p;const cur=p.look.overrides||{};const out:Record<string,unknown>={...cur,...partial};
+  for(const k of ['palette','font','optics','verse'] as const)if(partial[k]&&cur[k])out[k]={...cur[k],...partial[k]};
+  return {...p,look:{...p.look,overrides:out as NonNullable<LookRef['overrides']>}};
 }
+export function clearLookOverrides(p:Project):Project{return p.look?{...p,look:{...p.look,overrides:null}}:p;}
 export function setLineMeta(p:Project,lineId:string,patch:{[K in keyof LineMeta]?:LineMeta[K]|null}):Project{
   const cur={...(p.lineMeta?.[lineId]||{})} as Record<string,unknown>;
   for(const [k,v] of Object.entries(patch)){if(v===null||v===undefined)delete cur[k];else cur[k]=v;}
