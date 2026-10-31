@@ -134,6 +134,22 @@ class AnalysisNodeTests(unittest.TestCase):
             cv.resolve_focus([{"start": 0, "end": 1, "box": [0, 0, 1, 1], "mode": "zoomy"}], 24, 48)
         self.assertEqual(cv.resolve_focus([{"start": 5, "end": 6, "box": [0, 0, 1, 1]}], 24, 48), [])
 
+    def test_mask_tracks_in_chunks_equal_single_pass(self):
+        tr = importlib.import_module("typeset_nodes.tracks").MaskToTracks()
+        N, H, W = 50, 72, 128
+        rng = np.random.default_rng(3)
+        mask = torch.zeros(N, H, W)
+        for t in range(N):
+            if 20 <= t < 23:
+                continue  # a gap: smoothing must not bleed across it
+            x = int(10 + t * 1.5 + rng.integers(0, 4))
+            mask[t, 15:70, x:x + 25] = 1
+        whole = json.loads(tr.run(24.0, "person", mask=mask, smooth=5)[0])
+        parts = [json.loads(tr.run(24.0, "person", mask=mask[a:a + 16], smooth=5, frame_offset=a, raw=True)[0])
+                 for a in range(0, N, 16)]
+        merged = cv.merge_track_chunks(parts, 24.0, N, smooth=5)
+        self.assertEqual(json.dumps(merged, sort_keys=True), json.dumps(whole, sort_keys=True))
+
     def test_beat_grid_on_click_track(self):
         sr, bpm, dur = 22050, 120, 16.0
         y = np.zeros(int(sr * dur), np.float32)

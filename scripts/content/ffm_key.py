@@ -17,7 +17,7 @@ def biggest(m, min_area):
     for i in range(1, n):
         if st[i, 4] > min_area: keep[lab == i] = 255
     return keep
-cap = cv2.VideoCapture(src); ref = None; ref_area = 0; f = 0; areas = []
+cap = cv2.VideoCapture(src); ref = None; ref_area = 0; f = 0; areas = []; good = []
 while True:
     ok, im = cap.read()
     if not ok: break
@@ -27,20 +27,23 @@ while True:
     mode = "outline"
     for r in (15, 25, 41):   # outline gaps: try larger closings before falling back
         sil = biggest(fill(cv2.morphologyEx(pink, cv2.MORPH_CLOSE, K(r))), 15000); a = int(sil.sum() / 255)
-        if ref is None or .9 * ref_area <= a <= 1.12 * ref_area: break
+        T = np.median(good[-90:]) if good else None   # running median of accepted outline areas (the stars keep their size)
+        if T is None or .85 * T <= a <= 1.18 * T: break
     else:
         # Still broken: white pixels near the last good silhouette (anchored, so bloom cannot grow it) + the outline.
         white = ((s < 45) & (v > 205)).astype(np.uint8) * 255
         cand = (white & cv2.dilate(ref, K(9))) | cv2.dilate(pink, K(5)) | (sil if a <= 1.12 * ref_area else 0)
         sil = cv2.morphologyEx(biggest(fill(cv2.morphologyEx(cand, cv2.MORPH_CLOSE, K(11))), 15000), cv2.MORPH_OPEN, K(7))
+        sil &= cv2.dilate(ref, K(25))   # stay near the stars: piano-roll labels / bloom elsewhere never join
         a = int(sil.sum() / 255); mode = "white"
         if a < .85 * ref_area: sil, a, mode = ref.copy(), ref_area, "hold"
     areas.append((f, a, mode))
-    if mode == "outline": ref, ref_area = sil, a
+    if mode == "outline": ref, ref_area = sil, a; good.append(a)
     if probe: continue
     alpha = cv2.GaussianBlur(cv2.erode(sil, K(3)), (5, 5), 0)
     cv2.imwrite(str(out / f"mask_{f:05d}.png"), alpha)
     rgba = np.dstack([im, alpha]); cv2.imwrite(str(out / f"fg_{f:05d}.png"), rgba)
 from collections import Counter
 print("frames", f, Counter(m for *_, m in areas), "area min/med/max", min(a for _, a, _ in areas), int(np.median([a for _, a, _ in areas])), max(a for _, a, _ in areas))
+import json; json.dump(areas, open(str(out / "areas.json"), "w"))
 for x in areas[::60]: print(x)

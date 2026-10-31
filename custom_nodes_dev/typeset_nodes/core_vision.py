@@ -545,6 +545,52 @@ def render_crop(img: np.ndarray, fr: dict, out_w: int, out_h: int) -> np.ndarray
                           borderMode=cv2.BORDER_CONSTANT, borderValue=0)
 
 
+# ---- subject tracks (tracks.json, SCHEMA §2) from mattes processed in chunks -------------------
+
+def _moving_average(values, window):
+    if window <= 1 or len(values) < 2:
+        return list(values)
+    half = window // 2
+    out = []
+    for i in range(len(values)):
+        lo, hi = max(0, i - half), min(len(values), i + half + 1)
+        out.append(float(np.mean(values[lo:hi])))
+    return out
+
+
+def smooth_track_frames(frames: list[dict], smooth: int) -> list[dict]:
+    """Moving average of cx/cy over runs of consecutive frames (gaps don't bleed), then round to 4 dp.
+    `frames` hold raw (unrounded) anchors; bbox is left as is."""
+    frames = [dict(fr) for fr in sorted(frames, key=lambda fr: fr["f"])]
+    if smooth and smooth > 1 and frames:
+        runs, cur = [], [frames[0]]
+        for fr in frames[1:]:
+            if fr["f"] == cur[-1]["f"] + 1:
+                cur.append(fr)
+            else:
+                runs.append(cur)
+                cur = [fr]
+        runs.append(cur)
+        for run in runs:
+            cxs = _moving_average([r["cx"] for r in run], smooth)
+            cys = _moving_average([r["cy"] for r in run], smooth)
+            for r, cx, cy in zip(run, cxs, cys):
+                r["cx"], r["cy"] = cx, cy
+    for fr in frames:
+        fr["cx"], fr["cy"] = round(fr["cx"], 4), round(fr["cy"], 4)
+    return frames
+
+
+def merge_track_chunks(chunks: list[dict], fps: float, total_frames: int, smooth: int = 3) -> dict:
+    """Join raw tracks.json documents of consecutive chunks (MaskToTracks with raw=True and frame_offset)
+    into one tracks.json, smoothing across chunk boundaries exactly as a single pass would."""
+    first = next((t for c in chunks for t in c.get("tracks", [])), None) or {"id": "person0", "label": "person"}
+    frames = [fr for c in chunks for t in c.get("tracks", []) if t.get("id") == first["id"] for fr in t.get("frames", [])]
+    return {"fps": float(fps), "frames": int(total_frames),
+            "tracks": [{"id": first["id"], "label": first.get("label", "person"),
+                        "frames": smooth_track_frames(frames, smooth)}]}
+
+
 def alignment_score(key_img: np.ndarray, key_mask: np.ndarray, cur: np.ndarray, H: np.ndarray, scale: float = 0.5) -> float:
     """Quality metric for a pose: correlation between the key-frame region and the current frame warped
     back into the key frame with H (1 = perfect). Only key-region pixels that land inside the frame count."""

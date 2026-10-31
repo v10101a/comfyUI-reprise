@@ -63,6 +63,19 @@ The camera aims mostly at the head with some of the body. It holds still inside 
 
 On the demo song, Whisper hears "say the soul" and the output reads "Hold on, say it slow".
 
+### Align Lyrics: forced alignment of known lyrics to singing (`TypesetAlignLyrics`)
+`AUDIO` + lyrics → `words_json` (SCHEMA words.json, `source: "forced-align"`), a `preview` IMAGE (vocal stem waveform, mel spectrogram, onset ticks, word boxes), the `vocals` stem as AUDIO, and `word_count`. This is acoustic alignment, not speech recognition: the lyrics are taken as given, and the audio only decides *when* each word is sung.
+1. **Vocals.** `HDEMUCS_HIGH_MUSDB_PLUS` (torchaudio) separates the stem in 10 s chunks with a cross-fade, so memory stays bounded for any song length. Alternatively, connect your own stem to `vocals`.
+2. **Text.** NFKD romanization, lowercase, punctuation stripped, numbers spelled out (`24/7` → twenty four seven), `[chorus]` tags dropped.
+3. **Align.** `MMS_FA` (wav2vec2 CTC aligner) emissions in 20 s chunks with context, then `torchaudio.functional.forced_align`. A `*` token between lines absorbs ad-libs and backing vocals.
+4. **Refine.** Each start snaps to the nearest vocal onset within ±`onset_window_ms` (band-limited 150–4000 Hz median flux). Ends extend over the sustained note until the voice drops or the next word starts.
+4b. **Re-anchor (no hand-set windows).** A long intro or an echo of another line can win the global pass, leaving the voice that really sings the line to blanks. The tell is a line whose last word would hold longer than 2.5 s, with no quiet gap on the stem, before the next line starts. Such a line is re-aligned in a window ending at the next line, and the window edge moves inward while the first word sits on it. Ends are capped at 2.5 s, and quiet runs are stem RMS below 0.1 × p95 for ≥ 0.3 s.
+5. **Flag.** `confidence` is the mean CTC posterior. `lowConfidence` is set below `min_confidence`, when a word had no alignable letters (interpolated), or when it was pinned to the `vocal_start` edge.
+
+`separator` and `aligner` are registries (`SEPARATORS`, `ALIGNERS` in `lyric_align.py`), so another model can be dropped in. Weights (HDemucs 319 MB, MMS_FA 1.2 GB) download to `~/.cache/torch/hub` on first use. The default `unload_models` frees them afterwards. CPU peak RSS is about 4.4 GB, and a 32 s song takes about 10 s on an M5 Max.
+
+On the demo songs, measured against independent anchors: hero line starts vs pYIN voiced entries are 695 ms → 43 ms mean absolute error, and the Fall For Me hook vs ear-confirmed times is within 31–69 ms. See `docs/comfy-integration.md`. `vocal_start`/`vocal_end` are optional overrides; Fall For Me now aligns the same without them.
+
 ### Utilities
 | Node | In → Out |
 |---|---|

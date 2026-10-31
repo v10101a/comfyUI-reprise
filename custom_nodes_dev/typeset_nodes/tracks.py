@@ -19,6 +19,19 @@ import cv2
 import numpy as np
 import torch
 
+try:
+    from . import core_vision as cv
+except ImportError:  # loaded as a standalone file (tests, scripts)
+    import importlib.util as _ilu
+    import sys as _sys
+    from pathlib import Path as _Path
+    cv = _sys.modules.get("typeset_core_vision")
+    if cv is None:
+        _spec = _ilu.spec_from_file_location("typeset_core_vision", _Path(__file__).with_name("core_vision.py"))
+        cv = _ilu.module_from_spec(_spec)
+        _sys.modules["typeset_core_vision"] = cv
+        _spec.loader.exec_module(cv)
+
 
 def _largest_component(binary: np.ndarray):
     """Return (x, y, w, h, area) in pixels for the largest 8-connected blob of a uint8 mask, or None."""
@@ -29,17 +42,6 @@ def _largest_component(binary: np.ndarray):
     idx = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
     x, y, w, h, area = (int(v) for v in stats[idx])
     return x, y, w, h, area
-
-
-def _moving_average(values, window):
-    if window <= 1 or len(values) < 2:
-        return list(values)
-    half = window // 2
-    out = []
-    for i in range(len(values)):
-        lo, hi = max(0, i - half), min(len(values), i + half + 1)
-        out.append(float(np.mean(values[lo:hi])))
-    return out
 
 
 class MaskToTracks:
@@ -61,6 +63,10 @@ class MaskToTracks:
                                    "tooltip": "Moving-average window (frames) applied to cx/cy only. 0/1 = off."}),
                 "max_side": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 32,
                                      "tooltip": "Masks are downscaled to this long side before blob analysis (speed)."}),
+                "frame_offset": ("INT", {"default": 0, "min": 0, "max": 10000000,
+                                         "tooltip": "Index of this batch's first frame in the clip (chunked processing)."}),
+                "raw": ("BOOLEAN", {"default": False, "tooltip":
+                        "Skip smoothing/rounding of cx/cy so chunks can be merged later (core_vision.merge_track_chunks)."}),
             },
         }
 
@@ -70,7 +76,7 @@ class MaskToTracks:
     CATEGORY = "typeset/analysis"
 
     def run(self, fps, label, mask=None, images=None, track_id="person0", threshold=0.5,
-            min_area=0.002, smooth=3, max_side=512):
+            min_area=0.002, smooth=3, max_side=512, frame_offset=0, raw=False):
         if mask is None and images is None:
             raise ValueError("MaskToTracks needs a `mask` or `images` input")
         if mask is None:
@@ -103,27 +109,11 @@ class MaskToTracks:
             nx, ny, nw, nh = x / w, y / h, bw / w, bh / h
             cx = nx + nw / 2.0
             cy = ny + nh * 0.10 if label.lower() == "person" else ny + nh / 2.0
-            frames.append({"f": f, "bbox": [round(nx, 4), round(ny, 4), round(nw, 4), round(nh, 4)],
+            frames.append({"f": f + int(frame_offset), "bbox": [round(nx, 4), round(ny, 4), round(nw, 4), round(nh, 4)],
                            "cx": cx, "cy": cy})
 
-        if smooth and smooth > 1 and frames:
-            # smooth only across runs of consecutive frames so gaps don't bleed
-            runs, cur = [], [frames[0]]
-            for fr in frames[1:]:
-                if fr["f"] == cur[-1]["f"] + 1:
-                    cur.append(fr)
-                else:
-                    runs.append(cur)
-                    cur = [fr]
-            runs.append(cur)
-            for run in runs:
-                cxs = _moving_average([r["cx"] for r in run], smooth)
-                cys = _moving_average([r["cy"] for r in run], smooth)
-                for r, cx, cy in zip(run, cxs, cys):
-                    r["cx"], r["cy"] = cx, cy
-        for fr in frames:
-            fr["cx"], fr["cy"] = round(fr["cx"], 4), round(fr["cy"], 4)
-
+        if not raw:
+            frames = cv.smooth_track_frames(frames, smooth)
         out = {
             "fps": float(fps),
             "frames": int(B),

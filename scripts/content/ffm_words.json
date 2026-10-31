@@ -1,0 +1,367 @@
+{
+ "_about": "Fall For Me word timing table. Video seconds (= master - 126.857). Verse/tag times are hand-merged estimates, to be replaced by acoustic alignment (outputs/align/ffm_words.json via ffm_spec.py --times). Hook times are final (user-approved). Tag lyric 'for me' is unconfirmed (raw Whisper: 'don't leave'). layout.until: seconds, a lineId (until it starts), or null = end of video.",
+ "offset": 126.857,
+ "duration": 45.733,
+ "words": [
+  {
+   "id": "v1_0",
+   "lineId": "v1",
+   "role": "verse",
+   "text": "stop",
+   "start": 17.22,
+   "end": 17.55,
+   "note": "a3"
+  },
+  {
+   "id": "v1_1",
+   "lineId": "v1",
+   "role": "verse",
+   "text": "thinking",
+   "start": 17.56,
+   "end": 18.25,
+   "note": "a3"
+  },
+  {
+   "id": "v2_0",
+   "lineId": "v2",
+   "role": "verse",
+   "text": "for",
+   "start": 18.34,
+   "end": 18.85,
+   "note": "a3"
+  },
+  {
+   "id": "v2_1",
+   "lineId": "v2",
+   "role": "verse",
+   "text": "a",
+   "start": 18.89,
+   "end": 19.15,
+   "note": "bb3"
+  },
+  {
+   "id": "v2_2",
+   "lineId": "v2",
+   "role": "verse",
+   "text": "minute",
+   "start": 19.22,
+   "end": 20.84,
+   "note": "bb3"
+  },
+  {
+   "id": "v3_0",
+   "lineId": "v3",
+   "role": "verse",
+   "text": "the",
+   "start": 21.62,
+   "end": 22.2,
+   "note": "d3"
+  },
+  {
+   "id": "v3_1",
+   "lineId": "v3",
+   "role": "verse",
+   "text": "stars",
+   "start": 22.4,
+   "end": 22.6,
+   "note": "d3"
+  },
+  {
+   "id": "v3_2",
+   "lineId": "v3",
+   "role": "verse",
+   "text": "are",
+   "start": 22.62,
+   "end": 22.86,
+   "note": "g3"
+  },
+  {
+   "id": "v3_3",
+   "lineId": "v3",
+   "role": "verse",
+   "text": "blinking",
+   "start": 22.88,
+   "end": 23.94,
+   "note": "g3"
+  },
+  {
+   "id": "v4_0",
+   "lineId": "v4",
+   "role": "verse",
+   "text": "they're",
+   "start": 23.98,
+   "end": 24.5,
+   "note": "bb3"
+  },
+  {
+   "id": "v4_1",
+   "lineId": "v4",
+   "role": "verse",
+   "text": "waiting",
+   "start": 24.58,
+   "end": 25.45,
+   "note": "bb3"
+  },
+  {
+   "id": "v5_0",
+   "lineId": "v5",
+   "role": "verse",
+   "text": "come",
+   "start": 25.55,
+   "end": 26.15,
+   "note": "f4"
+  },
+  {
+   "id": "v5_1",
+   "lineId": "v5",
+   "role": "verse",
+   "text": "to",
+   "start": 26.2,
+   "end": 26.45,
+   "note": "f4"
+  },
+  {
+   "id": "v5_2",
+   "lineId": "v5",
+   "role": "verse",
+   "text": "me",
+   "start": 26.5,
+   "end": 27.1,
+   "note": "d4"
+  },
+  {
+   "id": "v6_0",
+   "lineId": "v6",
+   "role": "verse",
+   "text": "a",
+   "start": 27.38,
+   "end": 27.62,
+   "note": "d3"
+  },
+  {
+   "id": "v6_1",
+   "lineId": "v6",
+   "role": "verse",
+   "text": "little",
+   "start": 27.66,
+   "end": 27.92,
+   "note": "f3"
+  },
+  {
+   "id": "v6_2",
+   "lineId": "v6",
+   "role": "verse",
+   "text": "silly",
+   "start": 27.94,
+   "end": 28.5,
+   "note": "d3"
+  },
+  {
+   "id": "v7_0",
+   "lineId": "v7",
+   "role": "verse",
+   "text": "i'll",
+   "start": 28.55,
+   "end": 29.3,
+   "note": "d3"
+  },
+  {
+   "id": "v7_1",
+   "lineId": "v7",
+   "role": "verse",
+   "text": "make",
+   "start": 29.38,
+   "end": 29.58,
+   "note": "g3"
+  },
+  {
+   "id": "v7_2",
+   "lineId": "v7",
+   "role": "verse",
+   "text": "you",
+   "start": 29.6,
+   "end": 29.76,
+   "note": "g3"
+  },
+  {
+   "id": "v7_3",
+   "lineId": "v7",
+   "role": "verse",
+   "text": "happy",
+   "start": 29.78,
+   "end": 30.2,
+   "note": "g3"
+  },
+  {
+   "id": "v8_0",
+   "lineId": "v8",
+   "role": "verse",
+   "text": "i'll",
+   "start": 30.27,
+   "end": 30.65,
+   "note": "g3"
+  },
+  {
+   "id": "v8_1",
+   "lineId": "v8",
+   "role": "verse",
+   "text": "make",
+   "start": 30.71,
+   "end": 31.0,
+   "note": "bb3"
+  },
+  {
+   "id": "v8_2",
+   "lineId": "v8",
+   "role": "verse",
+   "text": "you",
+   "start": 31.06,
+   "end": 31.5,
+   "note": "g3"
+  },
+  {
+   "id": "h1a_0",
+   "lineId": "h1a",
+   "role": "hook",
+   "text": "fall",
+   "start": 31.6,
+   "end": 32.0
+  },
+  {
+   "id": "h1b_0",
+   "lineId": "h1b",
+   "role": "hook",
+   "text": "for",
+   "start": 32.04,
+   "end": 32.35
+  },
+  {
+   "id": "h1b_1",
+   "lineId": "h1b",
+   "role": "hook",
+   "text": "me",
+   "start": 32.38,
+   "end": 33.1
+  },
+  {
+   "id": "h2a_0",
+   "lineId": "h2a",
+   "role": "hook",
+   "text": "fall",
+   "start": 34.84,
+   "end": 35.3
+  },
+  {
+   "id": "h2b_0",
+   "lineId": "h2b",
+   "role": "hook",
+   "text": "for",
+   "start": 35.32,
+   "end": 35.9
+  },
+  {
+   "id": "h2b_1",
+   "lineId": "h2b",
+   "role": "hook",
+   "text": "me",
+   "start": 36.0,
+   "end": 36.6
+  },
+  {
+   "id": "t1_0",
+   "lineId": "t1",
+   "role": "tag",
+   "text": "for",
+   "start": 38.18,
+   "end": 39.0
+  },
+  {
+   "id": "t1_1",
+   "lineId": "t1",
+   "role": "tag",
+   "text": "me",
+   "start": 39.1,
+   "end": 40.0
+  },
+  {
+   "id": "t2_0",
+   "lineId": "t2",
+   "role": "tag",
+   "text": "for",
+   "start": 41.88,
+   "end": 42.35
+  },
+  {
+   "id": "t2_1",
+   "lineId": "t2",
+   "role": "tag",
+   "text": "me",
+   "start": 42.4,
+   "end": 43.6
+  }
+ ],
+ "layout": {
+  "v1": {
+   "group": "A",
+   "y": 0.74
+  },
+  "v2": {
+   "group": "A",
+   "y": 0.875
+  },
+  "v3": {
+   "group": "B",
+   "y": 0.125
+  },
+  "v4": {
+   "group": "B",
+   "y": 0.255
+  },
+  "v5": {
+   "group": "C",
+   "y": 0.74
+  },
+  "v6": {
+   "group": "C",
+   "y": 0.875
+  },
+  "v7": {
+   "group": "D",
+   "y": 0.125
+  },
+  "v8": {
+   "group": "D",
+   "y": 0.255
+  },
+  "h1a": {
+   "y": 0.315,
+   "size": 0.165,
+   "until": 34.7
+  },
+  "h1b": {
+   "y": 0.8,
+   "size": 0.135,
+   "until": 34.7
+  },
+  "h2a": {
+   "y": 0.315,
+   "size": 0.165,
+   "until": null
+  },
+  "h2b": {
+   "y": 0.8,
+   "size": 0.135,
+   "until": "t1"
+  },
+  "t1": {
+   "y": 0.8,
+   "size": 0.135,
+   "until": "t2"
+  },
+  "t2": {
+   "y": 0.8,
+   "size": 0.135,
+   "until": null
+  }
+ }
+}

@@ -1,134 +1,120 @@
 # Typeset
 
-A local lyric and kinetic typography editor built on ComfyUI. Correct word timings, animate text, place it behind a subject or follow a mask-derived anchor, and export a finished video plus transparent text overlays. Optional LTX shots animate a lettering plate.
+**Words that live in the scene.** Typeset puts lyrics and kinetic type *inside* a shot. Words pass behind the person, get painted onto walls that the camera moves past, and lock to a head as a HUD. It then restyles the result with one-click looks and re-lays it out for 9:16. Video models can't spell reliably, so every letter is real type. It is composited into the scene, stays editable, and renders identically in preview and export. ComfyUI does the perception (words, matte, tracking, reframe), and the generative models make the footage.
 
-**Early working prototype.** This repository previously explored a beat-synced editor named Recut. Typeset is the current project. Code is [MIT](LICENSE); bundled fonts retain their OFL licenses, and model weights have their own terms.
+![Typeset hero: stencil lyrics tracked onto a wall she walks past, then HOLD | ON on the plaza walls behind her](docs/media/hero.gif)
 
-## Open the showcase and editor
+*Hero clip (22 s). The footage and song are generated (MiniMax H3, ACE-Step). Every word on screen was placed in the Typeset studio.*
 
-On this development machine, the **showcase is http://127.0.0.1:5174** and the **editor is http://127.0.0.1:5174/#/studio**. The API is **http://127.0.0.1:8787**. Another application owns port 5173. ComfyUI's separate node editor is **http://127.0.0.1:8188**.
+| Wall-tracked stencil, occluded by her | Head-anchored HUD + count-in | Words behind the subject |
+|---|---|---|
+| ![wall](docs/media/hero_wall.jpg) | ![hud](docs/media/hero_hud.jpg) | ![drop](docs/media/hero_drop.jpg) |
 
-The showcase is the hackathon entry point: three playable outputs, starting-image/source-footage comparisons, a transparent text preview, six image studies, downloads, and links into the live editor. **Presentation mode** expands the player; use **← / →** to switch scenes and **Esc** to leave. The page includes a 90-second walkthrough near the bottom. All preview media is bundled locally and labeled as recorded output; viewing it does not submit a generation job.
+## Features
 
-The showcase and sample editor also run without the API or GPU. To serve the production build for a presentation:
+- **Behind the subject.** A per-frame BiRefNet matte puts any line behind the person. An occupancy grid steers auto-placement toward the space that stays readable.
+- **Wall tracking.** Draw a quad on one frame. The `TypesetPlanarTrack` node tracks it through the shot as a per-frame homography, with the subject masked out, and stops at cuts. Text is warped onto the plane as *paint* (eroded stencil), *flat* or *neon*.
+- **HUD.** Labels and leader lines anchor to the subject's head, using the matte's tracked region rather than face recognition.
+- **Lyrics that land when they're sung.** Acoustic forced alignment of your lyric sheet to the vocal: `TypesetAlignLyrics` isolates the vocal with HDemucs and aligns with MMS_FA, falling back to faster-whisper. It also builds a beat grid, and a small text lead (`timing.leadMs`) gives perceived sync. Every word's timing, placement, motion and style stays editable on the timeline.
+- **Looks.** One field restyles a whole video, covering font, palette, case, texture, grade and optics (glow, chroma, lens warp, extrusion). There are seven presets: `lens-bound`, `red-glow`, `paper-cut`, `ticker`, `flat-card`, `dreamy` and `default`. Placement, tracking and timing don't change.
+- **9:16 reframe.** A subject-following crop with re-layout: off-crop walls become title rows, hero words keep off the face, and text keeps a 6% edge margin. *Focus regions* can keep a wide element in the crop by panning across it or zooming out.
+- **Generated word shots (`generate/inworld`).** A frame of your shot goes to Qwen-Image-Edit (or FLUX.2 Klein), which writes the word into the scene. MiniMax H3 then animates it, and the shot is attached to the timeline. The hero's LOUDER sign was made this way: the edit spells it, and the video model lights and moves it.
+- **Deterministic export.** Each frame is rendered as a function of time, so preview equals export. Outputs are an H.264 MP4 with audio, plus ProRes 4444 and VP9-alpha text-only overlays.
+- **ComfyUI node pack and workflows.** `custom_nodes_dev/typeset_nodes` and the API graphs in `workflows/` run the analysis. The studio's pipeline panel shows each workflow that ran, with its status and timing.
 
-```bash
-cd apps/web
-npm run build
-npm run preview -- --host 127.0.0.1 --port 5180
+![Same clip, three looks: lens-bound, red-glow, paper-cut](docs/media/three_looks.jpg)
+
+| One-click 9:16 (drop · LOUDER pan · ending) | Generated word shot | Own footage: *Fall For Me* |
+|---|---|---|
+| ![9:16](docs/media/vertical_9x16.jpg) | ![louder](docs/media/hero_louder.jpg) | ![ffm](docs/media/ffm.jpg) |
+
+## How it works
+
+```
+footage + song ──► ComfyUI (via comfy-sdk)                         ──► Typeset studio (React)        ──► export
+                   align.api.json     forced alignment (HDemucs+MMS_FA)      timeline, placements, looks       Chromium frame capture
+                   matte.api.json     BiRefNet → RGBA cutouts + tracks   deterministic canvas renderer     → ffmpeg MP4 / ProRes 4444 /
+                   occupancy.api.json where text stays readable          (background → behind text →         VP9-alpha
+                   surface_track      planar homography per frame         subject → front text)
+                   reframe.api.json   smoothed 9:16 crop
+                   beats.api.json     beat / downbeat grid
+                   generate/inworld   Qwen-Image-Edit / Klein → MiniMax H3 (remote GPU)
 ```
 
-Open the URL printed by Vite. Saved clips and sample editing work in this mode; project uploads, analysis, generation, and export require the API. With the API available, “Open this clip in studio” opens the corresponding saved project; otherwise the showcase links to the offline sample. The current live setup remains on 5174.
+The FastAPI server (`server/`) stores projects, submits the workflows and runs jobs. The studio (`apps/web/`) does all text rendering in the browser. The same renderer drives export, which is why preview and export match.
 
-To start a new session from this checkout:
+## Node pack
 
-```bash
-scripts/comfy.sh start
-scripts/dev.sh
-```
+`custom_nodes_dev/typeset_nodes` (V1 node API):
 
-`dev.sh` starts the API on 8787 and finds a free web port from 5173 through 5180; it prints the selected URL. Ctrl-C stops its children. It does not stop existing services or launch duplicate API instances. The helper assumes the dependencies below are installed, as they are on this machine.
-
-1. Click **Open studio** and explore the **offline sample**: play/scrub, select a word, change its motion, placement, timing, and style. Sample edits save in your browser.
-2. In **Media**, create a project and upload footage or audio. Add optional lyrics/script, then **Transcribe audio**.
-3. For behind-subject or anchored text, use **Isolate subject**. These features need a foreground matte/track.
-4. Correct the words and timing. Position and anchor controls apply to the selected line; style/preset controls edit the selected word.
-5. **Export** a finished MP4, ProRes 4444 text overlay, and VP9-alpha text overlay. Download links appear when the job completes. Use Chrome/Chromium for alpha preview.
-
-An exportable **Typeset — typography demo** project is also installed in this workspace (Media → Projects). To create another from the bundled sample, run `server/.venv/bin/python scripts/import_sample.py` while the API is running.
-
-Generation is local, with no Comfy Cloud credits for the supplied workflows. Paid API/partner nodes are separate and are not part of this pipeline.
-
-## What works and what is experimental
-
-| Component | Current behavior |
+| Node | Does |
 |---|---|
-| Editor | Timeline, waveform, playback/frame stepping, editable words/timings/styles, pop/karaoke/typewriter/HUD presets, offline sample, project save/upload and job feedback |
-| Rendering | Deterministic closed-form motion; background → behind text → subject → front text; frame-addressed browser renderer used by export |
-| Analysis | faster-whisper timestamps, optional heuristic lyric matching, BiRefNet foreground cutouts, largest-mask-component anchors |
-| Export | Chromium frame capture → ffmpeg H.264 MP4, ProRes 4444 MOV, VP9-alpha WebM; per-job output directories |
-| LTX | Plate-to-video generation; a separate first/last-frame morph workflow is available in ComfyUI |
-| Lettering plate | **Deterministic neon/chrome font compositor**, not yet a generative scene-editing model in the production path |
-| Model experiments | LTX 2B resolutions/upscaler, 13B GGUF, lettering I2V/morph, image-model rendering/editing comparisons; see evaluation notes |
+| `WhisperWords` | audio (+ optional lyrics) → word timestamps JSON (faster-whisper, CPU int8) |
+| `TypesetAlignLyrics` | acoustic forced alignment of a lyric sheet to the vocal (HDemucs stem + MMS_FA; Whisper fallback) |
+| `TypesetBeatGrid`, `AudioBeatMarkers` | beats / downbeats / sections JSON |
+| `MaskToTracks` | matte batch → per-frame subject region (anchor for behind/HUD text) |
+| `TypesetOccupancyGrid` | matte batch → where text stays readable + heatmap |
+| `TypesetPlanarTrack` | image batch + quad (+ subject mask) → per-frame corners |
+| `TypesetReframeCrop` | tracks / mask + aspect → smoothed crop |
+| `TypesetLoadImageSequence`, `SaveTextFile`, `TextToMask` | I/O helpers; text → mask with bundled OFL fonts |
 
-Mask anchors are not face recognition, identity tracking, or perspective/surface tracking. Lyric matching is not acoustic forced alignment. Review singing and multi-person footage carefully. Generated letters can drift; exact captions use rendered fonts. A transparent text-only export is unoccluded: reproducing behind-subject placement in another editor also requires the foreground layer.
+The production graphs are in `workflows/*.api.json`, each with an `.inputs.json` sidecar. `workflows/showcase/typeset_analysis.json` is the analysis graph for opening in the ComfyUI editor.
 
-## Dependencies and setup
+## Setup
 
-The current installation uses Python 3.12, Node/npm (pnpm lockfile included), ffmpeg/ffprobe, and Chromium from Playwright. ComfyUI and models live **outside this repository**, at `~/ComfyUI`; cloning this repository does not install them.
-
-For app dependencies on a new checkout:
+Requirements: Python 3.12, Node/npm, ffmpeg/ffprobe, and a ComfyUI install (by default `~/ComfyUI`). The analysis path runs locally on Apple Silicon. Generated shots (MiniMax H3) run on a remote NVIDIA ComfyUI; ours was an RTX 4090.
 
 ```bash
+# app
 python3.12 -m venv server/.venv
 server/.venv/bin/python -m pip install -r server/requirements.txt
 server/.venv/bin/python -m playwright install chromium
-cd apps/web
-npm install
-npm run build
+(cd apps/web && npm install)
+
+# ComfyUI: link the node pack; also install ComfyUI-RMBG (BiRefNet) and VideoHelperSuite
+ln -s "$PWD/custom_nodes_dev/typeset_nodes" ~/ComfyUI/custom_nodes/typeset_nodes
+~/ComfyUI/.venv/bin/python -m pip install -r custom_nodes_dev/typeset_nodes/requirements.txt
+
+# run
+scripts/comfy.sh start   # ComfyUI + comfy-api-proxy
+scripts/dev.sh           # API on :8787 + studio (prints the URL; studio at /#/studio)
 ```
 
-Install ComfyUI separately, its `comfy-sdk`/`comfy-api-proxy`, required model files, and the custom node dependencies. Follow [Comfy integration setup](docs/comfy-integration.md) rather than installing every experiment model. ffmpeg defaults to `/opt/homebrew/bin/ffmpeg`; configure `FFMPEG` and `FFPROBE` on other systems. See [server settings](docs/server.md).
+The studio opens with an offline sample, which needs no GPU or API. Projects, analysis, generation and export need the API and ComfyUI. Model downloads and the custom-node dependencies are covered in [docs/comfy-integration.md](docs/comfy-integration.md). The remote-GPU setup for generated shots is in [docs/remote-comfy.md](docs/remote-comfy.md), and API settings (ports, `FFMPEG`, CORS) are in [docs/server.md](docs/server.md).
 
-For separate terminals (use the same web port in each):
+## Models and licences
 
-```bash
-# API
-TYPESET_WEB_URL=http://127.0.0.1:5174 \
-TYPESET_CORS_ORIGINS=http://127.0.0.1:5174,http://localhost:5174 \
-server/.venv/bin/python -m uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8787
+| Model | Used for | Licence |
+|---|---|---|
+| Whisper small via faster-whisper | fallback word timestamps (no lyric sheet) | MIT |
+| BiRefNet (lite) via ComfyUI-RMBG | subject matte | MIT |
+| Hybrid Demucs (`HDEMUCS_HIGH_MUSDB_PLUS`, torchaudio) | vocal stem for forced alignment | Demucs code MIT; see the torchaudio bundle docs for the weights |
+| MMS_FA (torchaudio wav2vec2 forced aligner) | word-level forced alignment | CC-BY-NC 4.0 (non-commercial) |
+| Qwen-Image-Edit-2511 | writing a word into a frame (`generate/inworld`) | Apache-2.0 |
+| FLUX.2 Klein 4B | alternative edit model for `generate/inworld` | Apache-2.0 |
+| MiniMax H3 (image-to-video, reference-to-video) | generated shots; the hero footage and character consistency | open weights, see the MiniMax H3 model card |
+| LTX-Video 2B 0.9.8 distilled (optional) | text-plate-to-video path | LTXV Open Weights License |
+| ACE-Step 1.5 | the hero's song (made for the demo, not used by the app) | Apache-2.0 |
 
-# Web, from apps/web
-npm run dev -- --host 127.0.0.1 --port 5174
-```
+Libraries: OpenCV (planar tracking), librosa (beats), ffmpeg and Playwright/Chromium (export). Bundled fonts are OFL, except Permanent Marker (Apache-2.0). Their licence files are in `apps/web/public/fonts/`. Check each model card before commercial use.
 
-## Remote GPU setup
+## Limits
 
-The Tailscale server at `100.104.17.103:8188` has an RTX 4090 with 24 GB VRAM, but only about 3.6 GB free disk space. Its Krea2 pipeline is verified. Keep LTX video generation on the Mac, where the complete model and encoder are already installed. A standalone no-download helper connects Krea image generation on the GPU host to LTX animation on the Mac:
+- The HUD anchors to the matte's tracked region. It is not face recognition or identity tracking, so review multi-person shots.
+- Forced alignment needs the lyric sheet. Without one, timing comes from Whisper, and sung lines can need a nudge.
+- Surface tracking is planar, which suits walls and signs but not cloth or curved surfaces.
+- Generated word shots depend on the edit model spelling the word right. Check the frame before animating.
+- Text-only (alpha) exports are unoccluded. To reproduce behind-subject placement in another editor, also export the matte.
 
-```bash
-server/.venv/bin/python scripts/render_available.py
-# Or reuse one of the existing plates:
-server/.venv/bin/python scripts/render_available.py \
-  --plate docs/eval/current/krea2_remote_neon/krea2_00001_.png
-```
-
-Results and exact submitted graphs go to `outputs/available-models/<run>/`. This helper is separate from the editor's current deterministic lettering-plate default. Qwen also runs on the Mac; the six-case remote Qwen comparison is deferred.
-
-MiniMax H3 also passed a short remote test: 736×416, 56 frames, 39.33 seconds of execution, with a stereo AAC track. The target word remained readable in sampled frames. To generate both the image and video on the GPU host, use `server/.venv/bin/python scripts/render_available.py --video-model minimax`. The Mac only submits jobs and downloads outputs in this mode. [Remote connection details](docs/remote-comfy.md) and [model evaluation](docs/model-eval.md) cover the setup and limitations.
-
-The complete remote Krea → MiniMax command also passed at **1344×768 / 124 frames (5.17 seconds)**: roughly 18 seconds for the image and 191 seconds for video, including transfer. Run `server/.venv/bin/python scripts/render_available.py --video-model minimax --full-size` for that size. The result is available in **Media → Projects → Typeset — GPU neon demo**, or at `docs/eval/current/minimax_remote_neon_1344x768_124/typeset_minimax_00002-audio.mp4`. Sampled lettering remained readable; these two clips do not establish general text accuracy.
-
-Verified with the previously generated remote Krea NEON plate: local LTX completed in 34.98 seconds and produced a 49-frame, 512×320 H.264 video. The word remained readable in the first, middle, and final sampled frames. Local result: `outputs/available-models/9512602474fd/video/ltx_i2v_00003.mp4`; sampled frames: `outputs/available-models/9512602474fd/frames.jpg`. These are a short smoke test, not a quality benchmark.
-
-Remote SDK transport is ready when space permits completing remote LTX: [enable and rollback commands](docs/server.md#remote-comfyui). The [GPU install manifest](docs/gpu-host-install.md) is now marked deferred, not a prerequisite for using the project.
-
-## Learn ComfyUI or run a graph directly
-
-The [35–40 minute tutorial](docs/comfy-ltx-crash-course.md) covers nodes, local LTX video, image-to-video and the SDK. The browser is optional for API jobs:
-
-```bash
-export COMFY_BASE_URL=http://127.0.0.1:8189
-~/ComfyUI/.venv/bin/python scripts/run_local_workflow.py \
-  docs/workflows/smoke_test_api.json 3
-~/ComfyUI/.venv/bin/python scripts/run_local_workflow.py \
-  docs/workflows/ltx_t2v_api.json 12 --seed-node 10 --seed -1
-```
-
-The second graph uses LTX-Video 2B 0.9.8 distilled for 49 frames at 512×320. The original outputs remain in ComfyUI; downloaded copies go to `outputs/`. Keep `COMFY_BASE_URL` pointed to loopback for local execution.
-
-## Repository map
+## Repository
 
 | Path | Contents |
 |---|---|
-| `apps/web/` | React/Vite editor, Canvas renderer, sample and fonts |
-| `server/` | FastAPI service, project storage, jobs and exporter |
-| `custom_nodes_dev/typeset_nodes/` | Typeset ComfyUI node pack |
-| `workflows/` | Production API graphs and input/output sidecars |
-| `workflows/eval/`, `scripts/eval/` | Reproducible model experiments and download helpers |
-| `docs/model-eval.md`, `docs/eval/` | Measurements, contact sheets and sample outputs |
-| `docs/ARCHITECTURE.md`, `docs/SCHEMA.md` | Implementation structure and shared contracts |
-| `research/verified-assessment.md` | Prior art and realistic product differentiation |
-| `data/`, `outputs/` | Local projects/results, excluded from git |
+| `apps/web/` | Studio, renderer, looks, fonts |
+| `server/` | FastAPI service, projects, jobs, exporter, remote generation |
+| `custom_nodes_dev/typeset_nodes/` | ComfyUI node pack |
+| `workflows/` | Production API graphs and sidecars |
+| `docs/` | Architecture, schema, setup, the hero clip's making-of ([docs/HERO.md](docs/HERO.md)) |
+| `scripts/content/` | Scripts that produced the demo clips |
 
-The product hypothesis is easier correction, placement, and useful exports. Kinetic captions and text behind subjects already exist; Typeset does not claim to invent those effects. See the verified assessment for sources and competition context.
+Code is [MIT](LICENSE).

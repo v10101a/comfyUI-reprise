@@ -1,6 +1,8 @@
 """"Fall For Me" lyric video (TouchDesigner footage) through the live API.
 
-  server/.venv/bin/python scripts/content/ffm_project.py prep               # 30 fps working copy + synced audio cut
+  server/.venv/bin/python scripts/content/ffm_project.py prep               # 30 fps extended cut (ffm-6 + ffm-5) + synced audio
+  server/.venv/bin/python scripts/content/ffm_project.py remedia            # swap the project media to that cut
+  server/.venv/bin/python scripts/content/ffm_project.py matte <key_dir>    # install key matte + occupancy
   server/.venv/bin/python scripts/content/ffm_project.py create             # project + media + lyrics + words + matte
   server/.venv/bin/python scripts/content/ffm_project.py apply <spec.json>  # words/look/lineMeta from a spec, PUT
   server/.venv/bin/python scripts/content/ffm_project.py export [tag]       # composite MP4 -> outputs/ffm/
@@ -14,7 +16,11 @@ PIDF = OUT / "project_id.txt"; FF = "/opt/homebrew/bin/ffmpeg"
 SRC_VIDEO = "/Users/lh1783/Desktop/TD/0831/ffm-6.mov"
 SRC_SONG = "/Users/lh1783/Downloads/v10101a/fall for me master 2.wav"
 OFFSET = 126.857      # ffm-clip-1.wav cross-correlated against the master (FFT xcorr, re-checked: 126.8571 s)
-DUR = 37.1667         # 1115 frames at 30 fps (footage is 37.18 s at 60 fps)
+# v4 (extended): ffm-6 to 35.7 s, 0.5 s dissolve (centred on the beat at master 162.76) into ffm-5 from 28.33 s, which ends
+# just before ffm-5's own loop. ffm-6 loops back to its title at 36.2 s. The video ends on the phrase boundary at master
+# 172.6 s, before "don't leave a mark" (172.7 s).
+SRC_VIDEO2 = "/Users/lh1783/Desktop/TD/0831/ffm-5.mov"; JOIN = 35.7; JOIN_SRC2 = 28.33; XFADE = .5
+DUR = 45.7333         # 1372 frames at 30 fps
 LYRICS = """Stop thinking
 For a minute
 The stars are blinking
@@ -39,14 +45,36 @@ def wait(job, label):
 
 def prep():
     WORK.mkdir(parents=True, exist_ok=True)
-    subprocess.run([FF, "-v", "error", "-y", "-i", SRC_VIDEO, "-t", str(DUR), "-vf", "fps=30", "-an", "-c:v", "libx264", "-preset", "slow",
-                    "-crf", "16", "-g", "30", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(WORK / "ffm_30.mp4")], check=True)
+    fc = (f"[0:v]fps=30,settb=AVTB,setpts=PTS-STARTPTS[a];[1:v]fps=30,settb=AVTB,setpts=PTS-STARTPTS[b];"
+          f"[a][b]xfade=transition=fade:duration={XFADE}:offset={JOIN},trim=end_frame={round(DUR*30)},format=yuv420p[v]")
+    subprocess.run([FF, "-v", "error", "-y", "-t", "36.2", "-i", SRC_VIDEO, "-ss", str(JOIN_SRC2), "-t", "10.1", "-i", SRC_VIDEO2,
+                    "-filter_complex", fc, "-map", "[v]", "-an", "-c:v", "libx264", "-preset", "slow", "-crf", "16", "-g", "30",
+                    "-movflags", "+faststart", str(WORK / "ffm_ext_30.mp4")], check=True)
     subprocess.run([FF, "-v", "error", "-y", "-ss", str(OFFSET), "-t", str(DUR), "-i", SRC_SONG,
-                    "-af", "afade=t=in:d=0.03,afade=t=out:st=36.4:d=0.75", "-c:a", "pcm_s24le", str(WORK / "ffm_audio.wav")], check=True)
+                    "-af", f"afade=t=in:d=0.03,afade=t=out:st={DUR-.6:.2f}:d=0.6", "-c:a", "pcm_s24le", str(WORK / "ffm_ext_audio.wav")], check=True)
+
+def remedia():
+    """Swap the project's media to the extended cut (clears the matte; re-key + occupancy afterwards)."""
+    pid = PIDF.read_text().strip()
+    for kind, path, mime in [("video", WORK / "ffm_ext_30.mp4", "video/mp4"), ("audio", WORK / "ffm_ext_audio.wav", "audio/wav")]:
+        with path.open("rb") as fh: r = c.post(f"{API}/api/projects/{pid}/media", files={"file": (path.name, fh, mime)}, data={"kind": kind}); r.raise_for_status(); print(kind, r.json())
+
+def matte(key_dir):
+    """Install a key matte (fg_%05d.png) as analysis/matte/ (+ VP9-alpha fg.webm like server/app/media.py), then occupancy."""
+    pid = PIDF.read_text().strip(); d = ROOT / "data/projects" / pid / "analysis/matte"
+    if d.exists(): shutil.rmtree(d)
+    d.mkdir(parents=True)
+    for f in sorted(Path(key_dir).glob("fg_*.png")): shutil.copy(f, d / f.name)
+    subprocess.run([FF, "-v", "error", "-y", "-framerate", "30", "-start_number", "1", "-i", str(d / "fg_%05d.png"), "-c:v", "libvpx-vp9",
+                    "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", "-b:v", "0", "-crf", "30", "-row-mt", "1", "-deadline", "good", "-cpu-used", "4",
+                    "-r", "30", str(d / "fg.webm")], check=True)
+    p = c.get(f"{API}/api/projects/{pid}").json(); p["analysis"]["matte"] = "analysis/matte/"; c.put(f"{API}/api/projects/{pid}", json=p).raise_for_status()
+    q = httpx.get("http://127.0.0.1:8188/queue", timeout=10).json(); print("comfy queue", len(q["queue_running"]), len(q["queue_pending"]))
+    wait(c.post(f"{API}/api/projects/{pid}/analyze/occupancy").json(), "occupancy")
 
 def create():
     p = c.post(f"{API}/api/projects", json={"name": "Fall For Me — TD stars (lyric video)"}).json(); pid = p["id"]; PIDF.write_text(pid); print("project", pid)
-    for kind, path, mime in [("video", WORK / "ffm_30.mp4", "video/mp4"), ("audio", WORK / "ffm_audio.wav", "audio/wav")]:
+    for kind, path, mime in [("video", WORK / "ffm_ext_30.mp4", "video/mp4"), ("audio", WORK / "ffm_ext_audio.wav", "audio/wav")]:
         with path.open("rb") as fh: r = c.post(f"{API}/api/projects/{pid}/media", files={"file": (path.name, fh, mime)}, data={"kind": kind}); r.raise_for_status(); print(kind, r.json())
     p = c.get(f"{API}/api/projects/{pid}").json(); p["media"]["lyrics"] = LYRICS; c.put(f"{API}/api/projects/{pid}", json=p).raise_for_status()
     words()
@@ -61,7 +89,7 @@ def words():
 def apply(spec_path):
     pid = PIDF.read_text().strip(); spec = json.loads(Path(spec_path).read_text())
     p = c.get(f"{API}/api/projects/{pid}").json()
-    for k in ("style", "look", "lineMeta"):
+    for k in ("style", "look", "lineMeta", "timing"):
         if k in spec: p[k] = spec[k]
     p["words"] = [{"id": w.get("id") or f"w{i:02d}", "preset": "pop", "placement": "overlay", **w} for i, w in enumerate(spec["words"])]
     c.put(f"{API}/api/projects/{pid}", json=p).raise_for_status()
@@ -77,4 +105,4 @@ def export(tag="v"):
     subprocess.run([str(ROOT / "scripts/content/sheet.sh"), str(dst), str(OUT / f"iter/{tag}_sheet.jpg"), "16", "8", "270"], check=True)
 
 if __name__ == "__main__":
-    {"prep": prep, "create": create, "words": words, "apply": lambda: apply(sys.argv[2]), "export": lambda: export(*(sys.argv[2:3] or ["v"]))}[sys.argv[1]]()
+    {"prep": prep, "remedia": remedia, "matte": lambda: matte(sys.argv[2]), "create": create, "words": words, "apply": lambda: apply(sys.argv[2]), "export": lambda: export(*(sys.argv[2:3] or ["v"]))}[sys.argv[1]]()

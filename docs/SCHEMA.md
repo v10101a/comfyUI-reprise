@@ -73,7 +73,7 @@ type GenShot = {
 ### `analysis/words.json`
 ```json
 {
-  "source": "faster-whisper",       // or "aligned" when snapped to provided lyrics
+  "source": "faster-whisper",       // or "aligned" (Whisper snapped to lyrics) or "forced-align" (TypesetAlignLyrics)
   "model": "small",
   "language": "en",
   "words": [ { "text": "neon", "start": 1.02, "end": 1.31, "confidence": 0.93, "lineId": "l0" } ],
@@ -81,6 +81,7 @@ type GenShot = {
 }
 ```
 Rules: words sorted by start; `end > start`; lines = Whisper segments, or user lyrics lines when aligned.
+`forced-align` words may also carry `ctcStart` (raw CTC start), `onsetShift` (seconds moved to a vocal onset, or null), `lowConfidence` and `pinned` (no acoustic evidence: the word sat on the `vocal_start` edge). The doc has a `stats` object. Consumers ignore unknown fields.
 
 ### `analysis/tracks.json`
 ```json
@@ -122,6 +123,7 @@ Required workflows (W3):
 
 | file | purpose | inputs | outputs |
 |---|---|---|---|
+| `align.api.json` | known lyrics → word timings by forced alignment (HDemucs vocals → MMS_FA CTC → vocal onsets); the words job prefers it when `media.lyrics` is set | `audio` (comfy_input_path, 44.1 kHz stereo WAV), `lyrics`, `vocal_start`/`vocal_end` (float s, 0 = whole file), `onset_window_ms` (50), `device` ("cpu") | `words_json` (text), `preview` (image, optional) |
 | `words.api.json` | word timestamps (+ optional alignment to lyrics) | `audio` (comfy_input_path), `lyrics` (string, may be ""), `language` (string, "auto") | `words_json` (text) |
 | `matte.api.json` | person cutout per frame + tracks | `video`, `fps` | `fg_png` (image sequence), `tracks_json` (text) |
 | `text_plate.api.json` | deterministic neon/chrome lettering prototype on a frame (not generative image editing) | `frame` (comfy_input_path, PNG), `text` (string), `prompt` (string), `mask_png` (optional) | `plate` (image) |
@@ -241,7 +243,12 @@ Owner: R (renderer). Implements `research/kinetic-type-feature-brief.md` with th
 ### Project fields
 ```ts
 Project.look?: { id: LookId; overrides?: Partial<Omit<Look,'id'>> } | null;   // by reference; null/'default' = no look
-Project.lineMeta?: Record<lineId, { hook?: boolean; heroWordId?: string; hidden?: boolean }>;
+Project.lineMeta?: Record<lineId, { hook?: boolean; heroWordId?: string; hidden?: boolean; pinTiming?: boolean }>;
+Project.timing?: { leadMs?: number; vocalStart?: number };
+// leadMs: the renderer draws every word leadMs earlier (onset-exact text reads late; ~40 is a good value). Absent = 0,
+//   so existing projects render unchanged. Word times are never rewritten. Lines with lineMeta.pinTiming keep exact
+//   times (e.g. lines deliberately placed on shot cuts). Media seeks are unaffected.
+// vocalStart: seconds; the words job passes it to align.api.json so an instrumental intro can't attract the first line.
 Word.hero?: boolean;     // manual hero for the line (one per line)
 Word.hidden?: boolean;   // quiet: stays in the timeline, not drawn
 type LookId = 'default' | 'red-glow' | 'lens-bound' | 'paper-cut' | 'ticker' | 'flat-card';

@@ -1,6 +1,6 @@
 {
   "workflow": "matte.api.json",
-  "description": "BiRefNet lite RGBA cutouts and mask-derived subject anchor. Caller MUST normalize video to project dimensions and supplied fps before submission.",
+  "description": "BiRefNet lite RGBA cutouts and mask-derived subject anchor. Caller MUST normalize video to project dimensions and supplied fps before submission. Long clips: the server runs this once per chunk (frame_offset, raw=true, unload_model only on the last chunk) and merges tracks with core_vision.merge_track_chunks.",
   "inputs": {
     "video": {
       "node": "1",
@@ -12,6 +12,24 @@
       "field": "value",
       "kind": "float",
       "default": 24
+    },
+    "frame_offset": {
+      "node": "5",
+      "field": "frame_offset",
+      "kind": "int",
+      "default": 0
+    },
+    "raw_tracks": {
+      "node": "5",
+      "field": "raw",
+      "kind": "bool",
+      "default": false
+    },
+    "unload_model": {
+      "node": "2",
+      "field": "unload_model",
+      "kind": "bool",
+      "default": true
     }
   },
   "outputs": {

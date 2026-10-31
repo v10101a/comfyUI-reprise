@@ -1,0 +1,48 @@
+{
+  "1": {
+    "class_type": "LoadAudio",
+    "inputs": {
+      "audio": "typeset/test/song.wav"
+    }
+  },
+  "2": {
+    "class_type": "TypesetAlignLyrics",
+    "inputs": {
+      "audio": [
+        "1",
+        0
+      ],
+      "lyrics": "",
+      "separator": "hdemucs",
+      "aligner": "mms_fa",
+      "onset_window_ms": 50.0,
+      "min_confidence": 0.05,
+      "vocal_start": 0.0,
+      "vocal_end": 0.0,
+      "device": "cpu",
+      "unload_models": true
+    }
+  },
+  "3": {
+    "class_type": "SaveTextFile",
+    "inputs": {
+      "text": [
+        "2",
+        0
+      ],
+      "filename_prefix": "typeset/align",
+      "extension": "json",
+      "pretty_json": true
+    }
+  },
+  "4": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "2",
+        1
+      ],
+      "filename_prefix": "typeset/align"
+    }
+  }
+}

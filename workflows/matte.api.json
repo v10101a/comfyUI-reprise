@@ -55,7 +55,9 @@
         1
       ],
       "track_id": "person0",
-      "smooth": 3
+      "smooth": 3,
+      "frame_offset": 0,
+      "raw": false
     }
   },
   "6": {

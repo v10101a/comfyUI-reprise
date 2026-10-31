@@ -363,6 +363,13 @@ function drawSurfaceLine(ctx:CanvasRenderingContext2D,p:Project,line:Line,surfac
 }
 
 /** P0b cost cap: motion-blur sub-samples per frame (the brief's N). */
+const LED=new WeakMap<Project,Project>();
+/** Project view with word times shifted earlier by timing.leadMs (lines with lineMeta.pinTiming keep theirs). Memoized per project object. */
+export function withLead(p:Project):Project{
+  const ms=p.timing?.leadMs||0;if(!ms)return p;const hit=LED.get(p);if(hit)return hit;const d=ms/1000;
+  const out={...p,timing:{...p.timing,leadMs:0},words:p.words.map(w=>p.lineMeta?.[w.lineId]?.pinTiming?w:{...w,start:Math.max(0,w.start-d),end:Math.max(0,w.end-d)})};
+  LED.set(p,out);return out;
+}
 export const MOTION_BLUR_SAMPLES=6;
 
 export class StageRenderer {
@@ -404,8 +411,11 @@ export class StageRenderer {
   }
   private look(){return lookOf(this.project);}
   /** Drawable units for the current project state (cached on everything that affects layout). */
+  /** Word timing as drawn: the project with timing.leadMs applied (text leads the voice; media seeks are unaffected).
+   *  units/layout/renderWords all read this, so the studio overlay and the render agree. this.project is never swapped. */
+  timed():Project{return withLead(this.project);}
   units(ctx:CanvasRenderingContext2D):Line[]{
-    const p=this.project;const look=this.look();
+    const p=this.timed();const look=this.look();
     const sig=JSON.stringify([p.width,p.height,p.style,p.words,p.look,p.lineMeta,!!p.analysis.matte]);
     if(this.unitCache?.sig===sig)return this.unitCache.units;
     const units=look?lookUnits(ctx,p,look,!!p.analysis.matte):lines(ctx,p);
@@ -466,7 +476,7 @@ export class StageRenderer {
   /** Safe margins that survive the current look's lens warp (base fraction from each edge after warping). */
   private safeMargins(base:number):[number,number]{const p=this.project;return warpSafeMargins(p.width,p.height,(this.look()?.optics.lensWarp||0)*.35,base);}
   layout(ctx:CanvasRenderingContext2D):Map<string,LinePlacement>{
-    const p=this.project;
+    const p=this.timed();
     const sig=JSON.stringify([p.width,p.height,p.fps,p.style,p.words,p.look,p.lineMeta,this.autoPlace,this.occ().kind,!!this.crop]);
     if(this.plan?.sig===sig)return this.plan.map;
     const reqs:LineRequest[]=[];const rank=(l:Line)=>l.role==='hero'?0:l.role==='sat'?2:1;
@@ -490,7 +500,7 @@ export class StageRenderer {
   }
   /** Draw text units of one depth layer at time t (fractional frame `ft` for motion-blur sub-samples). */
   private renderWords(ctx:CanvasRenderingContext2D,t:number,frame:number,subset:'all'|'behind'|'front',blend:boolean,ft=frame){
-    const p=this.project;const plan=this.layout(ctx);const look=this.look();
+    const p=this.timed();const plan=this.layout(ctx);const look=this.look();
     for(const line of this.units(ctx)){
       if(t<line.start||t>=line.end)continue;
       if(this.subPass!==undefined&&!!line.sub!==this.subPass)continue;

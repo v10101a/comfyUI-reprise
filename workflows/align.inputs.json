@@ -1,0 +1,51 @@
+{
+  "workflow": "align.api.json",
+  "description": "Known lyrics + song -> per-word timings by acoustic forced alignment (HDemucs vocal stem, MMS_FA CTC, vocal-onset refinement) + stem/spectrogram preview with word boxes.",
+  "inputs": {
+    "audio": {
+      "node": "1",
+      "field": "audio",
+      "kind": "comfy_input_path"
+    },
+    "lyrics": {
+      "node": "2",
+      "field": "lyrics",
+      "kind": "string"
+    },
+    "vocal_start": {
+      "node": "2",
+      "field": "vocal_start",
+      "kind": "float",
+      "default": 0.0
+    },
+    "vocal_end": {
+      "node": "2",
+      "field": "vocal_end",
+      "kind": "float",
+      "default": 0.0
+    },
+    "onset_window_ms": {
+      "node": "2",
+      "field": "onset_window_ms",
+      "kind": "float",
+      "default": 50.0
+    },
+    "device": {
+      "node": "2",
+      "field": "device",
+      "kind": "string",
+      "default": "cpu"
+    }
+  },
+  "outputs": {
+    "words_json": {
+      "node": "3",
+      "type": "text"
+    },
+    "preview": {
+      "node": "4",
+      "type": "image",
+      "optional": true
+    }
+  }
+}

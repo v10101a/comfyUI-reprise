@@ -37,6 +37,13 @@ def ffmpeg(args: list, *, timeout: float | None = None, what: str = "ffmpeg") ->
 
 # ---- probing ---------------------------------------------------------------------
 
+def ffprobe_frames(path: Path) -> int:
+    """Exact video frame count (counts packets; cheap, no decode)."""
+    out = run_cmd([settings.ffprobe, "-v", "error", "-select_streams", "v:0", "-count_packets",
+                       "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", str(path)], what="ffprobe(frames)").stdout
+    return int(str(out).strip().split()[0])
+
+
 def ffprobe(path: Path) -> dict:
     proc = run_cmd(
         [settings.ffprobe, "-v", "error", "-print_format", "json", "-show_streams", "-show_format", str(path)],

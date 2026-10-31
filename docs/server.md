@@ -12,7 +12,8 @@ The API implements the routes in `SCHEMA.md`. Interactive endpoint documentation
 
 ## What happens during a job
 
-- Words: extract 16 kHz mono WAV, stage it under local ComfyUI input, run `words.inputs.json` through the Comfy SDK/proxy, read the saved JSON, seed editable words clipped to project duration. The raw analysis retains the full transcription if separate audio is longer than the footage.
+- Words with lyrics: extract 44.1 kHz stereo, run `align.inputs.json` (TypesetAlignLyrics forced alignment; `timing.vocalStart` bounds the intro), copy its preview to `analysis/words_align.png`; result `engine: "align"`. On failure (or `TYPESET_WORDS_ALIGNER=0`, or no lyrics) fall back to Whisper below, `engine: "whisper"`.
+- Words (Whisper): extract 16 kHz mono WAV, stage it under local ComfyUI input, run `words.inputs.json` through the Comfy SDK/proxy, read the saved JSON, seed editable words clipped to project duration. The raw analysis retains the full transcription if separate audio is longer than the footage.
 - Matte: normalize footage to project dimensions/fps, run the matte sidecar, copy RGBA frames into a job-specific analysis directory, encode VP9 alpha for Chrome, and save normalized tracks.
 - In-world: extract a 512×320 starting frame, run the text-plate workflow, run LTX I2V, then attach the result to selected words. The text-plate workflow currently determines whether lettering is deterministic or generative; the API does not assume its implementation. Clips are limited to ten seconds. Failure marks the shot failed and preserves its intermediate artifacts.
 - Export: drive the renderer at `#/render`, wait for fonts/media, capture deterministic canvas frames, then encode files with ffmpeg. MP4 follows the requested `layer`: `composite` preserves behind/front placement and generated shots; `text` is text on black because H.264 has no alpha. MOV and WebM always contain the transparent text layer.
@@ -212,3 +213,26 @@ Verified on the 4090 (Oct 31): the reference graph ran with the first-frame guid
 Fix: `MiniMaxH3AddGuide` outputs only CONDITIONING. The sampler must keep the reference node's latent, so wiring `[guide, 1]` is rejected. The same fix is in the `first_frame` branch of `scripts/content/minimax_ref.py`, which had never been run.
 
 Caution: the app's remote path still runs the Qwen edit on the **local** ComfyUI, which needs about 27 GB. At 02:01 it crashed the shared ComfyUI while other jobs were running. Run inworld only when local ComfyUI is otherwise idle, or use `editModel: "none"` with a ready plate.
+
+### Matte on long clips: bounded memory (Oct 31)
+At 02:15 a single matte job (1115 frames at 1080×1280) crashed ComfyUI, because the whole clip went into BiRefNet as one batch. Per frame, ComfyUI holds the float32 frame, an RGBA output, the mask, a mask image and the list copies before `torch.cat`. Measured on M's clip, the peak grows by roughly 50 MB per frame, and the last prompt's outputs stay cached (≈40–60 MB per frame).
+
+**Now:**
+- Clips longer than `matte_chunk_frames(w, h)` = 64 MP / (w×h), clamped to 8–240, are split by `split_lossless` into x264 qp-0 chunks in one ffmpeg pass. That is 46 frames per chunk at 1080×1280 and 62 at 1344×768; `TYPESET_MATTE_CHUNK_PIXELS` changes the budget.
+- The decoded frames are bit-identical to the original: 538/538 frames were checked with PyAV.
+- `matte.api.json` runs once per chunk with `frame_offset`, `raw_tracks=true`, and `unload_model` only on the last chunk.
+- Mattes are written as each chunk finishes, and the chunk's run directory and staged input are deleted.
+- Tracks are merged with `core_vision.merge_track_chunks`, which smooths across chunk boundaries exactly as one pass would (tested). Occupancy is computed from the PNGs as before.
+- Clips that fit in one chunk use the old single-pass path unchanged.
+- If ComfyUI still has the old `MaskToTracks` (no `frame_offset`), the job fails with "restart ComfyUI" instead of writing wrong tracks.
+
+**Measured** (ComfyUI physical footprint via `footprint`, sampled every 0.5 s; M's 1080×1280, 30 fps clip):
+
+| Run | Frames | Peak footprint | Δ over idle | Time |
+|---|---|---|---|---|
+| old, one batch | 60 | 11.3 GB | +8.9 GB | 21.5 s |
+| old, one batch | 100 | 13.3 GB | +8.8 GB (6.9 GB held afterwards) | 31.4 s |
+| old, one batch | 1115 | extrapolated ≈ 65 GB, so it crashes on 36 GB | | |
+| **chunked**, 25 × 46 | **1115** | **8.8 GB**, flat from chunk 2 to 25 | **+1.9 GB** | **435 s** (0.39 s/frame; split 2.2 s) |
+
+The chunked mattes for frames 1–100, which cross chunk boundaries at 46 and 92, are byte-identical to the single-batch run (100/100, max diff 0).

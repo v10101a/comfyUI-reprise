@@ -1,0 +1,118 @@
+/* Typeset design tokens, taken from viola.city (Astro + Tailwind v4 theme, cv.BMG_Rbjb.css, read 2026-10-31).
+ * Values marked "sampled" are copied from her CSS. Values marked "derived" are extensions for the studio
+ * (timeline role colours, error/warn states) and do not appear on her site.
+ * Fonts: Google Fonts (OFL). To bundle for offline/export use, grab the TTFs into apps/web/public/fonts with their OFL.txt.
+ */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Silkscreen&family=Sixtyfour&display=swap");
+
+:root{
+  /* ---------- type ---------- */
+  --font-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;      /* sampled: body, labels, everything UI */
+  --font-serif:"Newsreader",Georgia,"Times New Roman",serif;     /* sampled: titles, project names, drop caps */
+  --font-pixel:"Silkscreen","IBM Plex Mono",monospace;            /* sampled: clock/gadgets, tiny badges */
+  --font-display:"Sixtyfour","Silkscreen",monospace;              /* sampled: rare display word, use once per screen */
+
+  --text-2xs:.6875rem;  /* 11px  kbd, ticks, timestamps */
+  --text-xs:.75rem;     /* 12px  sampled tw text-xs, labels, meta */
+  --text-sm:.875rem;    /* 14px  sampled tw text-sm, body in panels */
+  --text-base:1rem;     /* 16px  site body */
+  --text-lg:1.125rem;   /* 18px  sampled, serif card titles */
+  --text-xl:1.5rem;     /* 24px  serif page title */
+  --text-drop:3.75rem;  /* 60px  sampled tw text-6xl, serif drop cap */
+  --lh-tight:1.1;       /* sampled: metadata lists */
+  --lh-body:1.45;
+  --lh-prose:2;         /* project-page prose is very open */
+  --track-mono:0;       /* never letter-space mono; never uppercase-track labels */
+
+  /* ---------- colour: light (default; her site defaults to light) ---------- */
+  --bg:#c7c7c7;          /* sampled --color-neutral: the grey page */
+  --surface:#cacaca;     /* sampled --color-bright: hovered card / pill / toggle */
+  --ink:#2e2e2e;         /* sampled most-used dark text */
+  --ink-2:#5e5e5e;       /* sampled secondary text */
+  --ink-3:#8e8e8e;       /* sampled muted / tree glyphs / inactive */
+  --rule:#767676;        /* sampled: 2px dotted dividers rgb(118,118,118) */
+  --link:#2e00fd;        /* sampled --color-blue-text: electric blue, the one accent */
+  --link-glow:#949bfb;   /* sampled: periwinkle glow stop */
+  --link-glow-2:#6c76ff; /* sampled */
+  --halo:#c8c8ffe6;      /* sampled: lavender outer glow on hover */
+  --halo-inset:#6464c81a;/* sampled: inset bloom on hover */
+  --hl:#0000ff1a;        /* sampled: blue tint for active pill */
+  --plum:#69506c;        /* sampled (rare) */
+  --mauve:#cda8cd;       /* sampled (rare) */
+
+  /* derived, for the studio only */
+  --ok:#2e00fd;          /* "done" = the accent, not green */
+  --warn:#a15c00;
+  --err:#d1001f;
+  --role-caption:#2e2e2e;
+  --role-behind:#7a3fd1;
+  --role-hud:#2e00fd;
+  --role-wall:#00837a;
+  --role-inworld:#b0428f;
+  --hook:#2e00fd;
+
+  /* ---------- space (Tailwind 4 base 4px, sampled) ---------- */
+  --sp-1:.25rem;--sp-2:.5rem;--sp-3:.75rem;--sp-4:1rem;--sp-6:1.5rem;--sp-8:2rem;
+
+  /* ---------- shape ---------- */
+  --radius-0:0;          /* default: square */
+  --radius-xs:.125rem;   /* sampled: active pill */
+  --radius-sm:.25rem;    /* sampled: gadget icons, thumb on hover (.2rem) */
+  --radius-hover:.75rem; /* sampled: card rounds to xl only while hovered */
+  --rule-dotted:2px dotted var(--rule);   /* sampled: the signature divider */
+  --rule-hair:1px dotted var(--rule);     /* tighter variant for dense studio rows */
+  --box:1px solid rgba(20,20,17,.25);     /* sampled: thumbnail frame */
+  --shadow-card:0 4px 6px -1px #0000001a,0 2px 4px -2px #0000001a; /* tw shadow-md, sampled class */
+  --shadow-float:0 10px 15px -3px #0000001a;                       /* sampled: day/night toggle */
+  --glow-hover:inset 0 0 20px 20px var(--halo-inset),0 0 25px var(--halo); /* sampled card:hover */
+  --glow-pill:inset 0 0 5px 5px var(--hl),0 0 30px #c8c8ff80;             /* sampled pill:hover/.active */
+
+  /* ---------- texture ---------- */
+  --img-rest:blur(4px) grayscale(90%) brightness(.9) contrast(.78);   /* sampled .noisy-image (+ url(#noisy) SVG) */
+  --img-hover:blur(0) grayscale(0%);
+  --title-hover-blur:blur(2px);   /* sampled: titles go OUT of focus on hover */
+
+  /* ---------- motion (sampled) ---------- */
+  --ease:cubic-bezier(.4,0,.2,1);
+  --dur-fast:.15s;   /* tw default */
+  --dur:.2s;         /* image unblur */
+  --dur-slow:.3s;    /* gadgets, toggle */
+  --glow-pulse:1s ease-in-out infinite alternate;  /* clock glow */
+  --hover-scale:1.05;
+
+  color-scheme:light;
+}
+
+/* ---------- colour: dark ("night"; sampled html.dark) ---------- */
+:root[data-theme="dark"],html.dark{
+  --bg:#1b1f11;          /* sampled --color-dark: olive-black, not neutral black */
+  --surface:#3b4028;     /* sampled --color-dark-bright */
+  --ink:#c7c7c7;         /* sampled */
+  --ink-2:#8e8e8e;
+  --ink-3:#5e5e5e;
+  --rule:#767676;
+  --link:#b2a2cd;        /* sampled --color-dark-text: lavender replaces blue */
+  --halo:#647864e6;      /* sampled: green-grey glow */
+  --halo-inset:#6478c81a;/* sampled */
+  --hl:#0000ff1a;
+  --ok:#b2a2cd;--warn:#d9a441;--err:#ff6b6b;
+  --role-caption:#c7c7c7;--role-behind:#b2a2cd;--role-hud:#949bfb;--role-wall:#7fc8b8;--role-inworld:#cda8cd;--hook:#b2a2cd;
+  --img-rest:blur(4px) grayscale(90%) invert(60%) brightness(.6) saturate(.9);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]):not(.light){
+    --bg:#1b1f11;--surface:#3b4028;--ink:#c7c7c7;--ink-2:#8e8e8e;--ink-3:#5e5e5e;--link:#b2a2cd;
+    --halo:#647864e6;--halo-inset:#6478c81a;--ok:#b2a2cd;--warn:#d9a441;--err:#ff6b6b;
+    --role-caption:#c7c7c7;--role-behind:#b2a2cd;--role-hud:#949bfb;--role-wall:#7fc8b8;--role-inworld:#cda8cd;--hook:#b2a2cd;
+    color-scheme:dark;
+  }
+}
+
+/* Optional: her SVG grain filter, for thumbnails/look cards. Put once in index.html:
+<svg width="0" height="0" style="position:absolute"><filter id="noisy" x="0" y="0" width="100%" height="100%">
+  <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="1" result="n"/>
+  <feColorMatrix in="n" type="saturate" values="0" result="g"/>
+  <feBlend in="SourceGraphic" in2="g" mode="multiply"/></filter></svg>
+then: filter: var(--img-rest) url(#noisy);
+*/

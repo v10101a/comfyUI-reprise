@@ -13,5 +13,5 @@ if "typeset_core_vision" not in _sys.modules:
     _sys.modules["typeset_core_vision"] = _mod
     _spec.loader.exec_module(_mod)
 from typeset_core_vision import *  # noqa: E402,F401,F403
-from typeset_core_vision import (_quad_mask, _sane_quad, _subject_free, alignment_score, smooth_corners, compute_crop, surface_track_doc,  # noqa: E402,F401
+from typeset_core_vision import (_quad_mask, _sane_quad, _subject_free, alignment_score, smooth_corners, compute_crop, surface_track_doc, merge_track_chunks,  # noqa: E402,F401
                                  occupancy_doc, OCC_LONG)

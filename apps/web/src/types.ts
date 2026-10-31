@@ -30,7 +30,9 @@ export type Project = {version:1;id:string;name:string;fps:number;width:number;h
   /** v3: art direction by reference to a preset in looks.ts (absent = v2 behaviour). */
   look?:LookRef|null;
   /** v3: per-line metadata keyed by lineId. */
-  lineMeta?:Record<string,LineMeta>|null};
+  lineMeta?:Record<string,LineMeta>|null;
+  /** Perceived sync: text leads the audio by leadMs (renderer only; word times are never rewritten). Absent = 0. */
+  timing?:{leadMs?:number|null;vocalStart?:number|null}|null};
 export type LookId = 'default'|'red-glow'|'lens-bound'|'paper-cut'|'ticker'|'flat-card'|'dreamy';
 export type LookLayout = 'line'|'hero'|'constellation'|'stack';
 export type Look = {
@@ -55,7 +57,8 @@ export type Look = {
   motion?:'none'|'marquee';
 };
 export type LookRef = {id:LookId;overrides?:Partial<Omit<Look,'id'>>|null};
-export type LineMeta = {hook?:boolean|null;heroWordId?:string|null;hidden?:boolean|null};
+/** pinTiming: the line keeps its exact times under timing.leadMs (e.g. lines placed on shot cuts). */
+export type LineMeta = {hook?:boolean|null;heroWordId?:string|null;hidden?:boolean|null;pinTiming?:boolean|null};
 export type Tracks = {fps:number;frames:number;tracks:{id:string;label:string;frames:{f:number;bbox:number[];cx:number;cy:number}[]}[]};
 export type Job = {id:string;kind:string;status:'queued'|'running'|'done'|'failed';progress?:number;message?:string;result?:unknown;projectId:string};
 export type Layer = 'text'|'composite'|'text-behind'|'text-front';

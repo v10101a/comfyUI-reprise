@@ -1,6 +1,6 @@
 """Generate the Typeset analysis workflows from one spec:
 
-  workflows/{occupancy,surface_track,reframe,beats}.api.json + .inputs.json   (server, via the Comfy SDK)
+  workflows/{occupancy,surface_track,reframe,beats,align}.api.json + .inputs.json   (server, via the Comfy SDK)
   workflows/showcase/typeset_analysis.json        (UI format: drag into ComfyUI)
   workflows/showcase/typeset_analysis.api.json    (same graph, API format, for headless runs)
 
@@ -90,6 +90,25 @@ def server_workflows() -> None:
             "section_seconds": {"node": "2", "field": "section_seconds", "kind": "float", "default": 8.0},
         },
         "outputs": {"beats_json": {"node": "3", "type": "text"}, "preview": {"node": "4", "type": "image", "optional": True}},
+    })
+    save_api("align", {
+        "1": {"class_type": "LoadAudio", "inputs": {"audio": "typeset/test/song.wav"}},
+        "2": {"class_type": "TypesetAlignLyrics", "inputs": {
+            "audio": ["1", 0], "lyrics": "", "separator": "hdemucs", "aligner": "mms_fa", "onset_window_ms": 50.0,
+            "min_confidence": 0.05, "vocal_start": 0.0, "vocal_end": 0.0, "device": "cpu", "unload_models": True}},
+        "3": {"class_type": "SaveTextFile", "inputs": {"text": ["2", 0], "filename_prefix": "typeset/align", "extension": "json", "pretty_json": True}},
+        "4": {"class_type": "SaveImage", "inputs": {"images": ["2", 1], "filename_prefix": "typeset/align"}},
+    }, {
+        "description": "Known lyrics + song -> per-word timings by acoustic forced alignment (HDemucs vocal stem, MMS_FA CTC, vocal-onset refinement) + stem/spectrogram preview with word boxes.",
+        "inputs": {
+            "audio": {"node": "1", "field": "audio", "kind": "comfy_input_path"},
+            "lyrics": {"node": "2", "field": "lyrics", "kind": "string"},
+            "vocal_start": {"node": "2", "field": "vocal_start", "kind": "float", "default": 0.0},
+            "vocal_end": {"node": "2", "field": "vocal_end", "kind": "float", "default": 0.0},
+            "onset_window_ms": {"node": "2", "field": "onset_window_ms", "kind": "float", "default": 50.0},
+            "device": {"node": "2", "field": "device", "kind": "string", "default": "cpu"},
+        },
+        "outputs": {"words_json": {"node": "3", "type": "text"}, "preview": {"node": "4", "type": "image", "optional": True}},
     })
 
 

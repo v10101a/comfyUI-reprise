@@ -18,8 +18,8 @@ export type StepDef = {
 };
 
 export const STEPS:StepDef[] = [
-  {id:'words',title:'Words',model:'Whisper (+ lyric alignment)',engine:'comfy',nodes:['LoadAudio','WhisperWords','SaveTextFile'],
-    workflow:{href:'/workflows/words.api.json',repo:'workflows/words.api.json'},jobKinds:['words'],produces:'analysis/words.json → editable words'},
+  {id:'words',title:'Words',model:'Lyric forced alignment: HDemucs vocals → MMS_FA CTC (Whisper without lyrics / on failure)',engine:'comfy',nodes:['LoadAudio','TypesetAlignLyrics','SaveTextFile','SaveImage'],
+    workflow:{href:'/workflows/align.api.json',repo:'workflows/align.api.json'},jobKinds:['words'],produces:'analysis/words.json → editable words'},
   {id:'matte',title:'Subject matte',model:'BiRefNet RMBG + mask→tracks',engine:'comfy',nodes:['LoadVideo','GetVideoComponents','BiRefNetRMBG','SaveImage','MaskToTracks','SaveTextFile'],
     workflow:{href:'/workflows/matte.api.json',repo:'workflows/matte.api.json'},jobKinds:['matte'],produces:'fg.webm alpha cutout + person tracks'},
   {id:'occupancy',title:'Occupancy',model:'matte → 32×18 coverage grid',engine:'comfy',nodes:['TypesetLoadImageSequence','TypesetOccupancyGrid','SaveTextFile'],
@@ -61,7 +61,12 @@ export function stepStatus(step:StepDef,p:Project,jobs:Map<string,JobRecord>,ctx
   if(p.id==='sample')return {...base,state:'n/a',path:'bundled sample',engineNote:'offline sample — precomputed'};
   switch(step.id){
     case 'words':
-      if(p.analysis.words)return {...base,state:'done',path:'ComfyUI',engineNote:(job?.result as {source?:string})?.source==='aligned'?'Whisper, aligned to lyrics':'Whisper word timings',count:p.words.length};
+      if(p.analysis.words){
+        // Server result: engine 'align' (TypesetAlignLyrics) | 'whisper' (WhisperWords), plus note and lowConfidence.
+        const r=(job?.result||{}) as {engine?:string;lowConfidence?:number;note?:string};const low=r.lowConfidence||0;
+        const note=r.engine==='align'?`forced alignment (HDemucs → MMS_FA)${low?` · ${low} low-confidence to ear-check`:''}`:
+          r.engine==='whisper'?(r.note?.includes('failed')?'Whisper (lyric alignment failed)':'Whisper word timings'):'word timings';
+        return {...base,state:r.engine==='whisper'&&p.media.lyrics?'fallback':'done',path:'ComfyUI',engineNote:note,count:p.words.length};}
       if(job?.status==='failed')return {...base,state:'failed',path:'ComfyUI',engineNote:'failed'};
       return p.words.length?{...base,state:'fallback',path:'authored',engineNote:'words typed by hand',count:p.words.length}:{...base,state:'idle',path:'—',engineNote:'not run'};
     case 'matte':

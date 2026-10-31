@@ -6,7 +6,8 @@
 |---|---|
 | Footage master (plates cut on the bar grid + song) | `outputs/hero/hero_16x9.mp4`, EDL `outputs/hero/hero_16x9.edl.txt` |
 | **Final export (app, composite)** | `outputs/hero/hero_export.mp4`, sheet `outputs/hero/sheet.jpg` |
-| Vertical reframe export (app) | `outputs/hero/hero_export_9x16.mp4`, sheet `outputs/hero/sheet_9x16.jpg` |
+| Vertical export, one-click auto (demo step 4 backup) | `outputs/hero/hero_export_9x16_auto.mp4` (v9, aligned timing; also `outputs/hero/iter/9x16_auto_v9_aligned.mp4`), sheet `outputs/hero/sheet_9x16_auto.jpg` (pre-alignment) (project `cb4de765…`) |
+| Vertical export, hand-tuned (older fallback) | `outputs/hero/hero_export_9x16.mp4`, sheet `outputs/hero/sheet_9x16.jpg` (project `b80d28d3…`) |
 | Project (16:9) | `54da2790-92c6-4737-bc43-81a207e47ab5` (`outputs/hero/project.json`) |
 | Project (9:16, one-click auto, demo step 4) | `cb4de765-9043-4540-953b-8f017fc28a87` (`outputs/hero/project_id_9x16_auto.txt`), lens-bound + LOUDER pan |
 | Project (9:16, hand-tuned fallback) | `b80d28d3-88af-46af-ac40-35dc2bf864a4` (`outputs/hero/project_9x16.json`) |
@@ -48,12 +49,22 @@ Discarded: t2v S2/S3 (wrong face; kept in `outputs/hero/plates/s2_wall`, `s3_hea
 
 Design system: BIG = one display word = the moment; SMALL = the constant reading line; surfaces carry lines that belong to a wall; lime = machine (HUD, counter, karaoke), pink = neon/the generated world, bone/ink = paint.
 
-Word timings come from the app's words job with lyric alignment (fixed Whisper's "say the soul"/"Loud as under"). One override: the aligner put "Every" (line 6) at 19.88; raw Whisper has 18.94 (a long sung "eeevery"), which matches the ear, so the spec uses 18.94.
+Word timings (v9, Oct 31) come from **acoustic forced alignment** (`TypesetAlignLyrics`: HDemucs vocal stem + MMS_FA; Whisper only as fallback). Proposed times are in `outputs/align/hero_words.json` (mean error 43 ms), with listen-proxies at `outputs/align/hero_clicks.wav` vs `hero_clicks_old.wav` and `outputs/align/hero_compare.png`. The earlier Whisper-based times started every karaoke line 0.5–1.0 s early: Every 4.24→4.91, Hold 11.54→12.05, Hold 16.38→16.91, Every 18.94→19.94. My earlier EVERY override to 18.94 was about 1 s early (pYIN on the vocal stem), so it is gone. Applied with `scripts/content/hero_retime.py <project-id>`, to both 54da2790 and cb4de765 (matched by word id):
+- **Moved to sung starts:**
+  - the karaoke subtitle sub0–5 (contiguous within a line; each line's last word keeps its hold);
+  - the titles WALK/THROUGH/NEON/RAIN (RAIN still holds to the cut) and EVERY/WORD/I/KNOW (hold to the end);
+  - the tunnel HOLD/ON/LET IT/SHOW (LET IT/SHOW hold to 18.93, just before the S6 cut);
+  - the wall reveals SIGN/REPEATS/YOUR/NAME;
+  - the plaza ON (12.81).
+- **Kept on cut/beat, with `lineMeta.pinTiming`:** the wall row line starts (EVERY on the 4.33 cut), the plaza HOLD on the 11.50 drop, the 4-3-2-1 count-in, the meta line and both HUD labels. The HUD is not sung in S3: "hold on" is sung at 12.05, after S3 ends at 11.49, so it stays a pre-announce on its shot.
+- `timing.leadMs = 40`: unpinned text leads the audio by 40 ms.
+- **Consequence:** 18.95–19.94 is now an intentional one-second breath on the empty plaza before EVERY. That is where the singer actually breathes.
+- **Rollback:** `outputs/hero/project_prealign_54da2790.json`, `outputs/hero/project_prealign_cb4de765.json`, `outputs/hero/iter/v8_prealign.mp4` and `outputs/hero/iter/9x16_auto_prealign.mp4`. Aligned-frame check: `outputs/hero/iter/aligned_frames.jpg`.
 
 ## Generated vs deterministic
 
 - **Generated (models):** all background footage (MiniMax H3), the character identity (reference-to-video), the LOUDER shot (Qwen edit spells it; MiniMax lights and moves it), the song (ACE-Step).
-- **Deterministic (Typeset):** every other letter on screen: word timing (Whisper + lyric alignment), matte (BiRefNet, 538 frames), occupancy, surface tracking (OpenCV, homography per frame), perspective warp + paint/neon/flat materials, HUD, karaoke, reframe crop. Preview == export.
+- **Deterministic (Typeset):** every other letter on screen: word timing (acoustic forced alignment: HDemucs + MMS_FA, Whisper fallback), matte (BiRefNet, 538 frames), occupancy, surface tracking (OpenCV, homography per frame), perspective warp + paint/neon/flat materials, HUD, karaoke, reframe crop. Preview == export.
 - "Video models can't spell, so we ask them to light": the one generated word is spelled by an image model and held for 2.4 s; everything else is real type.
 
 ## Iterations (taste, not just correctness)
@@ -73,14 +84,14 @@ Word timings come from the app's words job with lyric alignment (fixed Whisper's
 ## Looks — what is final vs. what gets restyled
 
 Per the coordinator revisions (`research/kinetic-type-feature-brief.md`), final styling comes from R's one-click looks. **Final:** footage, cut, song sync, the generative beat, word timing, placements, surfaces + tracks, the 9:16 crop. **Looks applied (Oct 31):**
-- Night walk `54da2790…` → `look: {id: 'lens-bound'}`. Per-word `style` reduced to `fontSize` + `align` (the look owns face, weight, fill, case, spacing). `lineMeta.hook: true` on `s1-*` (WALK/THROUGH/NEON/RAIN behind her head), `s3-count*` (4-3-2-1) and `s6-*` (EVERY/WORD/I/KNOW); without it those non-repeating lines drop to the small green verse register. Ending words resized 0.30 → 0.20 (Inter 900 is wider than the Anton they were placed for). Preview: `outputs/hero/iter/lensbound_frames.jpg`, `outputs/hero/iter/lensbound_end.jpg`. Pre-look state kept: `outputs/hero/project_prelook_v6.json` (PUT it back to revert) and `outputs/hero/iter/hero_export_prelook_v6.mp4`. **`outputs/hero/hero_export.mp4` is the lens-bound v8 export** (also `outputs/hero/iter/v8_lensbound_green.mp4`; v7 kept at `outputs/hero/iter/v7_lensbound.mp4`). v8 differs from v7 only in the tunnel: neon surfaces now take the look's accent, so LET IT / SHOW are green filled tubes (chosen over v7 white, which read as decals, and over pink, which needs `look.overrides.palette.accent` and also recolours every active karaoke word; comparison `outputs/hero/iter/tunnel_white_green_pink.jpg`). No other placement shifted (frame diff ≈ grain level).
+- Night walk `54da2790…` → `look: {id: 'lens-bound'}`. Per-word `style` reduced to `fontSize` + `align` (the look owns face, weight, fill, case, spacing). `lineMeta.hook: true` on `s1-*` (WALK/THROUGH/NEON/RAIN behind her head), `s3-count*` (4-3-2-1) and `s6-*` (EVERY/WORD/I/KNOW); without it those non-repeating lines drop to the small green verse register. Ending words resized 0.30 → 0.20 (Inter 900 is wider than the Anton they were placed for). Preview: `outputs/hero/iter/lensbound_frames.jpg`, `outputs/hero/iter/lensbound_end.jpg`. Pre-look state kept: `outputs/hero/project_prelook_v6.json` (PUT it back to revert) and `outputs/hero/iter/hero_export_prelook_v6.mp4`. **`outputs/hero/hero_export.mp4` is the lens-bound v9 export with aligned timing** (also `outputs/hero/iter/v9_aligned.mp4`; v8 at `outputs/hero/iter/v8_lensbound_green.mp4`; v7 kept at `outputs/hero/iter/v7_lensbound.mp4`). v8 differs from v7 only in the tunnel: neon surfaces now take the look's accent, so LET IT / SHOW are green filled tubes (chosen over v7 white, which read as decals, and over pink, which needs `look.overrides.palette.accent` and also recolours every active karaoke word; comparison `outputs/hero/iter/tunnel_white_green_pink.jpg`). No other placement shifted (frame diff ≈ grain level).
 - Companion dancer clip (`outputs/hero/plates/d1_dance_ref/`, ref2v seed 6616, 192 f, same character, static wide, teal wall, big turns, freeze at the end) → `outputs/hero/dancer_chorus.mp4` (song 11.40–19.40 s muxed) → project `7854af4e-6500-415f-b924-ed4720dcc4f5` with `look: {id: 'red-glow'}` (hero layout comes with the look). **Export: `outputs/hero/dancer_export_redglow.mp4`** (8 s, 1344×768, audio); frames `outputs/hero/iter/dancer_redglow_frames.jpg`; pre-look state `outputs/hero/project_dancer_prelook.json`.
 - "Same clip in 3 looks": the HOLD | ON drop (frame 300) via `#/render?…&look=<id>`, labelled with PIL → **`outputs/hero/three_looks_hero_f300.jpg`** (lens-bound / red-glow / paper-cut). Third look swapped from flat-card (its #101010 text on the dark plaza wall with no card behind surface text barely reads; R is fixing it; old tile `outputs/hero/iter/three_looks_hero_f300_flatcard.jpg`). Paper-cut chosen over ticker (`outputs/hero/iter/thirdlook_candidates.jpg`): ticker's marquee leaves ON half off-frame in a still; paper-cut reads fully and its matte, eroded finish contrasts with red-glow's bloom. Dancer version (R): `apps/web/.verify/three_looks_dancer_f070.jpg`.
 - 9:16 automatic reframe v3 (R's v3.3: edge margins ≥6% measured after lens-bound's warp, hero/title rows never over the face, HUD labels clear of the meta line; S's focus modes): project `cb4de765-9043-4540-953b-8f017fc28a87` (`outputs/hero/project_id_9x16_auto.txt`), created with `POST /api/projects/54da2790…/reframe {aspect:'9:16', focus:[{start:13.917, end:16.375, box:[0.19,0.05,0.81,0.31], mode:'pan', label:'LOUDER sign'}]}`. Comparison with hand-tuned `b80d28d3…`: `outputs/hero/iter/vert_auto_vs_hand_v3.jpg` (top auto, bottom hand; f60/165/190/230/300/345/375/400/470/520). Earlier rounds: `outputs/hero/iter/vert_auto_vs_hand.jpg` (v1, `4c7e6a75…`), `outputs/hero/iter/vert_auto_vs_hand_v2.jpg` (v2, `dd8eb45f…`).
   - Auto wins: LOUDER (pan scans LOU → DER at full height; the clipped sign is baked into the generated plate, so pan is the only fix; chosen over the `auto` letterbox), the HUD (clean label, meta row clear).
   - Ties: the drop (HOLD title row above her, ON over her torso, same as hand), the count-in, the ending (EVERY behind at top, WORD / I / KNOW below her chin, face clear), the wall beat (only REPEATS reads, small, same in both; OK as a passing beat, the subtitle carries the line), the tunnel (neon lost in both).
   - Only artistic difference: auto puts RAIN top-left with a clean margin instead of behind her head (hand). Acceptable.
-  - **Verdict: demo step 4 is now the one-click "Make vertical".** `b80d28d3…` stays as a fallback.
+  - **Verdict: demo step 4 uses the automatic reframe `cb4de765…`, opened directly** (the studio "Make vertical" button cannot pass the LOUDER pan, because that script-made shot has no `GenShot.focus`). `b80d28d3…` stays as a fallback.
 
 ## 2-minute demo script (Mon Nov 2)
 
@@ -88,7 +99,7 @@ Per the coordinator revisions (`research/kinetic-type-feature-brief.md`), final 
 2. **0:25 The thesis (10 s).** "Video models can't spell. So we don't ask them to. Typeset renders words with real fonts and lets ComfyUI decide where they belong — behind her, on her head, on the wall. When a word should become part of the world, an image model writes it once and a video model lights it." (Pause on LOUDER.)
 3. **0:35 Live edit in the app (40 s).** Open project `54da2790…` at 4.5 s (the wall). Change a wall word (e.g. NAME → your own name), scrub: it stays on the wall, she walks through it. Toggle material paint → neon. Jump to the drop, drag HOLD's timing onto the beat. Show the words came from the song with pasted lyrics (aligned, not misheard).
 3b. **1:10 Same clip, 3 looks (10 s).** One click each on the look picker over the drop (lens-bound → red-glow → paper-cut), then play the pre-rendered side-by-side. "Looks are one field; the placement, tracking and timing don't change."
-4. **1:20 Reframe to vertical (15 s).** One click on header "Make vertical" from the lens-bound hero (result = `cb4de765…`; pass the LOUDER pan focus, or open `cb4de765…` if the button does not expose focus yet). Play the drop, LOUDER and the ending in 9:16: "One click. The crop follows her, the walls become title rows, ON steps in front of her, and the generated sign gets a camera pan instead of being cut off." Fallback: hand-tuned `b80d28d3…`.
+4. **1:20 Reframe to vertical (15 s).** Open the 9:16 project `cb4de765…` directly (made by the same one-click server reframe, plus the LOUDER pan focus). Do **not** press "Make vertical" live: the LOUDER shot was generated by script, not through generate/inworld, so it has no `GenShot.focus`, and the studio button would not pass the pan. Play the drop, LOUDER and the ending in 9:16: "One reframe. The crop follows her, the walls become title rows, ON steps in front of her, and the generated sign gets a camera pan instead of being cut off." Backup video: `outputs/hero/hero_export_9x16_auto.mp4`. Fallback project: hand-tuned `b80d28d3…`.
 5. **1:35 Export layers (20 s).** Export → show the text-overlay ProRes 4444/WebM alpha landing in a folder; "drop it in Resolve or TouchDesigner — it's a layer, not a bake."
 6. **1:55 Close.** "All open weights: MiniMax H3, Qwen-Image-Edit, BiRefNet, Whisper, ACE-Step, running in ComfyUI."
 
@@ -104,7 +115,8 @@ server/.venv/bin/python scripts/remote_minimax.py --name gen_louder --seed 1313 
 python3 scripts/content/cut_hero.py                                   # EDL scripts/content/hero_edl.json -> hero_16x9.mp4
 server/.venv/bin/python scripts/content/hero_project.py create        # project + media + lyrics + words + matte
 python3 scripts/content/hero_spec.py v6 && server/.venv/bin/python scripts/content/hero_project.py apply outputs/hero/spec_v6.json
-server/.venv/bin/python scripts/content/hero_project.py export v8_lensbound_green     # -> outputs/hero/hero_export.mp4 (+ iter/v8_lensbound_green.mp4)
+server/.venv/bin/python scripts/content/hero_retime.py 54da2790-92c6-4737-bc43-81a207e47ab5   # aligned timing (also for cb4de765)
+server/.venv/bin/python scripts/content/hero_project.py export v9_aligned     # -> outputs/hero/hero_export.mp4 (+ iter/v9_aligned.mp4)
 scripts/content/frames.sh <tag> <frames…>                             # quick frame review through #/render
 ```
 Helpers: `scripts/content/sheet.sh` (contact sheets), `scripts/content/fetch_remote.py` (download a remote output by prefix).

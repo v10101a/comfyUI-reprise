@@ -2,7 +2,7 @@
 // the preferred spot, the HUD anchor point, existing wall quads. Everything is in project pixels (SVG viewBox).
 import {useEffect,useMemo,useRef} from 'react';
 import type {Project,Point,Word} from '../types';
-import {StageRenderer,lines,anchorAt,surfaceCornersAt} from '../renderer';
+import {StageRenderer,lines,anchorAt,surfaceCornersAt,withLead} from '../renderer';
 import {cropAt,toOut,quadIsConvex} from '../geometry';
 import {wordIsShown} from '../looks';
 
@@ -20,7 +20,7 @@ export function lineBoxes(r:StageRenderer|undefined,p:Project,frame:number):Line
     r.project=p;const ctx=ctx2d();const t=frame/p.fps;const W=p.width,H=p.height;const plan=r.layout(ctx);const out:LineBox[]=[];
     // R's renderer exposes the drawable units (a line splits into hero + satellites under a look); older builds only lines().
     type U=ReturnType<typeof lines>[number]&{lineId?:string;role?:string;bleed?:boolean};
-    const units=(typeof (r as unknown as {units?:unknown}).units==='function'?(r as unknown as {units:(c:CanvasRenderingContext2D)=>U[]}).units(ctx):lines(ctx,p)) as U[];
+    const units=(typeof (r as unknown as {units?:unknown}).units==='function'?(r as unknown as {units:(c:CanvasRenderingContext2D)=>U[]}).units(ctx):lines(ctx,withLead(p))) as U[];
     for(const l of units){
       if(t<l.start||t>=l.end||l.placement==='surface'||l.placement==='inworld')continue;
       const first=l.words[0];let fit=l.bleed?1:Math.min(1,W*.88/Math.max(1,l.total));let origin=first.position||{x:.5,y:.72};
