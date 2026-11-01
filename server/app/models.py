@@ -54,8 +54,9 @@ class Anchor(Base):
 class Word(Base):
     id: str
     text: str
-    start: float = Field(ge=0)
-    end: float = Field(gt=0)
+    # May lie outside [0, duration]: sliding the song with linked words moves them rigidly, never resizing them.
+    start: float
+    end: float
     lineId: str
     placement: Placement = "overlay"
     preset: Preset = "pop"
@@ -93,6 +94,8 @@ class Media(Base):
     video: Optional[MediaRef] = None
     audio: Optional[MediaRef] = None
     lyrics: Optional[str] = None
+    # Song clip {in, out, offset} in seconds (docs/SCHEMA.md; server/app/audioclip.py). A dict: `in` is a Python keyword.
+    audioClip: Optional[dict[str, float]] = None
 
 
 class Analysis(Base):
@@ -104,6 +107,7 @@ class Analysis(Base):
     beats: Optional[str] = None          # "analysis/beats.json" (TypesetBeatGrid)
     flow: Optional[str] = None           # "analysis/flow.json" (TypesetFlowField): motion field for the type
     voice: Optional[str] = None          # "analysis/voice.json" (TypesetVoiceField): loudness/pitch per frame
+    audio: Optional[str] = None          # "analysis/audio_<job>.json" (TypesetAudioField): low-band pulse per frame
 
 
 SurfaceStatus = Literal["drawn", "tracking", "tracked", "failed"]
@@ -152,7 +156,7 @@ class Project(Base):
 
 # ---- §4 Job ----------------------------------------------------------------------
 
-JobKind = Literal["words", "matte", "inworld", "export", "surface", "reframe", "occupancy", "beats", "flow", "voice"]
+JobKind = Literal["words", "matte", "inworld", "export", "surface", "reframe", "occupancy", "beats", "flow", "voice", "audio", "showcase"]
 JobStatus = Literal["queued", "running", "done", "failed"]
 
 

@@ -21,11 +21,18 @@ export type Occupancy = {fps:number;cols:number;rows:number;step:number;frames:s
 export type CropFrame = {f:number;x:number;y:number;w:number;h:number};
 export type CropData = {fps:number;aspect:string;frames:CropFrame[]};
 export type Aspect = '16:9'|'9:16'|'1:1'|'4:5';
+/** Seconds. in/out: song time; offset: project time where `in` plays (may be < 0: the head is cut). */
+export type AudioClip = {in:number;out:number;offset:number};
 export type Project = {version:1;id:string;name:string;fps:number;width:number;height:number;duration:number;
-  media:{video?:MediaRef|null;audio?:MediaRef|null;lyrics?:string|null};
+  /** Prototype: 'placement' = a line's role only places it; styling comes from the look (renderer lookUnits). Unset = shipped. */
+  roleModel?:'placement'|null;
+  media:{video?:MediaRef|null;audio?:MediaRef|null;lyrics?:string|null;
+    /** Non-destructive song clip (docs/SCHEMA.md): play song [in,out) starting at project time `offset`. Absent = whole song at 0. */
+    audioClip?:AudioClip|null};
   analysis:{words?:string|null;matte?:string|null;tracks?:string|null;depth?:string|null;occupancy?:string|null;
-    /** Fields (TypesetFlowField / TypesetVoiceField): analysis/flow.json, analysis/voice.json. */
-    flow?:string|null;voice?:string|null};
+    /** Fields (TypesetFlowField / TypesetVoiceField / TypesetAudioField): analysis/flow.json, analysis/voice.json,
+     *  analysis/audio_<job>.json (low-band pulse of the mix). */
+    flow?:string|null;voice?:string|null;audio?:string|null};
   style:TextStyle;words:Word[];shots:GenShot[];
   surfaces?:Surface[]|null;
   frame?:{aspect:Aspect;source?:{projectId:string}|null;crop?:string|null}|null;
@@ -38,8 +45,8 @@ export type Project = {version:1;id:string;name:string;fps:number;width:number;h
   lineMeta?:Record<string,LineMeta>|null;
   /** Perceived sync: text leads the audio by leadMs (renderer only; word times are never rewritten). Absent = 0. */
   timing?:{leadMs?:number|null;vocalStart?:number|null}|null};
-export type LookId = 'default'|'red-glow'|'lens-bound'|'paper-cut'|'ticker'|'flat-card'|'dreamy'|'grey-noise'|'night-code'|'xerox'|'scatter'|'neon'|'graffiti';
-export type LookLayout = 'line'|'hero'|'constellation'|'stack';
+export type LookId = 'default'|'red-glow'|'lens-bound'|'paper-cut'|'ticker'|'flat-card'|'dreamy'|'grey-noise'|'night-code'|'xerox'|'scatter'|'neon'|'graffiti'|'hud'|'glyph';
+export type LookLayout = 'line'|'hero'|'constellation'|'stack'|'hud';
 export type Look = {
   id:LookId;
   font:{hero:string;body:string;heroWeight?:number;bodyWeight?:number;heroCase?:'upper'|'lower'|'as-is';bodyCase?:'upper'|'lower'|'as-is';heroStyle?:'normal'|'italic';bodyStyle?:'normal'|'italic'};
@@ -67,8 +74,9 @@ export type Look = {
   /** 'neon': every text unit (and every wall) is drawn as glowing tubes in its fill colour. */
   finish?:'neon'|null;
   /** Fields that move the type, 0..1 each (absent/0 = off): motion = optical flow pushes and smears it;
-   *  voice = the vocal stem swells its weight, lifts it with the melody, wobbles it with vibrato. */
-  fields?:{motion?:number;voice?:number}|null;
+   *  voice ("Audio" in the studio) = the song sizes the type. source: 'bass' (default) = the mix's low band
+   *  (analysis.audio) pulses it; 'vocal' = the vocal stem's loudness (analysis.voice). Either falls back to the other. */
+  fields?:{motion?:number;voice?:number;source?:'bass'|'vocal'}|null;
   /** Pop-in flicker 0..1 (words drop out on seeded frames for half a second after their onset). */
   flicker?:number;
   /** Size multiplier for look-sized text (hero, satellites, stack, hooks, verse cap). Default 1. */
@@ -87,6 +95,20 @@ export type Look = {
   drips?:number;
   /** Neon (finish:'neon'): how much the signs light the scene — wall spill, wet-floor reflection, subject rim/cast. 0..1, default .8. */
   light?:number;
+  /** v4.2 entrance/exit of the look's text, replacing the pop preset (absent = authored presets). wipe: cards wipe in
+   *  with the words, wipe out; paste: pasted on with a small settle; spray: sprayed on left→right, stays; flicker: tubes
+   *  flicker on (× flicker), power off; type: types on (HUD); fade: soft in/out; cut: hard cut. */
+  enter?:'wipe'|'paste'|'spray'|'flicker'|'type'|'fade'|'cut';
+  /** Wall (surface) text size multiplier; the text may grow past its wall quad. Default 1. */
+  wallScale?:number;
+  /** v4.3 glyph fill: filled lines are drawn as a fixed letter grid lit by the footage under it (the line's text tiled in
+   *  reading order; a cell's letter never changes while the line runs; sung words light up, the word being sung takes
+   *  the accent). region: subject = inside the matte, in front; world = everything but the subject, behind; frame =
+   *  everything, in front. A filled line placed on a wall fills that wall instead (plane space). cell = cell width as a
+   *  fraction of min(w,h) (default .014); backing = opacity of the card (palette.card) under the letters (default .85);
+   *  gain = luminance gain (default 1.4); hooks = only hook lines fill, others keep the look's register (default true).
+   *  Absent/null = off (the look renders as before). */
+  fill?:{region:'subject'|'world'|'frame';cell?:number;backing?:number;gain?:number;hooks?:boolean}|null;
 };
 export type LookRef = {id:LookId;overrides?:Partial<Omit<Look,'id'>>|null};
 export type GradeId = 'none'|'mono'|'xerox'|'teal'|'film'|'wash'|'night';
@@ -105,7 +127,13 @@ export type Grade = {
 };
 export type GradeRef = {id:GradeId;amount?:number|null;overrides?:Partial<Grade>|null};
 /** pinTiming: the line keeps its exact times under timing.leadMs (e.g. lines placed on shot cuts). */
-export type LineMeta = {hook?:boolean|null;heroWordId?:string|null;hidden?:boolean|null;pinTiming?:boolean|null};
+/** fill / karaoke / dim: per-line colours that win over the look (text colour, active karaoke word, upcoming karaoke
+ *  words drawn at full opacity in that colour). Unset = unchanged rendering. */
+export type LineMeta = {hook?:boolean|null;heroWordId?:string|null;hidden?:boolean|null;pinTiming?:boolean|null;fill?:string|null;karaoke?:string|null;dim?:string|null;
+  /** Wall text size in the wall's plane (studio corner handles), about the plane centre. Absent = 1. Renderer: multiplies the surface fit. */
+  scale?:number|null;
+  /** Wall text offset in the wall's plane (studio nudge), fractions of the plane: u right, v down. Absent = centred. */
+  u?:number|null;v?:number|null};
 export type Tracks = {fps:number;frames:number;tracks:{id:string;label:string;frames:{f:number;bbox:number[];cx:number;cy:number}[]}[]};
 export type Job = {id:string;kind:string;status:'queued'|'running'|'done'|'failed';progress?:number;message?:string;result?:unknown;projectId:string};
 export type Layer = 'text'|'composite'|'text-behind'|'text-front';

@@ -11,7 +11,7 @@ from pathlib import Path
 from .comfy import runner, read_json_output, generation_runner
 from .config import settings
 from .jobs import JobContext
-from .media import ffmpeg, extract_audio_wav, extract_frame, stage_to_comfy_input, encode_alpha_webm
+from .media import ffmpeg, extract_audio_wav, extract_frame, stage_to_comfy_input, encode_alpha_webm, encode_matte_proxy, clear_matte_proxies
 from .models import GenShot, InworldBody, Word
 from .store import ProjectStore, write_json_atomic
 
@@ -78,8 +78,9 @@ def analyze_words(store: ProjectStore, pid: str, language: str, ctx: JobContext)
                             pdir / "analysis" / ctx.id, progress=progress(ctx, "Transcribing"))
         data = read_json_output(result.outputs["words_json"])
         note += f"Whisper via words.api.json (job {result.job_id[:8]})" + ("; lyric matching is heuristic" if lyrics else "")
-    words = timeline_words(data, project.duration)
     write_json_atomic(pdir / "analysis" / "words.json", data)
+    from .audioclip import song_words_to_project
+    words = timeline_words(song_words_to_project(data, store.load(pid)), project.duration)
     def update(p):
         current_source = p.media.audio or p.media.video
         if current_source is None or current_source.path != source.path:
@@ -200,7 +201,13 @@ def analyze_matte(store: ProjectStore, pid: str, ctx: JobContext):
     tracks_rel = f"analysis/tracks_{ctx.id}.json"
     write_json_atomic(pdir / tracks_rel, tracks)
     ctx.progress(.85, "Encoding transparent foreground preview")
+    clear_matte_proxies(matte)  # a re-run matte must never pair with the old run's studio copies
     encode_alpha_webm(matte / "fg_%05d.png", project.fps, matte / "fg.webm")
+    try:  # studio copies (scrub + paused frames); the studio falls back to fg.webm without them
+        encode_matte_proxy(matte, project.fps)
+        encode_matte_proxy(matte, project.fps, full=True)
+    except Exception as exc:
+        ctx.progress(message=f"Matte studio copies skipped: {exc}")
     ctx.progress(.95, "Computing occupancy grid")
     from .analysis_v2 import write_occupancy
     probe = project.model_copy(update={"analysis": project.analysis.model_copy(update={"matte": f"analysis/{matte.name}/"})})

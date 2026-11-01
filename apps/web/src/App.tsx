@@ -1,9 +1,9 @@
 import {useState,useEffect,useRef,lazy,Suspense} from 'react';
 import type {Project,Layer,RendererAPI,Aspect,CropData,LookId,GradeId} from './types';
 import {request,getProject,assetUrl} from './api';
-import {StageRenderer,loadFonts} from './renderer';
+import {StageRenderer,seqConfig,seqStats,loadFonts} from './renderer';
 import {reframeProject} from './reframe';
-import {migrateProject,setGrade} from './looks';
+import {migrateProject,setGrade,isSubtitleLine} from './looks';
 import Showcase from './Showcase';
 // Lazy: the #/render export route must never import studio code (a studio edit/syntax error must not break exports).
 const Studio=lazy(()=>import('./studio/Studio'));
@@ -19,10 +19,21 @@ function RenderPage(){
       // grade=<id>[:amount] and overrides=<json> (look params) likewise; the grade is migrated before the look swap.
       p=migrateProject(p);const lookId=query.get('look');if(lookId)p={...p,look:lookId==='default'?null:{id:lookId as LookId}};
       const gradeQ=query.get('grade');if(gradeQ){const [gid,amt]=gradeQ.split(':');p=setGrade(p,gid as GradeId,amt?Number(amt):1);}
+      if(query.get('roles')==='placement')p={...p,roleModel:'placement'};
       const ovQ=query.get('overrides');if(ovQ&&p.look)p={...p,look:{...p.look,overrides:JSON.parse(ovQ)}};
+      // subs=0 hides the subtitle/karaoke register (looks showcase clips); the project is never modified.
+      if(query.get('subs')==='0'){const pp=p;const ids=[...new Set(pp.words.map(w=>w.lineId))].filter(id=>isSubtitleLine(pp,id));p={...pp,lineMeta:{...(pp.lineMeta||{}),...Object.fromEntries(ids.map(id=>[id,{...(pp.lineMeta?.[id]||{}),hidden:true}]))}};}
       let crop:CropData|undefined;
       if(aspect){await loadFonts();const tracks=p.analysis.tracks?await fetch(assetUrl(p,p.analysis.tracks,server)).then(r=>r.json()):undefined;({project:p,crop}=reframeProject(p,aspect,tracks));}
-      renderer=new StageRenderer(p,server);renderer.crop=crop;renderer.autoPlace=query.get('autoplace')!=='0';await renderer.load(layer);api.frames=Math.round(p.duration*p.fps);api.renderFrame=async frame=>{await renderer!.render(canvas.current!,frame,layer);};document.documentElement.classList.add('render-mode');document.body.classList.add('render-mode');await api.renderFrame(0);})();
+      renderer=new StageRenderer(p,server);renderer.crop=crop;renderer.autoPlace=query.get('autoplace')!=='0';
+      // Validated against every Hero/FFM frame. Unknown/different source FPS keeps seeking; decode=seek opts out.
+      renderer.sequential=query.get('decode')!=='seek'&&!!p.media.video?.fps&&Math.abs(p.media.video.fps-p.fps)<1e-3;
+      if(query.get('seqrate'))seqConfig.rate=Number(query.get('seqrate'))||1;(window as unknown as {__seqStats?:object}).__seqStats=seqStats;
+      await renderer.load(layer);api.frames=Math.round(p.duration*p.fps);
+      api.renderFrame=async frame=>{try{await renderer!.render(canvas.current!,frame,layer);}catch(error){
+        if(!renderer!.sequential)throw error;renderer!.sequential=false;await renderer!.render(canvas.current!,frame,layer);
+      }};
+      document.documentElement.classList.add('render-mode');document.body.classList.add('render-mode');await api.renderFrame(0);})();
     window.__typeset=api;void api.ready.catch(e=>setError(String(e)));
     return()=>{alive=false;renderer?.dispose();delete window.__typeset;document.documentElement.classList.remove('render-mode');document.body.classList.remove('render-mode');};
   },[]);

@@ -72,6 +72,30 @@ class TrackParams:
     ecc_min_visible: float = 0.4  # ...and only when this much of the key-frame region is in view and unoccluded
     weak_visible: float = 0.45    # below this visible fraction the full homography is ill-conditioned: update the
                                   # previous pose with a 4-DOF (similarity) motion instead
+    # Model selection (robust pass): every frame gets translation, similarity and homography candidates (direct
+    # masked ECC on high-passed images, plus the feature homography); a richer model must beat a simpler one by
+    # a margin of alignment score. Blank / low-texture walls let a homography fit noise and skew; this stops it.
+    robust: bool = True
+    select_scale: float = 0.5     # alignment work scale
+    hp_sigma: float = 6.0         # high-pass (at select_scale) so light falloff doesn't drive the fit
+    margin_sim: float = 0.01      # similarity must beat translation by this NCC
+    margin_h: float = 0.02        # homography must beat the best low-DOF model by this NCC...
+    margin_h_low_texture: float = 0.06  # ...or by this much when the key region has little trackable texture
+    low_texture_features: int = 150     # fewer good features than this in the key region = low texture
+    ncc_good: float = 0.45        # alignment NCC that maps to confidence 1
+    ncc_lost: float = 0.1         # below this the surface is lost (cut, fully occluded); 3 in a row ends the pass
+    max_area_drift: float = 6.0   # sanity vs key frame: area ratio outside [1/x, x] = rejected
+    max_aspect_drift: float = 3.5 # side-length ratio change vs key frame
+    max_skew_deg: float = 50.0    # corner angle change vs key frame
+    soft_drift: tuple = (2.5, 2.0, 30.0)  # beyond these (area, aspect, skew) a homography needs a stronger score
+    max_step: float = 0.12        # corner jump per frame (fraction of the quad diagonal) = suspicious
+    max_gap: int = 3              # lost frames tolerated inside a track before it ends
+    robust_expand: float = 1.0    # margin for direct alignment; lower it when the margin reaches other planes (sky,
+                                  # buildings above a wall) that move differently and make the text slide
+    occ_visible: float = 0.35     # less of the template visible than this (subject in front) = occluded frame
+    model_window: float = 8.0     # frames (gaussian sigma) over which a richer model must keep beating a simpler one
+    occ_trust: float = 0.18       # subject covering more of the quad than this: frame is interpolated, not trusted
+    cut_ncc: float = 0.5          # consecutive-frame thumbnail correlation below this = shot cut: the pass ends
 
 
 def _quad_mask(shape: tuple[int, int], quad_px: np.ndarray, expand: float = 0.0) -> np.ndarray:
@@ -274,24 +298,476 @@ def smooth_corners(track: dict[int, tuple[np.ndarray, float]], radius: int) -> d
     return out
 
 
+def _shape_stats(q: np.ndarray) -> tuple[float, np.ndarray, np.ndarray]:
+    """(area, side lengths ×4, corner angles in degrees ×4) of a quad."""
+    q = np.asarray(q, np.float64)
+    area = 0.5 * abs(sum(q[i][0] * q[(i + 1) % 4][1] - q[(i + 1) % 4][0] * q[i][1] for i in range(4)))
+    sides = np.array([np.linalg.norm(q[(i + 1) % 4] - q[i]) for i in range(4)])
+    ang = []
+    for i in range(4):
+        a, b = q[i - 1] - q[i], q[(i + 1) % 4] - q[i]
+        ang.append(math.degrees(math.acos(np.clip(a @ b / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9), -1, 1))))
+    return area, sides, np.array(ang)
+
+
+def quad_drift(q: np.ndarray, ref: np.ndarray) -> dict[str, float]:
+    """Shape change of q vs ref: area ratio, worst side-ratio change (aspect), worst corner-angle change (skew)."""
+    a0, s0, g0 = _shape_stats(ref)
+    a1, s1, g1 = _shape_stats(q)
+    r = (s1 / np.maximum(s0, 1e-6))
+    return {"area": a1 / max(a0, 1e-6), "aspect": float(r.max() / max(r.min(), 1e-6)), "skew": float(np.abs(g1 - g0).max())}
+
+
+def _quad_ok(q: np.ndarray, ref: np.ndarray, p: TrackParams) -> bool:
+    if not _sane_quad(q, ref):
+        return False
+    d = quad_drift(q, ref)
+    return (1 / p.max_area_drift < d["area"] < p.max_area_drift and d["aspect"] < p.max_aspect_drift
+            and d["skew"] < p.max_skew_deg)
+
+
+class _Aligner:
+    """Masked high-pass images at a reduced scale; scores and refines key→frame poses (3×3, full-res px)."""
+
+    def __init__(self, key_img: np.ndarray, key_region: np.ndarray, p: TrackParams):
+        self.p, self.s = p, p.select_scale
+        self.S = np.diag([self.s, self.s, 1.0])
+        self.Si = np.linalg.inv(self.S)
+        self.tm = self.small(key_region, nearest=True)
+        self.T = self.hp(key_img, self.tm)
+
+    def small(self, im, nearest=False):
+        import cv2
+        return cv2.resize(im, None, fx=self.s, fy=self.s, interpolation=cv2.INTER_NEAREST if nearest else cv2.INTER_AREA)
+
+    def hp(self, img, free_s=None):
+        """High-pass at the work scale. Masked-out pixels (subject) are first filled from the surrounding wall
+        (normalized convolution) so the subject's silhouette leaves no edge halo for the alignment to lock onto."""
+        import cv2
+        s = self.small(img).astype(np.float32)
+        if free_s is not None:
+            m = (free_s > 0).astype(np.float32)
+            if m.min() < 1:
+                sig = 3 * self.p.hp_sigma
+                num, den = cv2.GaussianBlur(s * m, (0, 0), sig), cv2.GaussianBlur(m, (0, 0), sig)
+                fill = np.where(den > 1e-3, num / np.maximum(den, 1e-3), float(s[m > 0].mean()) if m.any() else 0.0)
+                s = s * m + fill * (1 - m)
+        return s - cv2.GaussianBlur(s, (0, 0), self.p.hp_sigma)
+
+    def score(self, cur_hp, cur_free_s, H) -> float:
+        """NCC between the key region and the current frame warped back with H (subject masked in both)."""
+        import cv2
+        if H is None:
+            return -1.0
+        Hs = self.S @ H @ self.Si
+        h, w = self.T.shape
+        try:
+            back = cv2.warpPerspective(cur_hp, Hs, (w, h), flags=cv2.WARP_INVERSE_MAP | cv2.INTER_LINEAR)
+            valid = cv2.warpPerspective(cur_free_s, Hs, (w, h), flags=cv2.WARP_INVERSE_MAP | cv2.INTER_NEAREST)
+        except cv2.error:
+            return -1.0
+        m = (self.tm > 0) & (valid > 0)
+        if m.sum() < 200:
+            return -1.0
+        a, b = self.T[m], back[m]
+        a, b = a - a.mean(), b - b.mean()
+        return float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9))
+
+    def search_t(self, cur_hp, H0, radius: int) -> np.ndarray | None:
+        """Coarse translation by masked template matching at half the work scale (the low-texture / large-motion
+        fallback where ECC has no basin): key region vs a window around where H0 puts it. Returns a translation pose."""
+        import cv2
+        ys, xs = np.nonzero(self.tm)
+        if len(xs) < 50:
+            return None
+        h, w = self.T.shape
+        x0, x1, y0, y1 = xs.min(), xs.max() + 1, ys.min(), ys.max() + 1
+        c = np.array([[(x0 + x1) / 2, (y0 + y1) / 2]], np.float64) / self.s
+        dc = (cv2.perspectiveTransform(c.reshape(-1, 1, 2), H0).reshape(2) - c.reshape(2)) * self.s
+        tx, ty = int(round(dc[0])), int(round(dc[1]))
+        sx0, sy0 = max(0, x0 + tx - radius), max(0, y0 + ty - radius)
+        sx1, sy1 = min(w, x1 + tx + radius), min(h, y1 + ty + radius)
+        # crop the template to the part that can still be inside the search window
+        cx0, cy0 = max(x0, sx0 - tx - radius), max(y0, sy0 - ty - radius)
+        cx1, cy1 = min(x1, sx1 - tx + radius), min(y1, sy1 - ty + radius)
+        cx0, cy0 = max(cx0, x0), max(cy0, y0)
+        if cx1 - cx0 < 16 or cy1 - cy0 < 16 or sx1 - sx0 < cx1 - cx0 or sy1 - sy0 < cy1 - cy0:
+            return None
+        down = lambda im: cv2.resize(im, None, fx=.5, fy=.5, interpolation=cv2.INTER_AREA)
+        tpl, msk = down(self.T[cy0:cy1, cx0:cx1]), down((self.tm[cy0:cy1, cx0:cx1] > 0).astype(np.float32))
+        win = down(cur_hp[sy0:sy1, sx0:sx1])
+        if msk.sum() < 30 or win.shape[0] < tpl.shape[0] or win.shape[1] < tpl.shape[1]:
+            return None
+        try:
+            res = cv2.matchTemplate(win, tpl, cv2.TM_CCOEFF_NORMED, mask=msk)
+        except cv2.error:
+            return None
+        res = np.nan_to_num(res, nan=-1, posinf=-1, neginf=-1)
+        _, _, _, loc = cv2.minMaxLoc(res)
+        dx = (sx0 + 2 * loc[0] - cx0) / self.s
+        dy = (sy0 + 2 * loc[1] - cy0) / self.s
+        return np.array([[1, 0, dx], [0, 1, dy], [0, 0, 1]], np.float64)
+
+    def ecc(self, cur_hp, cur_free_s, H0, motion) -> np.ndarray | None:
+        import cv2
+        W0 = (self.S @ H0 @ self.Si).astype(np.float32)
+        if motion != cv2.MOTION_HOMOGRAPHY:
+            W0 = W0[:2] / W0[2, 2]
+            if motion == cv2.MOTION_TRANSLATION:
+                W0 = np.float32([[1, 0, W0[0, 2]], [0, 1, W0[1, 2]]])
+        try:
+            _, Wr = cv2.findTransformECCWithMask(self.T, cur_hp, self.tm, cur_free_s, W0, motion,
+                                                 (cv2.TERM_CRITERIA_COUNT | cv2.TERM_CRITERIA_EPS, 50, 1e-5), 5)
+        except cv2.error:
+            return None
+        Wr = Wr.astype(np.float64)
+        if Wr.shape[0] == 2:
+            Wr = np.vstack([Wr, [0, 0, 1]])
+        return self.Si @ Wr @ self.S
+
+
+def _content_mask(img: np.ndarray, margin: int) -> np.ndarray:
+    """255 except letterbox / pillarbox padding (flat near-black rows and columns) and a margin around it: the
+    padding edge is a strong, motion-invariant line that would otherwise anchor the alignment."""
+    m = np.full(img.shape, 255, np.uint8)
+    flat = lambda a, ax: (a.mean(axis=ax) < 10) & (a.std(axis=ax) < 4)
+    rows, cols = flat(img, 1), flat(img, 0)
+    h, w = img.shape
+    top = int(np.argmin(rows)) if rows.any() and not rows.all() else 0
+    bot = h - int(np.argmin(rows[::-1])) if rows.any() and not rows.all() else h
+    left = int(np.argmin(cols)) if cols.any() and not cols.all() else 0
+    right = w - int(np.argmin(cols[::-1])) if cols.any() and not cols.all() else w
+    if top > 0: m[:min(h, top + margin)] = 0
+    if bot < h: m[max(0, bot - margin):] = 0
+    if left > 0: m[:, :min(w, left + margin)] = 0
+    if right < w: m[:, max(0, right - margin):] = 0
+    return m
+
+
+def _similarity_from(H: np.ndarray, pts: np.ndarray) -> np.ndarray:
+    """Closest similarity (rotation, uniform scale, translation) to H over pts (least squares, Umeyama)."""
+    import cv2
+    src = np.asarray(pts, np.float64)
+    dst = cv2.perspectiveTransform(src.reshape(-1, 1, 2), H).reshape(-1, 2)
+    ms, md = src.mean(0), dst.mean(0)
+    a, b = src - ms, dst - md
+    U, D, Vt = np.linalg.svd(b.T @ a)
+    R = U @ np.diag([1, np.sign(np.linalg.det(U @ Vt))]) @ Vt
+    sc = D.sum() / max((a ** 2).sum(), 1e-9) if np.linalg.det(U @ Vt) > 0 else (D[0] - D[1]) / max((a ** 2).sum(), 1e-9)
+    t = md - sc * R @ ms
+    return np.vstack([np.hstack([sc * R, t[:, None]]), [0, 0, 1]])
+
+
+def _robust_pass(frames, subject, key: int, order: Sequence[int], quad: np.ndarray, p: TrackParams,
+                 feat: dict[int, tuple[np.ndarray, float]], low_texture: bool) -> dict[int, tuple[np.ndarray, float, str]]:
+    """Key-referenced direct alignment with model selection. Each frame: translation and similarity (ECC from the
+    previous pose), homography (ECC + the feature tracker's pose); keep the simplest model whose alignment score
+    the richer ones don't beat by a margin, and only well-conditioned homographies (sane shape vs the key frame)."""
+    import cv2
+
+    key_img = frames(key)
+    shape = key_img.shape
+    region = cv2.bitwise_and(_quad_mask(shape, quad, min(p.expand, p.robust_expand)), _subject_free(shape, subject(key), p))
+    region = cv2.bitwise_and(region, _content_mask(key_img, int(3 * p.hp_sigma / p.select_scale)))
+    al = _Aligner(key_img, region, p)
+    q32 = quad.reshape(-1, 1, 2)
+    out: dict[int, tuple[np.ndarray, float, str]] = {}
+    prev, prev_low, prev_model, lost = np.eye(3), np.eye(3), "T", 0
+    hist = [quad.copy()]
+    last_c = quad.copy()
+    diag = float(np.linalg.norm(quad[2] - quad[0]))
+    margin_h = p.margin_h_low_texture if low_texture else p.margin_h
+    thumb = lambda im: cv2.resize(im, (64, 36), interpolation=cv2.INTER_AREA).astype(np.float32)
+    prev_thumb = thumb(key_img)
+    for f in order:
+        cur = frames(f)
+        t = thumb(cur)
+        a, b = t - t.mean(), prev_thumb - prev_thumb.mean()
+        if float(a.ravel() @ b.ravel() / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9)) < p.cut_ncc:
+            break  # shot cut: the plane is gone
+        prev_thumb = t
+        free = _subject_free(shape, subject(f), p)
+        cfree = al.small(free, nearest=True)
+        chp = al.hp(cur, cfree)
+        jump_ok = lambda Hx: np.abs(cv2.perspectiveTransform(q32, Hx).reshape(4, 2) - last_c).max() <= p.max_step * diag
+        cands: dict[str, tuple[np.ndarray, float]] = {}
+        # constant-velocity prediction from the last few accepted frames (corner space)
+        vel = np.mean(np.diff(np.array(hist[-6:]), axis=0), axis=0) if len(hist) >= 2 else np.zeros((4, 2))
+        pred_c = last_c + vel
+        pred = cv2.getPerspectiveTransform(np.float32(quad), np.float32(pred_c)).astype(np.float64)
+
+        def offer(name, Hx):
+            if Hx is None or not np.all(np.isfinite(Hx)) or not jump_ok(Hx):
+                return
+            sc = al.score(chp, cfree, Hx)
+            if name not in cands or sc > cands[name][1]:
+                cands[name] = (Hx, sc)
+        # translation: ECC from the last pose and from the last low-DOF pose, plus a coarse search (+ ECC)
+        for H0 in (pred, prev, prev_low):
+            offer("T", al.ecc(chp, cfree, H0, cv2.MOTION_TRANSLATION))
+        Hc = al.search_t(chp, prev_low, radius=24)
+        if Hc is not None:
+            offer("T", Hc)
+            offer("T", al.ecc(chp, cfree, Hc, cv2.MOTION_TRANSLATION))
+        # similarity: affine ECC from the best translation, projected onto rotation + uniform scale
+        Ha = al.ecc(chp, cfree, cands["T"][0] if "T" in cands else prev_low, cv2.MOTION_AFFINE)
+        if Ha is not None and np.all(np.isfinite(Ha)):
+            offer("S", _similarity_from(Ha, quad))
+        # homography: feature tracker's pose and ECC from the best low-DOF pose / last homography, only if well-conditioned
+        homs = []
+        if f in feat and feat[f][1] > 0:
+            homs.append(cv2.getPerspectiveTransform(np.float32(quad), np.float32(feat[f][0])))
+        low_best = max((cands[k] for k in ("T", "S") if k in cands), key=lambda v: v[1], default=(prev, 0))[0]
+        vis = _visible_fraction(region, low_best, shape, free)
+        if vis >= p.ecc_min_visible:
+            for H0 in [low_best] + ([prev] if prev_model == "H" else []):
+                homs.append(al.ecc(chp, cfree, H0, cv2.MOTION_HOMOGRAPHY))
+        h_far = False
+        for Hh in homs:
+            if Hh is None or not np.all(np.isfinite(Hh)):
+                continue
+            c = cv2.perspectiveTransform(q32, Hh).reshape(4, 2)
+            if not _quad_ok(c, quad, p) or not jump_ok(Hh):
+                continue
+            sc = al.score(chp, cfree, Hh)
+            if "H" not in cands or sc > cands["H"][1]:
+                d = quad_drift(c, quad)
+                cands["H"] = (Hh, sc)
+                h_far = not (1 / p.soft_drift[0] < d["area"] < p.soft_drift[0] and d["aspect"] < p.soft_drift[1]
+                             and d["skew"] < p.soft_drift[2])
+        # how much of the key-frame template the subject hides right now (off-screen parts don't count)
+        cover = _subject_cover(region, pred, shape, free)
+        occluded = cover > 1 - p.occ_visible
+        if occluded:
+            # template mostly hidden: an estimate must be convincing AND agree with the motion so far, else carry the
+            # pose forward at constant velocity
+            tol = max(3.0, 0.03 * diag)
+            cands = {k: v for k, v in cands.items() if v[1] >= 0.6 * p.ncc_good
+                     and np.abs(cv2.perspectiveTransform(q32, v[0]).reshape(4, 2) - pred_c).max() <= tol}
+        if not cands:
+            if occluded:
+                pc = cv2.perspectiveTransform(q32, pred).reshape(4, 2)
+                out[f] = (pc, 0.0, "P", {"c": {"P": (pc, 0.0)}, "occ": 1.0, "far": False})
+                prev, last_c = pred, pc
+                hist.append(pc)
+                continue
+            lost += 1
+            if lost >= 3:
+                break
+            continue
+        # simplest model unless a richer one is clearly better (half the margin for the model already in use)
+        m = lambda name, base: base * (0.5 if name == prev_model else 1.0)
+        best = "T" if "T" in cands else next(iter(cands))
+        if "S" in cands and (best == "S" or cands["S"][1] > cands[best][1] + m("S", p.margin_sim)):
+            best = "S"
+        if "H" in cands and best != "H" and cands["H"][1] > cands[best][1] + m("H", margin_h) + (0.05 if h_far else 0.0):
+            best = "H"
+        H, sc = cands[best]
+        corners = cv2.perspectiveTransform(q32, H).reshape(4, 2)
+        conf = float(np.clip(sc / p.ncc_good, 0, 1))
+        if not _quad_ok(corners, quad, p):
+            conf = 0.0
+        elif best == "H" and h_far:
+            conf *= 0.8
+        if sc < p.ncc_lost and not occluded:
+            lost += 1
+            if lost >= 3:
+                break
+        else:
+            lost = 0
+        # every candidate's corners + score, and how much of the quad the subject covers (for the trajectory stage)
+        allc = {k: (cv2.perspectiveTransform(q32, v[0]).reshape(4, 2), v[1]) for k, v in cands.items()}
+        occ = max(_occlusion(corners, free), cover)
+        out[f] = (corners, conf, best, {"c": allc, "occ": occ, "far": h_far})
+        prev, prev_model, last_c = H, best, corners
+        hist.append(corners)
+        if best in ("T", "S"):
+            prev_low = H
+        else:
+            prev_low = cands.get("S", cands.get("T", (_similarity_from(H, quad), 0)))[0]
+    return out
+
+
+def _subject_cover(key_mask: np.ndarray, H: np.ndarray, shape, free: np.ndarray) -> float:
+    """Fraction of the in-frame part of the key-frame template that the subject covers under pose H."""
+    import cv2
+    ys, xs = np.nonzero(key_mask[::8, ::8])
+    if len(xs) == 0:
+        return 0.0
+    pts = cv2.perspectiveTransform(np.stack([xs * 8, ys * 8], -1).reshape(-1, 1, 2).astype(np.float64), H).reshape(-1, 2)
+    ins = _inside(pts, shape)
+    if ins.sum() == 0:
+        return 0.0
+    return float((~_free_at(pts[ins], free)).mean())
+
+
+def _occlusion(corners: np.ndarray, free: np.ndarray) -> float:
+    """Fraction of the in-frame part of the quad covered by the (dilated) subject."""
+    import cv2
+    h, w = free.shape
+    m = np.zeros((h // 4 + 1, w // 4 + 1), np.uint8)
+    cv2.fillConvexPoly(m, np.round(np.asarray(corners) / 4).astype(np.int32), 1)
+    m = m[:h // 4, :w // 4] > 0
+    if m.sum() < 4:
+        return 0.0
+    sub = free[::4, ::4][:m.shape[0], :m.shape[1]] == 0
+    return float((sub & m).sum() / m.sum())
+
+
+def _local_linear(fs: np.ndarray, X: np.ndarray, w: np.ndarray, sigma: float) -> np.ndarray:
+    """Weighted local-linear (Gaussian kernel) smoothing of trajectories X[n, d] over frames fs: no lag on a pan,
+    no edge bias at the ends of a run; low-weight frames (occluded, weak) follow their neighbours."""
+    out = np.empty_like(X)
+    for i, f in enumerate(fs):
+        d = fs - f
+        k = np.exp(-0.5 * (d / sigma) ** 2) * w
+        sel = k > 1e-6 * k.max()
+        dd, kk, XX = d[sel].astype(np.float64), k[sel], X[sel]
+        S0, S1, S2 = kk.sum(), (kk * dd).sum(), (kk * dd * dd).sum()
+        den = S0 * S2 - S1 * S1
+        if den <= 1e-9 * max(S0 * S2, 1e-12):
+            out[i] = (kk[:, None] * XX).sum(0) / S0
+            continue
+        T0, T1 = (kk[:, None] * XX).sum(0), (kk[:, None] * dd[:, None] * XX).sum(0)
+        out[i] = (S2 * T0 - S1 * T1) / den
+    return out
+
+
+def _consolidate(rob: dict, key: int, quad: np.ndarray, p: TrackParams, low: bool, n_frames: int, info: dict | None):
+    """Trajectory stage. Richer models are blended in softly: a frame's similarity / homography weight comes from that
+    model's score gain over the simpler one *smoothed over a window of frames* (so one lucky frame never switches the
+    model), mapped through a margin ramp. Frames where the subject covers the quad or the score is weak are
+    down-weighted, then a weighted local-linear low-pass over the corner trajectory."""
+    fs_all = sorted(f for f in rob if f != key)
+    if not fs_all:
+        return {key: (quad.copy(), 1.0)}
+    mh = p.margin_h_low_texture if low else p.margin_h
+    idx = np.array(fs_all, np.float64)
+    occ = np.array([rob[f][3]["occ"] for f in fs_all])
+    def score(f, m):
+        c = rob[f][3]["c"]
+        return c[m][1] if m in c else None
+    def gain_track(a, b, margin):
+        g, w = [], []
+        for f in fs_all:
+            sa, sb = score(f, a), score(f, b)
+            if sa is None or sb is None:
+                g.append(-margin); w.append(0.3)  # richer model missing here: counts against it
+            else:
+                g.append(sa - sb); w.append(max(0.1, 1 - rob[f][3]["occ"]))
+        g, w = np.array(g), np.array(w)
+        gs = _local_linear(idx, g[:, None], w, p.model_window)[:, 0] if len(g) > 2 else g
+        return np.clip((gs - 0.5 * margin) / margin, 0, 1)
+    aS = gain_track("S", "T", p.margin_sim)
+    aH = gain_track("H", "T", mh)
+    recs = {}
+    for i, f in enumerate(fs_all):
+        c = rob[f][3]["c"]
+        if "P" in c and len(c) == 1:
+            recs[f] = [c["P"][0], 0.0, 0.002, 1.0]
+            continue
+        base = c.get("T", c.get("S", c.get("H")))
+        cs = c.get("S", base); ch = c.get("H", None)
+        low_c = (1 - aS[i]) * base[0] + aS[i] * cs[0]
+        corners = low_c if ch is None else (1 - aH[i]) * low_c + aH[i] * ch[0]
+        sc = max(v[1] for k, v in c.items() if k != "P")
+        if not _quad_ok(corners, quad, p):
+            continue
+        conf = float(np.clip(sc / p.ncc_good, 0, 1)) * (0.8 if ch is not None and aH[i] > .5 and rob[f][3]["far"] else 1.0)
+        w = max(conf, 0.02)
+        o = rob[f][3]["occ"]
+        if o > p.occ_trust:
+            w *= max(0.05, (1 - o) ** 2)  # subject over the quad: lean on less-occluded neighbours
+        recs[f] = [corners, conf, w, o]
+    model = "H" if aH.mean() > .5 else "S" if aS.mean() > .5 else "T"
+    recs[key] = [quad.copy(), 1.0, 20.0, 0.0]
+    # connected run around the key: occluded frames never end a track; weak *unoccluded* frames do
+    trusted = lambda f: f in recs and (recs[f][1] >= p.min_conf or recs[f][3] > p.occ_trust)
+    run = {key}
+    for step in (1, -1):
+        f, gap = key + step, 0
+        while 0 <= f < n_frames and gap <= p.max_gap:
+            if trusted(f):
+                run.add(f); gap = 0
+            else:
+                gap += 1
+            f += step
+    fs = np.array(sorted(f for f in run if f in recs))
+    X = np.stack([recs[f][0].reshape(8) for f in fs])
+    W = np.array([recs[f][2] for f in fs])
+    C = np.array([recs[f][1] for f in fs])
+    sigma = p.smooth * (2.5 if low else 1.5)
+    Xs = _local_linear(fs, X, W, sigma) if sigma > 0 and len(fs) > 2 else X
+    # confidence of occluded frames comes from their unoccluded neighbours
+    occl = np.array([recs[f][3] > p.occ_trust for f in fs])
+    if occl.any() and (~occl).any():
+        cn = _local_linear(fs, C[:, None], np.where(occl, 1e-3, 1.0), max(sigma, 3.0))[:, 0]
+        C = np.where(occl, np.maximum(C, np.clip(cn, 0, 1)), C)
+    if info is not None:
+        info.update({"model": model, "occluded": int(occl.sum()), "sigma": sigma})
+    return {int(f): (Xs[i].reshape(4, 2), float(C[i])) for i, f in enumerate(fs) if C[i] >= p.min_conf or f == key}
+
+
+def smooth_corners_gauss(track: dict[int, tuple[np.ndarray, float]], sigma: float) -> dict[int, tuple[np.ndarray, float]]:
+    """Gaussian smoothing of corners over contiguous runs (edge-normalized; never bridges a gap)."""
+    if sigma <= 0 or not track:
+        return track
+    r = int(math.ceil(2.5 * sigma))
+    out = {}
+    for f, (c, conf) in track.items():
+        acc, wsum = np.zeros((4, 2)), 0.0
+        for sign in (-1, 1):
+            for d in range(0 if sign < 0 else 1, r + 1):
+                g = track.get(f + sign * d)
+                if g is None:
+                    break
+                w = math.exp(-0.5 * (d / sigma) ** 2)
+                acc, wsum = acc + w * np.asarray(g[0], np.float64), wsum + w
+        out[f] = (acc / wsum, conf)
+    return out
+
+
+def texture_features(img: np.ndarray, quad_px: np.ndarray, subject_alpha: np.ndarray | None, p: TrackParams) -> int:
+    """How many good features the (expanded) key-frame quad offers, subject masked out."""
+    import cv2
+    region = cv2.bitwise_and(_quad_mask(img.shape, np.asarray(quad_px, np.float64), p.expand), _subject_free(img.shape, subject_alpha, p))
+    return len(_detect(img, region, p))
+
+
 def track_plane(frames: Callable[[int], np.ndarray], n_frames: int, key: int, corners_px: np.ndarray,
                 subject: Callable[[int], np.ndarray | None] | None = None,
                 params: TrackParams | None = None, progress: Callable[[float], None] | None = None,
-                ) -> dict[int, tuple[np.ndarray, float]]:
+                info: dict | None = None) -> dict[int, tuple[np.ndarray, float]]:
     """Track a planar quad through a clip. frames(i) → grayscale uint8; subject(i) → alpha uint8 or None.
-    Returns {frame: (4×2 corners in px, confidence)} with low-confidence frames dropped."""
+    Returns {frame: (4×2 corners in px, confidence)} with low-confidence frames dropped.
+
+    Feature pass (LK + RANSAC homography + ECC refine) → robust pass that re-estimates every frame directly against
+    the key frame and picks translation / similarity / homography by alignment score (with margins, stricter on
+    low-texture walls) → shape sanity vs the key frame → confidence from alignment → temporal smoothing.
+    `info` (optional dict) receives {"low_texture", "features", "models": {T,S,H counts}}."""
     p = params or TrackParams()
     subject = subject or (lambda i: None)
     quad = np.asarray(corners_px, np.float64).reshape(4, 2)
     track: dict[int, tuple[np.ndarray, float]] = {key: (quad.copy(), 1.0)}
     fwd = _pass(frames, subject, key, range(key + 1, n_frames), quad, p)
     if progress:
-        progress(0.5)
+        progress(0.25 if p.robust else 0.5)
     bwd = _pass(frames, subject, key, range(key - 1, -1, -1), quad, p)
     track.update(fwd)
     track.update(bwd)
-    kept = {f: v for f, v in sorted(track.items()) if v[1] >= p.min_conf}
-    return smooth_corners(kept, p.smooth)
+    if not p.robust:
+        kept = {f: v for f, v in sorted(track.items()) if v[1] >= p.min_conf}
+        return smooth_corners(kept, p.smooth)
+    n_feat = texture_features(frames(key), quad, subject(key), p)
+    low = n_feat < p.low_texture_features
+    rob = _robust_pass(frames, subject, key, range(key + 1, n_frames), quad, p, track, low)
+    if progress:
+        progress(0.75)
+    rob.update(_robust_pass(frames, subject, key, range(key - 1, -1, -1), quad, p, track, low))
+    if info is not None:
+        info.update({"low_texture": low, "features": n_feat,
+                     "per_frame_best": {m: sum(1 for v in rob.values() if v[2] == m) for m in "TSH"}})
+    return _consolidate(rob, key, quad, p, low, n_frames, info)
 
 
 # ---- C. reframe virtual camera ---------------------------------------------------------

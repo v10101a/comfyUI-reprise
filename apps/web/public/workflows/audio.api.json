@@ -1,0 +1,52 @@
+{
+  "1": {
+    "class_type": "LoadAudio",
+    "inputs": {
+      "audio": "typeset/test/song.wav"
+    },
+    "_meta": {
+      "title": "Song (full mix)"
+    }
+  },
+  "2": {
+    "class_type": "TypesetAudioField",
+    "inputs": {
+      "audio": [
+        "1",
+        0
+      ],
+      "fps": 24.0,
+      "band_low": 40.0,
+      "band_high": 140.0,
+      "attack_ms": 0.0,
+      "release_ms": 250.0,
+      "lead_frames": 0.5,
+      "duration": 0.0
+    },
+    "_meta": {
+      "title": "Audio field (low band)"
+    }
+  },
+  "3": {
+    "class_type": "SaveTextFile",
+    "inputs": {
+      "text": [
+        "2",
+        0
+      ],
+      "filename_prefix": "typeset/audio",
+      "extension": "json",
+      "pretty_json": false
+    }
+  },
+  "4": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "2",
+        1
+      ],
+      "filename_prefix": "typeset/audio"
+    }
+  }
+}

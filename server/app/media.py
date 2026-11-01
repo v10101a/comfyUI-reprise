@@ -8,7 +8,7 @@ import re
 import shutil
 import subprocess
 from fractions import Fraction
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .config import settings
 from .models import MediaRef
@@ -194,6 +194,91 @@ def encode_prores4444(pattern: Path, fps: float, out: Path, start_number: int = 
         ],
         what="ffmpeg(prores4444)",
     )
+    return out
+
+
+# ---- studio preview proxies ---------------------------------------------------------
+# Half-size, short-GOP copies for the studio's draft renders (scrubbing, dragging, look thumbnails). Seeking the
+# originals decodes from the last keyframe (~100 ms per frame on the hero footage, ~150 ms for the VP9-alpha matte);
+# these seek in ~17 ms (outputs/perf/seek-candidates-hero.json). Found by convention, never by a project field:
+# media/proxy/<video stem>.mp4 and <matte dir>/fg_proxy.webm. Export, TypesetRender and capture read the originals.
+PROXY_MAX_LONG = 672
+PROXY_GOP = 12
+# Studio "seek copies": the same short GOP at full size, for paused (settled) studio frames, so they stay full quality
+# but seek in ~20 ms instead of up to ~0.9 s (long-GOP mattes). media/proxy/<stem>.full.mp4 and <matte>/fg_seek.webm.
+
+
+def _scale(max_long: int) -> str:
+    """Long edge to max_long (never upscaled; 0 = keep size), both dimensions even."""
+    if not max_long:
+        return "scale=w='trunc(iw/2)*2':h='trunc(ih/2)*2'"
+    return (f"scale=w='trunc(min(1,{max_long}/max(iw,ih))*iw/2)*2'"
+            f":h='trunc(min(1,{max_long}/max(iw,ih))*ih/2)*2'")
+
+
+PROXY_SCALE = _scale(PROXY_MAX_LONG)
+
+
+def proxy_rel(video_rel: str) -> str:
+    """media/<name>.<ext> -> media/proxy/<name>.mp4 (apps/web/src/renderer.ts proxyPath mirrors this)."""
+    p = PurePosixPath(video_rel)
+    return str(p.parent / "proxy" / f"{p.stem}.mp4")
+
+
+def seek_rel(video_rel: str) -> str:
+    """media/<name>.<ext> -> media/proxy/<name>.full.mp4 (renderer.ts seekPath mirrors this). Upload names are unique,
+    so a new video never reuses an old copy."""
+    p = PurePosixPath(video_rel)
+    return str(p.parent / "proxy" / f"{p.stem}.full.mp4")
+
+
+def encode_preview_proxy(src: Path, out: Path, gop: int = PROXY_GOP, full: bool = False) -> Path:
+    """Studio-only H.264 proxy of a project video; written atomically so a studio mid-load never sees a partial file."""
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(out.stem + ".tmp.mp4")
+    ffmpeg(
+        [
+            "-i", src, "-vf", _scale(0) if full else PROXY_SCALE,
+            "-c:v", "libx264", "-preset", "veryfast", "-tune", "fastdecode", "-crf", "17" if full else "20", "-pix_fmt", "yuv420p",
+            "-x264-params", f"keyint={gop}:min-keyint={gop}:scenecut=0:bframes=0",
+            "-an", "-movflags", "+faststart", tmp,
+        ],
+        what="ffmpeg(preview proxy)",
+    )
+    tmp.replace(out)
+    return out
+
+
+def clear_matte_proxies(matte_dir: Path) -> None:
+    """Drop studio copies of a matte that is about to be rewritten, so they can never disagree with fg.webm."""
+    for name in ("fg_proxy.webm", "fg_seek.webm", "fg_proxy.tmp.webm", "fg_seek.tmp.webm"):
+        (matte_dir / name).unlink(missing_ok=True)
+
+
+def encode_matte_proxy(matte_dir: Path, fps: float, gop: int = PROXY_GOP, full: bool = False) -> Path | None:
+    """<matte>/fg_proxy.webm (VP9 alpha, half size, short GOP) from the fg_%05d.png sequence, or from fg.webm when the
+    PNGs are gone. None when there is nothing to encode from."""
+    pngs = sorted(matte_dir.glob("fg_[0-9]*.png"))
+    webm = matte_dir / "fg.webm"
+    if pngs:
+        first = int(pngs[0].stem.split("_", 1)[1])
+        src = ["-framerate", f"{fps}", "-start_number", str(first), "-i", matte_dir / "fg_%05d.png"]
+    elif webm.exists():
+        src = ["-c:v", "libvpx-vp9", "-i", webm]  # the libvpx decoder keeps alpha; the native one drops it
+    else:
+        return None
+    name = "fg_seek" if full else "fg_proxy"
+    out = matte_dir / f"{name}.webm"
+    tmp = matte_dir / f"{name}.tmp.webm"
+    ffmpeg(
+        [
+            *src, "-vf", _scale(0) if full else PROXY_SCALE,
+            "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", "-b:v", "0", "-crf", "30" if full else "32",
+            "-g", str(gop), "-row-mt", "1", "-deadline", "realtime", "-cpu-used", "8", "-r", f"{fps}", "-an", tmp,
+        ],
+        what="ffmpeg(matte proxy)",
+    )
+    tmp.replace(out)
     return out
 
 

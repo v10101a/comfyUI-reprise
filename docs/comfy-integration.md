@@ -114,3 +114,14 @@ The node pack now hosts the whole studio. With `custom_nodes_dev/typeset_nodes` 
   - The graph runs LoadVideo → BiRefNet matte + TypesetAlignLyrics → VoiceField (re-using the aligner's stem) + FlowField → TypesetLook + TypesetGrade → TypesetRender → CreateVideo → SaveVideo.
   - It is one graph with two views. `extra.linearMode` plus `linearData` expose file, lyrics, preset, grade, voice and flow.
   - On the 8 s dancer chorus at 1344×768, the whole graph took 81 s on an M5 Max (:8198).
+
+## 2026-10-31: TypesetRender renders through the studio
+
+`TypesetRender` now uses the studio's renderer, so App Mode, the ComfyUI graph and the studio give the same pixels for every look.
+- **How:** the node writes its inputs into a Typeset project in the `/typeset` store: footage (H.264 crf 10, BT.709), matte (`fg.webm` + tracks + occupancy, as the matte job does), words, fields, look and `grade_json`. The project id is `comfy-<footage hash>`, so re-runs update it in place and reuse the encoded footage and matte. Headless Chromium then renders `#/render` through `server/app/capture.py`. The FastAPI exporter now uses that same capture loop. The `renderer` output and the log name the path and the project, which can be opened at `/typeset/#/studio?project=…`.
+- **Why this way:** it reuses the real renderer and the project format, and adds no second renderer to keep in sync. Capture runs as a subprocess, so it never runs inside ComfyUI's executor thread, and it never queues a workflow, which would deadlock the running prompt. Wall-clock cost: about 0.65 s per 1344×768 frame on this machine.
+- **Fallback:** `renderer=auto` falls back to the Python draft when there is no `/typeset` host, no `apps/web/dist` or no Playwright, or when the capture fails. `draft` forces the draft; `studio` raises instead of falling back.
+- **Grade:** connect ungraded frames and `grade_json`, and the renderer grades footage and subject, as the studio does. The App Mode template is rewired that way (all three copies).
+- **Setup:** `uv pip install --python ~/ComfyUI/.venv/bin/python playwright==1.64.1` (it shares `~/Library/Caches/ms-playwright` with `server/.venv`). Run `pnpm build` in `apps/web` after renderer changes, because the node renders what `dist/` contains. Then restart ComfyUI.
+- **Parity** (`outputs/render_parity/`): the App Mode graph ran on :8198 with its own `TYPESET_DATA_DIR` on the 8 s dancer clip (192 frames, 1344×768, teal grade). The same project was then exported from the studio UI, intercepting the PNGs it uploads. Flat-card, neon (with relight) and ticker composites, plus the neon text layer: 192/192 frames byte-identical (max diff 0). The footage re-encode is 54 dB PSNR from the source clip. Details are in `outputs/render_parity/README.md`.
+- **Template fix:** `app_words_in_your_shot.api.json` was missing TypesetLook's newer `drips`/`light` inputs, so `/prompt` rejected it. They are now filled with defaults.

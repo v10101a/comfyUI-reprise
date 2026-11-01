@@ -1,0 +1,10 @@
+{
+  "_doc": "Demo-page pieces: one source of truth for Showcase.tsx and the server's save→demo refresh (server/app/showcase.py). A piece with `encode` is re-rendered from its project into public/showcase/<file> after studio saves; alts (Original layers) are never touched. encode: scale = output width (omit to keep the project size), fadeOut / audioFadeOut = seconds faded at the end.",
+  "pieces": [
+    {"id": "hero", "name": "Neon Rain", "file": "hero-16x9.mp4", "kind": "video", "aspect": "1344/768", "project": "54da2790-92c6-4737-bc43-81a207e47ab5", "note": "lyric video · flat-card look · 22 s · 1344×768", "alts": [{"label": "Original", "file": "hero-source.mp4"}], "encode": {}},
+    {"id": "hero-dark", "name": "Neon Rain · Night", "file": "hero-dark.mp4", "kind": "video", "aspect": "1344/768", "optional": true, "project": "54da2790-92c6-4737-bc43-81a207e47ab5", "note": "dark restyle"},
+    {"id": "louder", "name": "DANCING", "file": "louder-fields.mp4", "kind": "video", "aspect": "1344/768", "project": "42b7723d-7518-4a0a-b8b2-3c7641b18d73", "note": "motion + voice fields · type bends with the dance, swells with the voice · 8 s", "alts": [{"label": "Original", "file": "louder-source.mp4"}], "encode": {}},
+    {"id": "ffm", "name": "Fall For Me", "file": "ffm.mp4", "kind": "video", "aspect": "1080/1280", "project": "14ef9e95-1d22-4bc1-8e42-5a1db01368ee", "note": "lyric video · 24 s", "alts": [{"label": "Original", "file": "ffm-source.mp4"}], "encode": {"scale": 720, "fadeOut": 0.65, "audioFadeOut": 0.65}},
+    {"id": "ffm-angel", "name": "Fall For Me · Angel", "file": "ffm-angel.mp4", "kind": "video", "aspect": "1080/1280", "optional": true, "project": "d7f7835a-8fdf-4487-bc1a-1eebeeeeb7c3", "note": "lyric video · generated angel shots", "alts": [{"label": "Original", "file": "ffm-angel-source.mp4"}], "encode": {"scale": 720, "fadeOut": 0.5}}
+  ]
+}

@@ -1,11 +1,13 @@
-import type {Project,Word,Tracks,Layer,TextStyle,Occupancy,CropData,CropFrame,SurfaceTrack,Surface,Point,Look,Grade} from './types';
+import type {Project,Word,Tracks,Layer,TextStyle,Occupancy,CropData,CropFrame,SurfaceTrack,Surface,Point,Look,Grade,LineMeta} from './types';
 import {assetUrl} from './api';
 import {FlowField,drawMotion,type FlowDoc} from './flow';
-import {VoiceField,type VoiceDoc} from './voice';
+import {songField,type SongField,type VoiceDoc,type AudioDoc} from './voice';
+import {toSong,audibleAt,shiftOf,clipOf} from './audioClip';
 import {at as atBase} from './base';
 import {OccupancySource,autoPlace,type LineRequest,type LinePlacement,type Placed} from './placement';
 import {cropAt,toOut,drawWarped,drawMapped,quadIsConvex,quadSize,squareToQuad,applyH,warpSafeMargins} from './geometry';
-import {FONTS,lookOf,gradeOf,wordIsShown,lineIsHook,heroWordId,applyCase,isSubtitleLine} from './looks';
+import {FONTS,lookOf,lookIsFrozen,gradeOf,wordIsShown,lineIsHook,heroWordId,applyCase,isSubtitleLine,lineIsFilled,fillOf} from './looks';
+import {GlyphFill,type FillLine} from './glyph';
 
 // Closed form damped step response: no mutable simulation state, stable across seeks.
 export function spring(t:number){if(t<=0)return 0;return 1-Math.exp(-12*t)*(Math.cos(18*t)+(12/18)*Math.sin(18*t));}
@@ -22,6 +24,22 @@ export function anchorAtT(tracks:Tracks|undefined,id:string,ft:number):TrackPoin
   const f0=Math.floor(ft),a=anchorAt(tracks,id,f0);if(!a||ft===f0)return a;
   const b=anchorAt(tracks,id,f0+1);if(!b||b.f!==f0+1||a.f!==f0)return a;const k=ft-f0;
   return {f:a.f,bbox:a.bbox.map((v,i)=>v+(b.bbox[i]-v)*k),cx:a.cx+(b.cx-a.cx)*k,cy:a.cy+(b.cy-a.cy)*k};
+}
+/** Where a HUD line's head is when the person track has no point near this frame: between tracked frames, linear;
+ *  before the first / after the last, held; no track at all → a virtual head in the upper middle (a screen label).
+ *  Only used where anchorAt/anchorAtT give nothing, so tracked frames draw exactly as before. */
+export type HeadState='tracked'|'held'|'none';
+export const VIRTUAL_HEAD:TrackPoint={f:-1,bbox:[.42,.2,.58,.52],cx:.5,cy:.36};
+export function headFallback(tracks:Tracks|undefined,id:string,ft:number):{point:TrackPoint;state:HeadState}{
+  const pts=tracks?.tracks.find(track=>track.id===id)?.frames;if(!pts?.length)return {point:VIRTUAL_HEAD,state:'none'};
+  let lo=0,hi=pts.length-1,found=-1;while(lo<=hi){const mid=(lo+hi)>>1;if(pts[mid].f<=ft){found=mid;lo=mid+1;}else hi=mid-1;}
+  const a=found>=0?pts[found]:undefined,b=pts[found+1];
+  if(a&&b&&b.f>a.f){const k=(ft-a.f)/(b.f-a.f);return {point:{f:Math.round(ft),bbox:a.bbox.map((v,i)=>v+(b.bbox[i]-v)*k),cx:a.cx+(b.cx-a.cx)*k,cy:a.cy+(b.cy-a.cy)*k},state:'held'};}
+  return {point:(a||b)!,state:'held'};
+}
+/** HUD head at a (fractional, track-fps) frame: the tracked point when there is one, else headFallback. */
+export function headAt(tracks:Tracks|undefined,id:string,ft:number,frame=Math.round(ft)):{point:TrackPoint;state:HeadState}{
+  const point=anchorAtT(tracks,id,ft);if(point&&anchorAt(tracks,id,frame))return {point,state:'tracked'};return headFallback(tracks,id,ft);
 }
 /** Surface pose at a frame: tracked corners (hold ≤6 frames), else the static drawn corners. Fractional frames interpolate. */
 export function surfaceCornersAt(s:Surface,track:SurfaceTrack|undefined,frame:number):Point[]|undefined{
@@ -44,6 +62,11 @@ export async function loadFonts(){
   }
   await Promise.all(['700 24px Inter','800 24px Inter','900 24px Inter','500 24px Inter','400 24px "Space Mono"','700 24px "Space Mono"','400 24px Anton','400 24px "Bebas Neue"'].map(font=>document.fonts.load(font)));await document.fonts.ready;
 }
+/** Studio preview proxy for a project video, from its project path or served URL: …/media/<name>.<ext> -> …/media/proxy/<name>.mp4
+ *  (server/app/media.py proxy_rel). Anything without a media/ segment (sample fixtures, blob:) comes back unchanged. */
+export function proxyPath(videoPath:string){return videoPath.replace(/(^|\/)media\/(?!proxy\/)([^/?#]+)$/,(_m,pre:string,name:string)=>`${pre}media/proxy/${name.replace(/\.[^.]+$/,'')}.mp4`);}
+/** Full-size short-GOP studio copy (paused frames): …/media/<name>.<ext> -> …/media/proxy/<name>.full.mp4 (media.py seek_rel). */
+export function seekPath(videoPath:string){const p=proxyPath(videoPath);return p===videoPath?p:p.replace(/\.mp4$/,'.full.mp4');}
 function video(src:string):Promise<HTMLVideoElement>{return new Promise((resolve,reject)=>{const v=document.createElement('video');v.crossOrigin='anonymous';v.preload='auto';v.muted=true;v.playsInline=true;v.onloadeddata=()=>resolve(v);v.onerror=()=>reject(new Error(`Cannot load media: ${src}`));v.src=src;v.load();});}
 /** Seek and wait until the frame at t is actually decoded and drawable. 'seeked' alone can fire while the
  *  previous frame is still the one drawImage paints, and the mp4 and the VP9-alpha matte lag by different amounts,
@@ -56,6 +79,34 @@ export async function seek(v:HTMLVideoElement,t:number){
   const presented=rvfc?new Promise<void>(resolve=>{rvfc(()=>resolve());setTimeout(resolve,250);}):Promise.resolve();
   await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{cleanup();reject(new Error('Video seek timed out'));},15000);const cleanup=()=>{clearTimeout(timer);v.removeEventListener('seeked',done);v.removeEventListener('error',error);};const done=()=>{cleanup();resolve();};const error=()=>{cleanup();reject(new Error('Video seek failed'));};v.addEventListener('seeked',done);v.addEventListener('error',error);v.currentTime=at;});
   await presented;
+}
+/** Sequential decode for exports (#/render?decode=seq). Seeking re-decodes from the last keyframe for every frame
+ *  (~0.3-0.6 s on long-GOP footage and mattes); for the next few frames this plays forward instead and pauses on the
+ *  presented frame, so the decoder never restarts. Same decoder, same frames as seek(): the target is the frame whose
+ *  pts is floor(t*fps)/fps, exactly what seek(v,(f+.5)/fps) shows. Anything unexpected (no rVFC, overshoot, timeout,
+ *  a jump back or far ahead) falls back to seek(). */
+const SEQ_AHEAD=8;
+/** Playback rate while advancing; overshoot (a frame presented past the target) falls back to seek. */
+export const seqConfig={rate:1};
+/** Counters for the export gate: frames reached by playing forward vs by seek fallback. */
+export const seqStats={played:0,seeked:0,overshoot:0,timeout:0};
+const seqAt=new WeakMap<HTMLVideoElement,number>();
+export async function advance(v:HTMLVideoElement,t:number,fps:number){
+  const at=Math.min(Math.max(0,t),Math.max(0,v.duration-0.001));const want=Math.floor(at*fps+1e-6);
+  const have=seqAt.get(v);
+  const rvfc=(v as HTMLVideoElement&{requestVideoFrameCallback?:(cb:(now:number,m:{mediaTime:number})=>void)=>number}).requestVideoFrameCallback?.bind(v);
+  if(have===want&&v.paused)return;
+  if(!rvfc||have===undefined||want<=have||want-have>SEQ_AHEAD||!v.paused){seqStats.seeked++;seqAt.delete(v);await seek(v,at);seqAt.set(v,want);return;}
+  const ok=await new Promise<boolean>(resolve=>{
+    let done=false,callback=0;
+    const finish=(ok:boolean)=>{if(done)return;done=true;clearTimeout(timer);v.cancelVideoFrameCallback?.(callback);v.pause();resolve(ok);};
+    const timer=setTimeout(()=>{seqStats.timeout++;finish(false);},4000);
+    const onFrame=(_now:number,m:{mediaTime:number})=>{if(done)return;const k=Math.round(m.mediaTime*fps);
+      if(k<want){callback=rvfc(onFrame);return;}if(k!==want)seqStats.overshoot++;finish(k===want);};
+    callback=rvfc(onFrame);v.playbackRate=seqConfig.rate;void v.play().catch(()=>finish(false));
+  });
+  if(ok)seqStats.played++;else{seqStats.seeked++;seqAt.delete(v);await seek(v,at);}
+  seqAt.set(v,want);
 }
 async function json<T>(url:string):Promise<T|undefined>{try{const r=await fetch(url);if(!r.ok)return undefined;return await r.json() as T;}catch{return undefined;}}
 
@@ -70,7 +121,11 @@ type Role = 'line'|'hook'|'verse'|'hero'|'sat'|'stack'|'surface'|'hud';
 /** A drawable unit. Without a look, one unit = one line (words sharing lineId+placement), exactly as in v2.
  *  Under a look's layout a line can split into a hero unit and satellite units. total = widest row. */
 type Line = {sub?:boolean;key:string;lineId:string;role:Role;words:Word[];placement:Word['placement'];start:number;end:number;metrics:Metric[];rows:Row[];total:number;size:number;height:number;
-  bleed?:boolean;auto?:boolean;req?:Partial<LineRequest>;card?:boolean};
+  bleed?:boolean;auto?:boolean;req?:Partial<LineRequest>;card?:boolean;
+  /** HUD layout: stacking slot (0 = top label: leader + readout; others: bracket only). */
+  hudSlot?:number;
+  /** HUD layout: offset of this slot below slot 0 (fraction of frame height; the stack is clamped as one). */
+  hudOff?:number};
 const ROW=1.04;
 
 /** HUD labels are never smaller than this fraction of frame height (proof A: the tiny tag was unreadable). */
@@ -90,11 +145,12 @@ const DEFAULT_WEIGHT:Record<string,number>={Inter:800,'Archivo Narrow':500,'Big 
 /** Look styling: the look owns typeface, weight, colour, case and spacing; per-word size/alignment still apply. */
 function lookStyle(p:Project,w:Word,look:Look,role:Role,size?:number):{style:TextStyle;text:string}{
   const s=styleOf(p,w);
-  if(role==='hud')return {style:{...s,fill:hudInk(look)},text:w.text};
+  const mf=p.lineMeta?.[w.lineId]?.fill;
+  if(role==='hud')return {style:{...s,fill:mf??hudInk(look)},text:w.text};
   const heroish=role==='hero'||role==='hook'||role==='surface'||role==='stack';
   const family=heroish?look.font.hero:look.font.body;
   const weight=(heroish?look.font.heroWeight:look.font.bodyWeight)??DEFAULT_WEIGHT[family]??400;
-  const fill=heroish?(look.heroFill==='accent'?look.palette.accent:look.palette.text):look.layout==='line'?look.palette.accent:look.palette.text;
+  const fill=mf??(heroish?(look.heroFill==='accent'?look.palette.accent:look.palette.text):look.layout==='line'?look.palette.accent:look.palette.text);
   const italic=(heroish?look.font.heroStyle:look.font.bodyStyle)==='italic';const outline=look.palette.outline??(look.outlineWidth?look.palette.shadow??'#000000':undefined);
   const style:TextStyle={...s,fontFamily:family,fontWeight:weight,fill,stroke:outline??null,strokeWidth:outline?look.outlineWidth??.05:null,letterSpacing:family==='Silkscreen'?.04:-.01,shadow:null};
   if(italic)style.fontStyle='italic';else delete style.fontStyle;
@@ -123,65 +179,94 @@ function groupWords(p:Project,filter:(w:Word)=>boolean){
 }
 /** v2 lines (no look). Kept exported for reframe.ts. */
 export function lines(ctx:CanvasRenderingContext2D,p:Project):Line[]{
-  return [...groupWords(p,w=>!w.hidden&&!p.lineMeta?.[w.lineId]?.hidden).entries()].map(([key,words])=>buildUnit(ctx,p,key,words[0].lineId,'line',words,w=>({style:styleOf(p,w),text:w.text})));
+  return [...groupWords(p,w=>!w.hidden&&!p.lineMeta?.[w.lineId]?.hidden).entries()].map(([key,words])=>buildUnit(ctx,p,key,words[0].lineId,'line',words,w=>{const mf=p.lineMeta?.[w.lineId]?.fill;return {style:mf?{...styleOf(p,w),fill:mf}:styleOf(p,w),text:w.text};}));
 }
 /** Units under a look: styling, quiet, and the layout split (hero/satellites, constellation, stack). */
 function lookUnits(ctx:CanvasRenderingContext2D,p:Project,look:Look,hasMatte:boolean):Line[]{
+  // Prototype role model (Project.roleModel 'placement'): the role only places the line (front / behind / head / wall);
+  // all styling comes from the look. Unset = the shipped behaviour, byte-identical.
+  const pm=p.roleModel==='placement';const keepPl=(pl:Word['placement'])=>pm&&(pl==='overlay'||pl==='behind')?pl:undefined;
   const out:Line[]=[];const minDim=Math.min(p.width,p.height)/p.height;// font sizes are fractions of height
   const sc=look.scale??1,card=!!look.card;
   const groups=[...groupWords(p,w=>wordIsShown(p,w)).entries()];
   // Hero layout shows one line at a time: a line yields when the next text line starts (no hero pile-ups).
   const starts=[...new Set(groups.filter(([,ws])=>(ws[0].placement==='behind'||ws[0].placement==='overlay')&&!isSubtitleLine(p,ws[0].lineId)).map(([,ws])=>Math.min(...ws.map(w=>w.start))))].sort((a,b)=>a-b);
   const yieldAt=(start:number)=>starts.find(s=>s>start+1e-6)??Infinity;
+  const hudSlots:number[]=[];// end time per slot (-Infinity = free)
+  if(look.layout==='hud')groups.sort((a,b)=>Math.min(...a[1].map(w=>w.start))-Math.min(...b[1].map(w=>w.start)));
   for(const [key,raw] of groups){
+    // Studio size for lines whose layout sets the size (looks.ts lineSizeMode 'scale'): lineMeta.scale (absent = 1).
+    const lm=p.lineMeta?.[raw[0].lineId]?.scale??1,ls=sc*lm;
     // Subtitle/karaoke register keeps its authored placement, size and alignment under every look:
     // mono (unless the word names a family) in the palette's text colour; the active karaoke word takes the accent.
     if(isSubtitleLine(p,raw[0].lineId)){
-      const u=buildUnit(ctx,p,key,raw[0].lineId,'line',raw,w=>({style:{...styleOf(p,w),fontFamily:w.style?.fontFamily??'Space Mono',fontWeight:w.style?.fontWeight??700,fill:lum(look.palette.text)>.25?look.palette.text:hudLine(look),stroke:null,strokeWidth:null,shadow:null,letterSpacing:w.style?.letterSpacing??0},text:w.text}));u.sub=true;out.push(u);continue;
+      const u=buildUnit(ctx,p,key,raw[0].lineId,'line',raw,w=>({style:{...styleOf(p,w),fontFamily:w.style?.fontFamily??'Space Mono',fontWeight:w.style?.fontWeight??700,fill:p.lineMeta?.[w.lineId]?.fill??(lum(look.palette.text)>.25?look.palette.text:hudLine(look)),stroke:null,strokeWidth:null,shadow:null,letterSpacing:w.style?.letterSpacing??0},text:w.text}));u.sub=true;out.push(u);continue;
+    }
+    // v4.3 glyph fill: a filled line is drawn as a letter grid (renderer drawFill), never as type.
+    if(lineIsFilled(p,raw[0].lineId))continue;
+    // HUD layout: every line becomes a head-locked HUD label (anchored to person0, bracket + leader + readout).
+    // Lines alive at the same time stack downward in slots so labels never overlap.
+    if(look.layout==='hud'){
+      const start=Math.min(...raw.map(w=>w.start)),end=Math.max(...raw.map(w=>w.end));
+      // Lowest free slot (a line never lands on a slot still in use), slots spaced by the real label box + a gap.
+      let slot=hudSlots.findIndex(e=>e<=start+1e-6);if(slot<0)slot=hudSlots.length;hudSlots[slot]=end;
+      const ws=raw.map(w=>({...w,placement:'anchor' as const,preset:'hud' as const,anchor:w.anchor??{trackId:'person0',dx:.24,dy:-.15},
+        text:applyCase(w.text,look.font.heroCase),style:{...(w.style||{}),fontFamily:look.font.hero,fontWeight:look.font.heroWeight??500,fontSize:.05*ls,align:'left' as const}}));
+      const u=buildUnit(ctx,p,`${key}:hud`,raw[0].lineId,'hud',ws,w=>lookStyle(p,w,look,'hud'));u.hudSlot=slot;
+      if(!raw[0].anchor)u.hudOff=slot*(u.size*(1+.36+.3))/p.height;out.push(u);continue;
     }
     // Layouts that size words individually split multi-token words ("than the radio") into tokens sharing the timing.
     const split=look.layout!=='line'&&(raw[0].placement==='behind'||raw[0].placement==='overlay');
     const words=split?raw.flatMap(w=>{const toks=w.text.split(/\s+/).filter(Boolean);return toks.length<2?[w]:toks.map((tk,i)=>({...w,id:`${w.id}~${i}`,text:tk,hero:w.hero&&i===0?w.hero:null}));}):raw;
     const lineId=words[0].lineId;const placement=words[0].placement;
-    if(placement==='anchor'){out.push(buildUnit(ctx,p,key,lineId,'hud',words,w=>lookStyle(p,w,look,w.preset==='hud'?'hud':'verse')));continue;}
+    if(placement==='anchor'){const u=buildUnit(ctx,p,key,lineId,'hud',words,w=>lookStyle(p,w,look,pm?'hook':w.preset==='hud'?'hud':'verse'));if(pm)u.card=card;out.push(u);continue;}
     if(placement==='surface'){
       // Neon walls take the accent (a tube colour, not body ink); a carded look puts its card on the wall too.
       const neon=p.surfaces?.find(x=>x.id===words[0].surfaceId)?.material==='neon';
-      const u=buildUnit(ctx,p,key,lineId,'surface',words,w=>{const r=lookStyle(p,w,look,'surface');return neon?{...r,style:{...r.style,fill:look.palette.accent}}:r;});
+      const u=buildUnit(ctx,p,key,lineId,'surface',words,w=>{const r=lookStyle(p,w,look,'surface');return neon?{...r,style:{...r.style,fill:p.lineMeta?.[w.lineId]?.fill??look.palette.accent}}:r;});
       u.card=card;out.push(u);continue;}
     const hook=lineIsHook(p,lineId);
+    // Flat Card is a title treatment; ordinary lines should not collapse into the small verse register.
+    if(look.id==='flat-card'){
+      const authored=words[0].autoPlace===false&&!!words[0].position;
+      const placed=words.map(w=>({...w,position:authored?w.position:{x:.5,y:.5},autoPlace:false}));
+      // Hooks keep their authored size exactly as before (× lineMeta.scale when set); other lines get the title minimum.
+      const u=hook?buildUnit(ctx,p,key,lineId,'hook',words,w=>lookStyle(p,w,look,'hook',lm!==1?styleOf(p,w).fontSize*sc*lm:undefined))
+        :buildUnit(ctx,p,key,lineId,'hook',placed,w=>lookStyle(p,w,look,'hook',Math.max(styleOf(p,w).fontSize,.16*minDim)*ls));
+      u.card=card;out.push(u);continue;
+    }
     if(look.layout==='hero'){
       const heroId=heroWordId({...p,words:[...p.words.filter(w=>w.lineId!==lineId),...words]},lineId);const hero=words.find(w=>w.id===heroId)||words[0];
       const end=Math.min(Math.max(...words.map(w=>w.end)),yieldAt(Math.min(...words.map(w=>w.start))));
       // Hero: 0.30–0.60 of min(width,height); shrink until ≥60% of the word stays in frame (bleed allowed).
-      let size=.45*minDim*sc;const probe=buildUnit(ctx,p,'probe',lineId,'hero',[hero],w=>lookStyle(p,w,look,'hero',size),{wrap:'never'});
+      let size=.45*minDim*ls;const probe=buildUnit(ctx,p,'probe',lineId,'hero',[hero],w=>lookStyle(p,w,look,'hero',size),{wrap:'never'});
       const maxW=p.width/.62;if(probe.total>maxW)size*=maxW/probe.total;
-      const u=buildUnit(ctx,p,`${key}:hero`,lineId,'hero',[hero],w=>lookStyle(p,w,look,'hero',size),{wrap:'never',placement:hasMatte?'behind':'overlay'});
+      const u=buildUnit(ctx,p,`${key}:hero`,lineId,'hero',[hero],w=>lookStyle(p,w,look,'hero',size),{wrap:'never',placement:keepPl(placement)??(hasMatte?'behind':'overlay')});
       u.end=end;u.bleed=true;u.auto=true;u.card=card;u.req={tolerance:.55,noShrink:true,canPromote:false,hint:{x:.5,y:p.height>p.width?.42:.5}};out.push(u);
       for(const w of words)if(w!==hero){
-        const s=buildUnit(ctx,p,`${key}:sat:${w.id}`,lineId,'sat',[w],x=>lookStyle(p,x,look,'sat',.048*minDim*sc),{wrap:'never',placement:'overlay'});
+        const s=buildUnit(ctx,p,`${key}:sat:${w.id}`,lineId,'sat',[w],x=>lookStyle(p,x,look,'sat',.048*minDim*ls),{wrap:'never',placement:keepPl(placement)??'overlay'});
         s.auto=true;s.card=card;s.start=u.start;s.end=u.end;s.req={tolerance:.01,strict:true,canPromote:false,avoidKey:u.key,avoidR:u.height/p.height*1.05};out.push(s);
       }
       continue;
     }
     if(look.layout==='constellation'){
-      for(const w of words){const s=buildUnit(ctx,p,`${key}:c:${w.id}`,lineId,'sat',[w],x=>lookStyle(p,x,look,'sat',.05*minDim*sc),{wrap:'never',placement:'overlay'});
+      for(const w of words){const s=buildUnit(ctx,p,`${key}:c:${w.id}`,lineId,'sat',[w],x=>lookStyle(p,x,look,'sat',.05*minDim*ls),{wrap:'never',placement:keepPl(placement)??'overlay'});
         s.auto=true;s.card=card;s.start=Math.min(...words.map(x=>x.start));s.end=Math.max(...words.map(x=>x.end));s.req={tolerance:.01,strict:true,canPromote:false};out.push(s);}
       continue;
     }
     if(look.layout==='stack'){
-      const st=buildUnit(ctx,p,`${key}:stack`,lineId,'stack',words,w=>({...lookStyle(p,w,look,'stack',.085*minDim*sc),style:{...lookStyle(p,w,look,'stack',.085*minDim*sc).style,align:'left'}}),{wrap:'each',placement:'overlay'});
+      const st=buildUnit(ctx,p,`${key}:stack`,lineId,'stack',words,w=>({...lookStyle(p,w,look,'stack',.085*minDim*ls),style:{...lookStyle(p,w,look,'stack',.085*minDim*ls).style,align:'left'}}),{wrap:'each',placement:keepPl(placement)??'overlay'});
       st.auto=true;st.card=card;st.req={tolerance:.02,corner:true,canPromote:false};out.push(st);continue;
     }
     // 'line' layout: two registers. Hooks keep their authored size/placement in the hero face; verses become
     // a small lowercase subtitle register in the accent colour, low in frame and in front.
     if(hook){const u=buildUnit(ctx,p,key,lineId,'hook',words,w=>lookStyle(p,w,look,'hook'));u.card=card;out.push(u);}
     else{const keep=!!look.verse?.keepPosition&&words.every(w=>w.position&&w.autoPlace===false);const cap=(look.verse?.max??.055)*minDim;
-      const u=buildUnit(ctx,p,`${key}:verse`,lineId,'verse',words,w=>lookStyle(p,w,look,'verse',sc===1?Math.min(styleOf(p,w).fontSize,cap):Math.min(styleOf(p,w).fontSize*sc,cap*sc)),{placement:keep?undefined:'overlay'});
+      const u=buildUnit(ctx,p,`${key}:verse`,lineId,'verse',words,w=>lookStyle(p,w,look,'verse',(sc===1?Math.min(styleOf(p,w).fontSize,cap):Math.min(styleOf(p,w).fontSize*sc,cap*sc))*lm),{placement:keep||pm?undefined:'overlay'});
       if(!keep){u.auto=true;u.req={tolerance:.02,hint:{x:.5,y:.84},canPromote:false};}u.card=card;out.push(u);}
   }
   // Neon signs and spray paint belong to the scene: every screen unit (not subtitles / HUD) sits behind the subject.
-  if(look.finish==='neon'||look.wall==='spray')for(const u of out)if(!u.sub&&u.role!=='hud'&&(u.placement==='overlay'||u.placement==='behind')){u.placement='behind';u.req={...(u.req||{}),canPromote:false};}
+  if((look.finish==='neon'||look.wall==='spray')&&!pm)for(const u of out)if(!u.sub&&u.role!=='hud'&&(u.placement==='overlay'||u.placement==='behind')){u.placement='behind';u.req={...(u.req||{}),canPromote:false};}
   return out;
 }
 /** Auto-placement is on for behind lines unless turned off (position, if any, becomes the preferred spot), and for overlay lines without a position. */
@@ -198,37 +283,107 @@ type DrawOpts = {shadow:number;plain?:boolean;shadowColor?:string;hard?:boolean;
   motion?:number;
   /** Pop-in flicker 0..1: for half a second after its onset a word drops out on seeded frames (neon catching). */
   flicker?:number;
+  /** Per-line colours (LineMeta.fill/karaoke/dim), keyed by lineId. */
+  meta?:Record<string,LineMeta>;
   /** Voice field: the singer's loudness/pitch/vibrato move each word (look.fields.voice > 0). */
-  voice?:{field:VoiceField;amount:number}};
+  voice?:{field:SongField;amount:number;
+    /** Song clip shift (media.audioClip offset − in): the field is in song time, words in project time. */
+    shift?:number};
+  /** Look entrance/exit (Look.enter); replaces the pop preset. undefined = authored presets. */
+  enter?:Look['enter'];
+  /** Clean glyph edges (every look but the frozen hidden ones): all halos, then all outlines, then all fills, so a
+   *  letter's outline/halo never cuts into its neighbour; halo blur follows the type's scale; the voice changes weight
+   *  only on variable faces (a static face would jump to synthetic bold). */
+  clean?:boolean;
+  /** Fibres in local glyph coordinates: opaque cut paper, rather than holes punched through painted text. */
+  paper?:boolean;
+  /** Prototype role model: HUD-role words take the look's entrance (no HUD jitter / type-on of their own). */
+  roles?:boolean};
+const clamp01=(u:number)=>Math.min(1,Math.max(0,u));
+const easeOut=(u:number)=>1-(1-clamp01(u))**3;
+const easeInOut=(u:number)=>{u=clamp01(u);return u*u*(3-2*u);};
+/** #rgb / #rrggbb → rgba() with alpha a (other CSS colours are returned unchanged). */
+function withAlpha(c:string,a:number){const m=/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c);if(!m)return c;const h=m[1].length===3?[...m[1]].map(x=>x+x).join(''):m[1];const n=parseInt(h,16);return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`;}
+/** Look exits run in the last EXIT seconds of a line; only lines that last ≥ 1 s get one. 0 → 1. */
+const EXIT=.24;
+function exitK(line:Line,t:number){return line.end-line.start>=1?easeInOut((t-(line.end-EXIT))/EXIT):0;}
+/** 'wipe' entrance: each word wipes in over WIPE s from its onset; the card grows with it (left → right per row). */
+const WIPE=.26;
+type Wipe={rows:{edge:number;y0:number;y1:number}[];left:number;right:number;out:number;done:boolean};
+/** Wipe geometry in unit coordinates: per row the revealed right edge, the card's row band (padY above/below the
+ *  first/last row), and the exit's left edge. done = fully shown (draw the plain card). */
+function wipeState(line:Line,t:number,padY:number):Wipe{
+  const pad=line.size*.32,al=line.metrics[0].style.align,x0=-(al==='center'?line.total/2:al==='right'?line.total:0);
+  const L=x0-pad,R=x0+line.total+pad,n=line.rows.length;let done=true;
+  const rows=line.rows.map((row,r)=>{const y=(r-(n-1)/2)*line.size*ROW;let x=-(al==='center'?row.width/2:al==='right'?row.width:0);let prev=L,edge=L;
+    row.metrics.forEach((m,i)=>{const next=i===row.metrics.length-1?R:x+m.width+m.gap*.5;const u=(t-m.w.start)/WIPE;
+      if(u<1)done=false;if(u>0)edge=Math.max(edge,prev+(next-prev)*easeOut(u));prev=next;x+=m.width+m.gap;});
+    return {edge,y0:r===0?-line.height/2-padY:y-line.size*ROW/2,y1:r===n-1?line.height/2+padY:y+line.size*ROW/2};});
+  const out=L+(R-L)*exitK(line,t);
+  return {rows,left:L,right:R,out,done:done&&out<=L};
+}
+/** The look entrance replaces pop: only lines with pop words wipe (authored 'none' etc. keep their hard cut). */
+const popLine=(line:Line)=>line.role!=='hud'&&line.words.some(w=>w.preset==='pop');
+/** A unit's flat card (palette.card), padY = vertical pad as a fraction of the horizontal pad. 'wipe' grows it with
+ *  the words and wipes it out at the end of the line. */
+function drawCard(o:CanvasRenderingContext2D,line:Line,t:number,color:string,padY:number,enter?:Look['enter']){
+  const pad=line.size*.32;const al=line.metrics[0].style.align;const x0=-(al==='center'?line.total/2:al==='right'?line.total:0);
+  o.fillStyle=color;
+  const w=enter==='wipe'&&popLine(line)?wipeState(line,t,pad*padY):undefined;
+  if(!w||w.done){o.fillRect(x0-pad,-line.height/2-pad*padY,line.total+2*pad,line.height+pad*padY*2);return;}
+  const a=Math.max(w.left,w.out);o.beginPath();for(const r of w.rows)if(r.edge>a)o.rect(a,r.y0,r.edge-a,r.y1-r.y0);o.fill();
+}
+/** 'type' entrance: characters per second. */
+const TYPE_CPS=28;
 /** Draw one unit's words centred on the current origin (x by alignment, y=0). */
 function drawWords(ctx:CanvasRenderingContext2D,line:Line,t:number,frame:number,opts:DrawOpts){
   const align=line.metrics[0].style.align;
+  const en=line.sub||line.role==='hud'&&opts.enter!=='type'?undefined:opts.enter;const wp=en==='wipe'&&popLine(line)?wipeState(line,t,0):undefined;
   // Note lanes are centred on the line's mean pitch, so the authored position stays the line's centre.
   const ms=line.words.map(w=>midiOf(w.note)).filter((m):m is number=>m!==undefined);const ref=ms.length?ms.reduce((a,b)=>a+b,0)/ms.length:undefined;
-  const vref=opts.voice?opts.voice.field.refPitch(line.start,line.end):null;
+  const vsh=opts.voice?.shift||0;const vref=opts.voice?opts.voice.field.refPitch(line.start-vsh,line.end-vsh):null;
   line.rows.forEach((row,r)=>{const y=(r-(line.rows.length-1)/2)*line.size*ROW;let x=-(align==='center'?row.width/2:align==='right'?row.width:0)+(opts.scroll||0);
   for(const {w,text:full,style,spacing,width,gap,size} of row.metrics){
     const active=t>=w.start&&t<w.end;const local=t-w.start;
     let alpha=1,scale=1,dx=0,dy=0,text=full;
     const mk=opts.motion??1;
-    if(opts.flicker&&local>=0&&local<.5&&hash01(`${w.id}:fl:${frame}`)<opts.flicker*(1-local/.5)*.9)alpha=.12;
-    if(w.preset==='pop'){if(local<0)alpha=0;else{const progress=spring(local);scale=mk===1?.72+.28*progress:1-.28*mk*(1-progress);dy=(1-progress)*size*.5*mk;}}
-    if(w.preset==='karaoke')alpha=active?1:t<w.start?.26:.62;
+    // Look entrance (replaces pop; 'type' also takes HUD words): lift = paper shadow lift, spray = reveal 0..1, typing = cursor.
+    const look=!!en&&(w.preset==='pop'||(en==='type'||opts.roles)&&w.preset==='hud');let lift=1,spray=1,typing=false;
+    if(opts.flicker&&!en&&local>=0&&local<.5&&hash01(`${w.id}:fl:${frame}`)<opts.flicker*(1-local/.5)*.9)alpha=.12;
+    if(w.preset==='pop'&&!en){if(local<0)alpha=0;else{const progress=spring(local);scale=mk===1?.72+.28*progress:1-.28*mk*(1-progress);dy=(1-progress)*size*.5*mk;}}
+    if(look){
+      if(local<0)alpha=0;
+      else if(en==='paste'){const e=easeOut(local/.22);scale=1+.03*(1-e);lift=1+1.5*(1-e);}
+      else if(en==='spray')spray=clamp01(local/Math.max(.25,Math.min(.5,(w.end-w.start)*.6)));
+      else if(en==='fade')alpha=easeInOut(local/.3);
+      else if(en==='type'){const n=Math.floor(local*TYPE_CPS)+1;const cs=[...full];text=cs.slice(0,n).join('');typing=n<cs.length+4;}
+      else if(en==='flicker'){const f=opts.flicker??.6;const u=local/.45;if(u<1&&hash01(`${w.id}:fl:${frame}`)<f*(1-u)*.9)alpha=.08;}
+      // Exits: neon powers off (a last dropout, then the tube dies), fade fades.
+      const k=exitK(line,t);
+      if(k>0&&en==='flicker')alpha*=(1-k)**1.5*(hash01(`${w.id}:off:${frame}`)<.5*(opts.flicker??.6)?.25:1);
+      if(k>0&&en==='fade')alpha*=1-k;
+    }
+    const lm=opts.meta?.[w.lineId];
+    if(w.preset==='karaoke')alpha=active?1:t<w.start?(lm?.dim?1:.26):.62;
     if(w.preset==='typewriter'){const count=Math.floor(Math.max(0,local)/Math.max(.02,(w.end-w.start)/Math.max(1,full.length)));text=[...full].slice(0,count+Number(local>=0)).join('');}
     if(w.preset==='write'&&local<0)alpha=0;
-    if(w.preset==='hud'){alpha=local<0?.18:1;const k=Math.round(local*24);if(k>=0&&k<4){dx=(hash01(`${w.id}:${frame}:x`)-.5)*size*.18*mk;dy=(hash01(`${w.id}:${frame}:y`)-.5)*size*.12*mk;}}
+    if(w.preset==='hud'&&!(look&&(en==='type'||opts.roles))){alpha=local<0?.18:1;const k=Math.round(local*24);if(k>=0&&k<4){dx=(hash01(`${w.id}:${frame}:x`)-.5)*size*.18*mk;dy=(hash01(`${w.id}:${frame}:y`)-.5)*size*.12*mk;}}
     const m=midiOf(w.note);const lane=m!==undefined&&ref!==undefined?Math.max(-1.2,Math.min(1.2,-(m-ref)*.16))*size:0;
     if(w.note&&local>=0)drawNoteBlock(ctx,w.note,x,y+lane,width,size,local,t<w.end,opts.note);
     dy+=lane;
     // Voice: the word swells with the singer (variable weight + width), rides the melody, wobbles on vibrato.
     let vs=style,vw=width,sx=1,sy=1;
-    if(opts.voice){const v=opts.voice.field.mods(t,w.start,w.end,vref,opts.voice.amount);
-      if(v.weight){vs={...style,fontWeight:Math.max(100,Math.min(900,Math.round(style.fontWeight+v.weight)))};ctx.save();ctx.font=fontOf(vs,size);vw=measure(ctx,text,spacing);ctx.restore();}
+    if(opts.voice){const v=opts.voice.field.mods(t-vsh,w.start-vsh,w.end-vsh,vref,opts.voice.amount);
+      if(v.weight&&(!opts.clean||VARIABLE.has(style.fontFamily))){vs={...style,fontWeight:Math.max(100,Math.min(900,Math.round(style.fontWeight+v.weight)))};ctx.save();ctx.font=fontOf(vs,size);vw=measure(ctx,text,spacing);ctx.restore();}
       sx=v.sx;sy=v.sy;dy+=v.dy*size;}
+    if(alpha>0&&wp&&!wp.done){const a=Math.max(wp.left,wp.out),b=wp.rows[r].edge;if(b<=Math.max(a,x-size))alpha=0;}
     if(alpha>0){
       ctx.save();ctx.globalAlpha*=alpha;ctx.font=fontOf(vs,size);ctx.textBaseline='middle';ctx.textAlign='left';
+      if(wp&&!wp.done){const a=Math.max(wp.left,wp.out);ctx.beginPath();ctx.rect(a,y-line.size*ROW,wp.rows[r].edge-a,line.size*ROW*2);ctx.clip();}
       ctx.translate(x+width/2+dx,y+dy);ctx.scale(scale*sx,scale*sy);
-      const fill=active&&w.preset==='karaoke'?(opts.karaoke||'#d8ff62'):style.fill;
+      const fill=active&&w.preset==='karaoke'?(lm?.karaoke??(opts.karaoke||'#d8ff62')):lm?.dim&&w.preset==='karaoke'&&t<w.start?lm.dim:style.fill;
+      let paint:string|CanvasGradient|CanvasPattern=opts.paper?paperPaint(ctx,fill):fill;
+      if(spray<1){const s=size*.45,e=-vw/2-s+spray*(vw+2*s);const g=ctx.createLinearGradient(e-s,0,e+s,0);g.addColorStop(0,fill);g.addColorStop(1,withAlpha(fill,0));paint=g;}
       if(w.preset==='write'){
         // Write-on: a left→right reveal whose edge is jittered per row band (hash01), like a marker stroke catching up.
         const k=Math.min(1,Math.max(0,local/Math.max(.15,(w.end-w.start)*.7)));const edge=-width/2-size*.1+k*(width+size*.4);
@@ -236,7 +391,8 @@ function drawWords(ctx:CanvasRenderingContext2D,line:Line,t:number,frame:number,
         for(let i=0;i<=bands;i++){const yy=-size*.75+i*(size*1.5/bands);ctx.lineTo(edge+(hash01(`${w.id}:${i}:${Math.floor(frame/2)}`)-.5)*size*.35*(k<1?1:0),yy);}
         ctx.lineTo(-width/2-size,size);ctx.closePath();ctx.clip();
       }
-      drawGlyphs(ctx,text,-vw/2,0,spacing,vs,size,fill,w.preset==='pop'?local:undefined,opts.plain?0:opts.shadow,opts.shadowColor,opts.hard,mk);
+      drawGlyphs(ctx,text,-vw/2,0,spacing,vs,size,paint,w.preset==='pop'&&!en?local:undefined,opts.plain?0:opts.shadow,opts.shadowColor,opts.hard,mk,lift,opts.clean);
+      if(typing){ctx.fillStyle=fill;ctx.fillRect(-vw/2+measure(ctx,text,spacing)+size*.08,-size*.36,size*.42,size*.72);}
       ctx.restore();
       if(opts.sparkle&&local>=0)drawSparkles(ctx,w.id,x+dx,y+dy,width,size,local,t,opts.sparkle);
     }
@@ -273,7 +429,37 @@ function drawSparkles(ctx:CanvasRenderingContext2D,id:string,x:number,y:number,w
     ctx.restore();
   }
 }
-function drawGlyphs(ctx:CanvasRenderingContext2D,text:string,x:number,y:number,spacing:number,s:TextStyle,size:number,fill:string,popLocal:number|undefined,shadow:number,shadowColor?:string,hard?:boolean,motion=1){
+/** Variable faces (a weight axis): the only ones the voice field may re-weight smoothly. */
+const VARIABLE=new Set(FONTS.filter(f=>/Variable|\[wght\]/.test(f.file)&&f.weight.includes(' ')).map(f=>f.family));
+const paperTiles=new Map<string,HTMLCanvasElement>();
+function paperPaint(ctx:CanvasRenderingContext2D,color:string):CanvasPattern|string{
+  let tile=paperTiles.get(color);
+  if(!tile){tile=document.createElement('canvas');tile.width=tile.height=96;const g=tile.getContext('2d')!;
+    g.fillStyle=color;g.fillRect(0,0,96,96);
+    for(let i=0;i<1800;i++){const x=hash01(`paper:x:${i}`)*96,y=hash01(`paper:y:${i}`)*96;
+      g.fillStyle=i%3?'rgba(0,0,0,.16)':'rgba(255,255,255,.28)';g.fillRect(x,y,.5+hash01(`paper:w:${i}`)*2,.6);}
+    for(let i=0;i<70;i++){g.strokeStyle=i%2?'rgba(255,255,255,.22)':'rgba(0,0,0,.12)';g.lineWidth=.4;
+      const x=hash01(`fiber:x:${i}`)*96,y=hash01(`fiber:y:${i}`)*96;g.beginPath();g.moveTo(x,y);g.lineTo(x+2+hash01(`fiber:l:${i}`)*7,y+hash01(`fiber:a:${i}`)*3);g.stroke();}
+    if(paperTiles.size>=32)paperTiles.delete(paperTiles.keys().next().value!);paperTiles.set(color,tile);}
+  return ctx.createPattern(tile,'repeat')||color;
+}
+function drawGlyphs(ctx:CanvasRenderingContext2D,text:string,x:number,y:number,spacing:number,s:TextStyle,size:number,fill:string|CanvasGradient|CanvasPattern,popLocal:number|undefined,shadow:number,shadowColor?:string,hard?:boolean,motion=1,lift=1,clean=false){
+  const outline=!!(s.stroke&&s.strokeWidth);
+  if(clean&&(outline||shadow>0&&!hard)){
+    // Layered: every glyph's halo, then every outline, then every fill. Shadow blur/offset are in device pixels, so they
+    // take the current scale (fit × pop × voice) and stay the same size relative to the letters.
+    const m=ctx.getTransform(),k=Math.hypot(m.a,m.b)||1;
+    const each=(draw:(char:string,cx:number)=>void)=>{let cx=x,index=0;
+      for(const char of text){ctx.save();
+        if(popLocal!==undefined&&popLocal>=0){const progress=spring(Math.max(0,popLocal-index*.018));ctx.translate(0,(1-progress)*size*.14*motion);}
+        index++;draw(char,cx);ctx.restore();cx+=ctx.measureText(char).width+spacing;}};
+    if(shadow>0&&hard)each((c,cx)=>{ctx.globalAlpha*=shadow;ctx.fillStyle=shadowColor||'#000';ctx.fillText(c,cx+size*.035*lift,y+size*.045*lift);});
+    else if(shadow>0)each((c,cx)=>{ctx.shadowColor=shadowColor?shadowColor:`rgba(0,0,0,${.6*shadow})`;ctx.shadowBlur=size*.12*k;ctx.shadowOffsetY=size*.025*k;
+      if(shadowColor)ctx.globalAlpha*=.6*shadow;ctx.strokeStyle=shadowColor||`rgba(10,12,8,${.55*shadow})`;ctx.lineWidth=Math.max(1/k,size*.04);ctx.lineJoin='round';ctx.strokeText(c,cx,y);});
+    if(outline)each((c,cx)=>{ctx.strokeStyle=s.stroke!;ctx.lineWidth=s.strokeWidth!*size;ctx.lineJoin='round';ctx.strokeText(c,cx,y);});
+    each((c,cx)=>{ctx.fillStyle=fill;ctx.fillText(c,cx,y);});
+    return;
+  }
   let index=0;
   for(const char of text){
     ctx.save();
@@ -281,7 +467,7 @@ function drawGlyphs(ctx:CanvasRenderingContext2D,text:string,x:number,y:number,s
     index++;
     if(shadow>0&&hard){
       // Cut-paper drop shadow: a hard offset copy in the look's shadow colour.
-      ctx.save();ctx.globalAlpha*=shadow;ctx.fillStyle=shadowColor||'#000';ctx.fillText(char,x+size*.035,y+size*.045);ctx.restore();
+      ctx.save();ctx.globalAlpha*=shadow;ctx.fillStyle=shadowColor||'#000';ctx.fillText(char,x+size*.035*lift,y+size*.045*lift);ctx.restore();
     }else if(shadow>0){
       // Legibility edge for behind words over light clothing (proof C): a soft dark halo + thin dark outline.
       ctx.save();ctx.shadowColor=shadowColor?shadowColor:`rgba(0,0,0,${.6*shadow})`;ctx.shadowBlur=size*.12;ctx.shadowOffsetY=size*.025;
@@ -325,7 +511,16 @@ function grainTile(i:number){
 
 /** Neon tubes (filled): a wide glow halo, the letters filled in the tube colour (with bloom), then a white-hot face.
  *  `fit` = the context's scale (shadow blur is in device pixels). Used by neon walls and the Neon look's screen text. */
-function drawTubes(o:CanvasRenderingContext2D,line:Line,t:number,frame:number,fit:number,opts:DrawOpts){
+function drawTubes(o:CanvasRenderingContext2D,line:Line,t:number,frame:number,fit:number,opts:DrawOpts,hollow=false){
+    if(hollow){
+      // Monoline glass tubes (the Neon look): the hairline face (weight 100) stroked fat with round joins is one continuous
+      // bent tube per stroke. Tight coloured bloom, the saturated glass, brighter gas, a near-white hot core.
+      const saved=line.metrics.map(m=>m.style);const fill=saved[0].fill;
+      const pass=(lw:number,color:string,blur:number,alpha=1)=>{o.save();o.globalAlpha*=alpha;if(blur>0){o.shadowColor=fill;o.shadowBlur=blur;}
+        line.metrics.forEach((m,i)=>m.style={...saved[i],fill:color,stroke:color,strokeWidth:lw});drawWords(o,line,t,frame,opts);o.restore();};
+      pass(.075,fill,line.size*.3*fit,.6);pass(.058,fill,line.size*.07*fit);pass(.03,mixHex(fill,'#ffffff',.45),line.size*.03*fit);pass(.008,mixHex(fill,'#ffffff',.85),0);
+      line.metrics.forEach((m,i)=>m.style=saved[i]);return;
+    }
     // Tube: glow passes then a hot core; drawn as outlines so it reads as bent glass.
     const tube=(lw:number,color:string,blur:number)=>{o.save();o.shadowColor=line.metrics[0].style.fill;o.shadowBlur=blur;for(const m of line.metrics)m.style={...m.style,stroke:color,strokeWidth:lw};drawWords(o,line,t,frame,opts);o.restore();};
     // Filled tubes: a wide glow halo, the letters filled in the tube colour (with bloom), then a white-hot face.
@@ -338,41 +533,75 @@ function drawTubes(o:CanvasRenderingContext2D,line:Line,t:number,frame:number,fi
     o.save();o.globalAlpha=.42;drawWords(o,line,t,frame,opts);o.restore();
     line.metrics.forEach((m,i)=>m.style=saved[i]);
 }
-/** Neon sign hardware in unit coordinates: a dark acrylic back-plate, four standoffs, a power cable dropping out of
- *  the sign and blacked-out return tubes between words. Drawn under the tubes. */
-function drawMount(o:CanvasRenderingContext2D,line:Line,seed:string){
-  const s=line.size,al=line.metrics[0].style.align,x0=-(al==='center'?line.total/2:al==='right'?line.total:0);
-  const pad=s*.28,bx=x0-pad,by=-line.height/2-pad*.6,bw=line.total+2*pad,bh=line.height+pad*1.2;
-  o.save();o.fillStyle='rgba(14,14,18,.22)';o.beginPath();o.roundRect(bx,by,bw,bh,s*.06);o.fill();
-  o.strokeStyle='rgba(255,255,255,.07)';o.lineWidth=Math.max(1,s*.01);o.stroke();
-  o.fillStyle='rgba(205,205,212,.45)';const k=s*.11;
-  for(const [cx,cy] of [[bx+k,by+k],[bx+bw-k,by+k],[bx+k,by+bh-k],[bx+bw-k,by+bh-k]]){o.beginPath();o.arc(cx,cy,s*.022,0,Math.PI*2);o.fill();}
-  const cx=bx+bw*(.15+.7*hash01(`${seed}:cable`));o.strokeStyle='rgba(6,6,8,.85)';o.lineWidth=s*.016;o.lineCap='round';
-  o.beginPath();o.moveTo(cx,by+bh);o.quadraticCurveTo(cx+s*.25,by+bh+s*.5,cx+s*.08,by+bh+s*1.1);o.stroke();
-  o.strokeStyle='rgba(64,54,60,.85)';o.lineWidth=s*.034;
-  line.rows.forEach((row,r)=>{const y=(r-(line.rows.length-1)/2)*s*ROW+s*.3;let x=-(al==='center'?row.width/2:al==='right'?row.width:0);
-    row.metrics.forEach((m,i)=>{x+=m.width;if(i<row.metrics.length-1){o.beginPath();o.moveTo(x-s*.06,y);o.lineTo(x+m.gap+s*.06,y);o.stroke();}x+=m.gap;});});
+/** #rrggbb mix (k = share of b). */
+function mixHex(a:string,b:string,k:number){const p=(c:string)=>{const m=/^#?([0-9a-f]{6})$/i.exec(c);const n=m?parseInt(m[1],16):0xffffff;return [n>>16&255,n>>8&255,n&255];};
+  const x=p(a),y=p(b);return `rgb(${x.map((v,i)=>Math.round(v+(y[i]-v)*k)).join(',')})`;}
+/** Neon sign hardware in unit coordinates: no back-plate, cable or return tubes (they read as stray marks); only
+ *  small tube supports under each row, as on a sign mounted straight on the wall. Under the tubes. */
+function drawMount(o:CanvasRenderingContext2D,line:Line,_seed:string){
+  const s=line.size,al=line.metrics[0].style.align;
+  o.save();o.fillStyle='rgba(150,150,158,.45)';
+  line.rows.forEach((row,r)=>{const y=(r-(line.rows.length-1)/2)*s*ROW+s*.36;const rx=-(al==='center'?row.width/2:al==='right'?row.width:0);
+    for(const f of [.12,.5,.88]){o.beginPath();o.arc(rx+row.width*f,y,s*.014,0,Math.PI*2);o.fill();}});
   o.restore();
 }
-/** Spray paint marks in unit coordinates (wall:'spray'): seeded drips under letters that run after the word's onset,
- *  and a stencil bridge (a thin horizontal cut) through stencil-face rows. */
+/** Feet of a word's strokes: runs of columns whose lowest painted pixel sits on the line's bottom contour (stems,
+ *  bowl bottoms; never counters or gaps). Sampled from the real glyphs at P px, cached; x/y in units of the font size
+ *  from the word's left edge / the row centre; w = run width (stroke weight). */
+const footCache=new Map<string,{x:number;y:number;w:number}[]>();
+function strokeFeet(font:(px:number)=>string,text:string,spacingEm:number){
+  const P=64,key=`${font(P)}|${text}|${spacingEm}`;const hit=footCache.get(key);if(hit)return hit;
+  const c=document.createElement('canvas');const g=c.getContext('2d',{willReadFrequently:true})!;g.font=font(P);
+  let wd=0;for(const ch of text)wd+=g.measureText(ch).width+spacingEm*P;
+  c.width=Math.max(1,Math.ceil(wd+P*.2));c.height=P*2;g.font=font(P);g.textBaseline='middle';g.fillStyle='#fff';
+  let x=0;for(const ch of text){g.fillText(ch,x,P);x+=g.measureText(ch).width+spacingEm*P;}
+  const d=g.getImageData(0,0,c.width,c.height).data;const low=new Int16Array(c.width).fill(-1);let bottom=-1;
+  for(let cx=0;cx<c.width;cx++)for(let cy=c.height-1;cy>=0;cy--)if(d[(cy*c.width+cx)*4+3]>128){low[cx]=cy;bottom=Math.max(bottom,cy);break;}
+  const feet:{x:number;y:number;w:number}[]=[];const tol=Math.max(2,P*.07);let a=-1;
+  for(let cx=0;cx<=c.width;cx++){const on=cx<c.width&&low[cx]>=0&&low[cx]>=bottom-tol;
+    if(on&&a<0)a=cx;else if(!on&&a>=0){let ys=0;for(let k=a;k<cx;k++)ys+=low[k];feet.push({x:(a+cx)/2/P,y:(ys/(cx-a)-P)/P,w:(cx-a)/P});a=-1;}}
+  if(footCache.size>200)footCache.clear();footCache.set(key,feet);return feet;
+}
+/** Spray paint marks in unit coordinates (wall:'spray'): drips that leave the feet of the letter strokes (where
+ *  paint pools) and run straight down — tapered, wider at the root, a small bulb at the tip — once the spray has
+ *  passed that stroke (ease-out growth, mostly short), and a stencil bridge through stencil-face rows. */
 function drawSprayMarks(o:CanvasRenderingContext2D,line:Line,t:number,drips:number,stencil:boolean){
   const al=line.metrics[0].style.align;
   line.rows.forEach((row,r)=>{const y=(r-(line.rows.length-1)/2)*line.size*ROW;let x=-(al==='center'?row.width/2:al==='right'?row.width:0);
     const rx=x;
     for(const m of row.metrics){const local=t-m.w.start;
-      if(local>=0&&drips>0){o.save();o.font=fontOf(m.style,m.size);o.fillStyle=m.style.fill;o.strokeStyle=m.style.fill;o.lineCap='round';let cx=x;
-        [...m.text].forEach((ch,i)=>{const cw=o.measureText(ch).width;const h=hash01(`${m.w.id}:drip:${i}`);
-          if(ch.trim()&&h<drips*.55){const grow=Math.min(1,Math.max(0,(local-.12-.4*hash01(`${m.w.id}:dd:${i}`))/1.4));if(grow>0){
-            const px=cx+cw*(.2+.6*hash01(`${m.w.id}:dx:${i}`)),y0=y+m.size*.3,len=m.size*(.25+1.1*hash01(`${m.w.id}:dl:${i}`))*(1-Math.pow(1-grow,2));
-            const lw=m.size*(.018+.022*hash01(`${m.w.id}:dw:${i}`));o.lineWidth=lw;o.beginPath();o.moveTo(px,y0);o.lineTo(px,y0+len);o.stroke();
-            o.beginPath();o.arc(px,y0+len,lw*.9,0,Math.PI*2);o.fill();}}
-          cx+=cw+m.spacing;});o.restore();}
+      if(local>=0&&drips>0){
+        const feet=strokeFeet(px=>fontOf(m.style,px),m.text,m.spacing/m.size);
+        // A few per word, weighted toward heavier strokes (seeded per word, no repeats).
+        const n=Math.min(feet.length,Math.round(drips*(1+[...m.text].length*.55)));const used=new Set<number>();
+        const dur=Math.max(.25,Math.min(.5,(m.w.end-m.w.start)*.6));
+        o.save();o.fillStyle=m.style.fill;
+        for(let k=0;k<n;k++){let tot=0;feet.forEach((f,i)=>{if(!used.has(i))tot+=f.w**1.5;});let pick=hash01(`${m.w.id}:drip:${k}`)*tot,fi=-1;
+          for(let i=0;i<feet.length;i++){if(used.has(i))continue;pick-=feet[i].w**1.5;if(pick<=0){fi=i;break;}}if(fi<0)break;used.add(fi);
+          const f=feet[fi],s=m.size,h=(a:string)=>hash01(`${m.w.id}:drip:${k}:${a}`);
+          const px=x+(f.x+(h('x')-.5)*f.w*.5)*s,py=y+f.y*s;
+          // After the spray reaches this stroke; fast then slowing; lengths mostly short, a few long.
+          const start=dur*Math.min(1,f.x*s/Math.max(1,m.width))+.1+.35*h('d'),T=1.1+1.2*h('t');
+          const grow=1-(1-clamp01((local-start)/T))**3;if(grow<=0)continue;
+          const len=s*(.04+.95*h('l')**2.2)*grow,rw=Math.min(f.w*s*.42,s*.055)*(.55+.45*h('w')),tw=rw*.42,bulb=tw*(1+.35*grow);
+          o.beginPath();o.moveTo(px-rw*1.5,py-s*.03);
+          o.quadraticCurveTo(px-rw*.55,py,px-rw*.5,py+Math.min(len,rw*2));o.lineTo(px-tw,py+len);
+          o.lineTo(px+tw,py+len);o.lineTo(px+rw*.5,py+Math.min(len,rw*2));o.quadraticCurveTo(px+rw*.55,py,px+rw*1.5,py-s*.03);o.closePath();o.fill();
+          o.beginPath();o.arc(px,py+len,bulb,0,Math.PI*2);o.fill();}
+        o.restore();}
       x+=m.width+m.gap;}
     if(stencil){o.save();o.globalCompositeOperation='destination-out';o.fillRect(rx-line.size,y-line.size*.035,row.width+2*line.size,line.size*.05);o.restore();}
   });
 }
-/** Spray finish on a screen-space paint buffer: overspray halo, uneven coverage, and (env = the graded footage)
+/** Uneven spray coverage in the text's own space (unit or plane coordinates), so worn patches move with the words.
+ *  The mask is seeded per line and stretched over the unit's box (drips included). */
+function sprayWear(o:CanvasRenderingContext2D,line:Line,seed:string){
+  const al=line.metrics[0].style.align,x0=-(al==='center'?line.total/2:al==='right'?line.total:0);
+  const bx=x0-line.size*.5,by=-line.height/2-line.size*.5,bw=line.total+line.size,bh=line.height+line.size*2;
+  o.save();o.globalCompositeOperation='destination-out';o.globalAlpha=.4;
+  o.drawImage(erosionMask(`spray:${seed}`,160,Math.max(8,Math.round(160*bh/bw)),.5,3),bx,by,bw,bh);o.restore();
+}
+/** Spray finish on a screen-space paint buffer: overspray halo and (env = the graded footage)
  *  modulation by the wall's own luminance, so the paint takes the light falloff, grain and cracks underneath. */
 function sprayify(b:HTMLCanvasElement,tmp:HTMLCanvasElement,px:number,env?:HTMLCanvasElement){
   const g=b.getContext('2d')!;g.setTransform(1,0,0,1,0,0);
@@ -380,7 +609,6 @@ function sprayify(b:HTMLCanvasElement,tmp:HTMLCanvasElement,px:number,env?:HTMLC
   const tg=tmp.getContext('2d')!;tg.setTransform(1,0,0,1,0,0);tg.globalAlpha=1;tg.globalCompositeOperation='source-over';tg.clearRect(0,0,tmp.width,tmp.height);
   tg.filter=`blur(${Math.max(.5,px*.025).toFixed(2)}px)`;tg.drawImage(b,0,0);tg.filter=`blur(${Math.max(1,px*.08).toFixed(2)}px)`;tg.globalAlpha=.35;tg.drawImage(b,0,0);tg.filter='none';tg.globalAlpha=1;
   g.globalCompositeOperation='destination-over';g.globalAlpha=.45;g.drawImage(tmp,0,0);g.globalAlpha=1;
-  g.globalCompositeOperation='destination-out';g.globalAlpha=.38;g.drawImage(erosionMask('spray',Math.ceil(b.width/4),Math.ceil(b.height/4),.5,3),0,0,b.width,b.height);g.globalAlpha=1;
   // Shade = 0.4 + 0.6 × the wall's (brightened) luminance: paint on a dark wall is dim but never vanishes.
   if(env){tg.clearRect(0,0,tmp.width,tmp.height);tg.fillStyle='rgb(102,102,102)';tg.fillRect(0,0,tmp.width,tmp.height);tg.globalAlpha=.6;tg.filter='grayscale(1) contrast(1.35) brightness(2.3)';tg.drawImage(env,0,0);tg.filter='none';tg.globalAlpha=1;
     tg.globalCompositeOperation='destination-in';tg.drawImage(b,0,0);tg.globalCompositeOperation='source-over';
@@ -426,26 +654,37 @@ function drawSurfaceLine(ctx:CanvasRenderingContext2D,p:Project,line:Line,surfac
   // Plane rectangle aspect comes from the key-frame drawing (stable across frames, so text never re-wraps);
   // under a crop it is the visible sub-rectangle of that plane (same for every frame of the line).
   const [sw,sh]=sourceSize(p,crop);const key=surface.corners.map(([x,y])=>[x*sw,y*sh] as Point);
-  const [kw,kh]=quadSize(sub?subQuad(key,sub):key);
+  let [kw,kh]=quadSize(sub?subQuad(key,sub):key);
+  const marquee=scrollK!==undefined;
+  // Look.wallScale: the plane grows about its centre (text may pass the drawn quad); width fill is capped so long
+  // lines stay near the wall's width.
+  const ws=marquee?1:look?.wallScale??1,ex=ws>1?Math.min(ws,1.12):1;
+  if(ws!==1){quadPx=subQuad(quadPx,[-(ex-1)/2,-(ws-1)/2,1+(ex-1)/2,1+(ws-1)/2]);kw*=ex;kh*=ws;}
   const W=Math.max(64,Math.min(1600,Math.round(Math.max(kw,kh*kw/Math.max(1,kh))*1.6))),H=Math.max(16,Math.round(W*kh/Math.max(1,kw)));
   const off=document.createElement('canvas');off.width=W;off.height=H;const o=off.getContext('2d')!;
-  const marquee=scrollK!==undefined;
-  const fit=marquee?H*.62/Math.max(1,line.height*1.1):Math.min(W*.88/Math.max(1,line.total),H*.72/Math.max(1,line.height*1.1));
-  // Under a look the wall text takes the look's colour; material still shapes the finish.
-  const material=look?.wall==='spray'&&fx?'spray':look?.finish==='neon'?'neon':look?.wall==='poster'?(surface.material==='neon'?'neon':surface.material==='flat'?'flat':'poster')
-    :look?(look.optics.glow&&look.optics.glow>.5?'neon':look.texture==='paper'?'paint':surface.material||'flat'):surface.material||'paint';
+  const fit=(marquee?H*.62/Math.max(1,line.height*1.1):ws!==1?Math.min(W/ex*Math.min(.97,.88*ws)/Math.max(1,line.total),H*.72/Math.max(1,line.height*1.1))
+    :Math.min(W*.88/Math.max(1,line.total),H*.72/Math.max(1,line.height*1.1)))
+    *(marquee?1:p.lineMeta?.[line.words[0].lineId]?.scale??1);   // studio wall-resize handle
+  // Under a look the wall text takes the look's colour; material still shapes the finish. A carded look keeps its
+  // cards clean on painted walls (flat, no wear).
+  const material=look?.id==='paper-cut'?'paper':look?.wall==='spray'&&fx?'spray':look?.finish==='neon'?'neon':look?.wall==='poster'?(surface.material==='neon'?'neon':surface.material==='flat'?'flat':'poster')
+    :look?(look.optics.glow&&look.optics.glow>.5?'neon':look.texture==='paper'?'paint':line.card&&look.palette.card&&(surface.material||'flat')==='paint'?'flat':surface.material||'flat'):surface.material||'paint';
   const scroll=marquee?((W/fit+line.total)/2-scrollK!*(W/fit+line.total)):0;
-  o.save();o.translate(W/2,H/2);o.scale(fit,fit);
-  if(line.card&&look?.palette.card){const pad=line.size*.32;const al=line.metrics[0].style.align;const x0=-(al==='center'?line.total/2:al==='right'?line.total:0);
-    o.fillStyle=look.palette.card;o.fillRect(x0-pad+(marquee?((W/fit+line.total)/2-scrollK!*(W/fit+line.total)):0),-line.height/2-pad*.6,line.total+2*pad,line.height+pad*1.2);}
-  if(material==='neon'){if(look?.finish==='neon'&&!fx?.lightOnly)drawMount(o,line,surface.id);drawTubes(o,line,t,frame,fit,{shadow:0,plain:true,scroll,flicker:look?.flicker});}
-  else if(material==='spray'){drawWords(o,line,t,frame,{shadow:0,plain:true,scroll});drawSprayMarks(o,line,t,look?.drips??.5,true);}
+  // Studio nudge: lineMeta.u/v move the text in the wall's plane (fractions of the plane; absent = centred).
+  const nm=marquee?undefined:p.lineMeta?.[line.words[0].lineId];
+  o.save();o.translate(W*(.5+(nm?.u??0)),H*(.5+(nm?.v??0)));o.scale(fit,fit);
+  const en=look?.enter;
+  if(line.card&&look?.palette.card){if(marquee){const pad=line.size*.32;const al=line.metrics[0].style.align;const x0=-(al==='center'?line.total/2:al==='right'?line.total:0);
+    o.fillStyle=look.palette.card;o.fillRect(x0-pad+((W/fit+line.total)/2-scrollK!*(W/fit+line.total)),-line.height/2-pad*.6,line.total+2*pad,line.height+pad*1.2);}
+    else drawCard(o,line,t,look.palette.card,.6,en);}
+  if(material==='neon'){if(look?.finish==='neon'&&!fx?.lightOnly)drawMount(o,line,surface.id);drawTubes(o,line,t,frame,fit,{shadow:0,plain:true,scroll,flicker:look?.flicker,enter:en},look?.finish==='neon');}
+  else if(material==='spray'){drawWords(o,line,t,frame,{shadow:0,plain:true,scroll,enter:en,clean:!!look&&!lookIsFrozen(look)});drawSprayMarks(o,line,t,look?.drips??.5,true);sprayWear(o,line,`${surface.id}:${line.key}`);}
   else if(material==='poster'){
     // Wheat-pasted photocopy: torn off-white sheet filling the plane, toner-black type, copier streaks.
     o.save();o.setTransform(1,0,0,1,0,0);drawPosterSheet(o,surface.id,W,H);o.restore();
     const saved=line.metrics.map(m=>m.style);line.metrics.forEach(m=>m.style={...m.style,fill:'#0c0c0c',stroke:null,strokeWidth:null});
-    drawWords(o,line,t,frame,{shadow:0,plain:true,scroll});line.metrics.forEach((m,i)=>m.style=saved[i]);
-  }else drawWords(o,line,t,frame,{shadow:0,plain:true,scroll});
+    drawWords(o,line,t,frame,{shadow:0,plain:true,scroll,enter:en,clean:!!look&&!lookIsFrozen(look)});line.metrics.forEach((m,i)=>m.style=saved[i]);
+  }else drawWords(o,line,t,frame,{shadow:material==='paper'?.85:0,shadowColor:look?.palette.shadow,hard:material==='paper',paper:material==='paper',plain:material!=='paper',scroll,enter:en,clean:!!look&&!lookIsFrozen(look)});
   o.restore();
   if(material==='poster'){o.globalCompositeOperation='destination-out';o.drawImage(erosionMask(`${surface.id}:poster`,Math.ceil(W/3),Math.ceil(H/3),.68,4),0,0,W,H);o.globalCompositeOperation='source-over';
     // "Every sign repeats": the same sheet pasted again along the wall (plane offsets left/right of the authored quad).
@@ -518,17 +757,57 @@ export function withLead(p:Project):Project{
   LED.set(p,out);return out;
 }
 export const MOTION_BLUR_SAMPLES=6;
+/** 5×7 LED dot-matrix glyphs (rows top→bottom, '1' = lit), trimmed to their lit columns; unknown characters → '?'. */
+const LED_GLYPHS:Record<string,string>={
+  A:'01110 10001 10001 11111 10001 10001 10001',B:'11110 10001 10001 11110 10001 10001 11110',C:'01110 10001 10000 10000 10000 10001 01110',
+  D:'11100 10010 10001 10001 10001 10010 11100',E:'11111 10000 10000 11110 10000 10000 11111',F:'11111 10000 10000 11110 10000 10000 10000',
+  G:'01110 10001 10000 10111 10001 10001 01111',H:'10001 10001 10001 11111 10001 10001 10001',I:'111 010 010 010 010 010 111',
+  J:'00111 00010 00010 00010 00010 10010 01100',K:'10001 10010 10100 11000 10100 10010 10001',L:'10000 10000 10000 10000 10000 10000 11111',
+  M:'10001 11011 10101 10101 10001 10001 10001',N:'10001 10001 11001 10101 10011 10001 10001',O:'01110 10001 10001 10001 10001 10001 01110',
+  P:'11110 10001 10001 11110 10000 10000 10000',Q:'01110 10001 10001 10001 10101 10010 01101',R:'11110 10001 10001 11110 10100 10010 10001',
+  S:'01111 10000 10000 01110 00001 00001 11110',T:'11111 00100 00100 00100 00100 00100 00100',U:'10001 10001 10001 10001 10001 10001 01110',
+  V:'10001 10001 10001 10001 10001 01010 00100',W:'10001 10001 10001 10101 10101 10101 01010',X:'10001 10001 01010 00100 01010 10001 10001',
+  Y:'10001 10001 10001 01010 00100 00100 00100',Z:'11111 00001 00010 00100 01000 10000 11111',
+  '0':'01110 10001 10011 10101 11001 10001 01110','1':'010 110 010 010 010 010 111','2':'01110 10001 00001 00010 00100 01000 11111',
+  '3':'11111 00010 00100 00010 00001 10001 01110','4':'00010 00110 01010 10010 11111 00010 00010','5':'11111 10000 11110 00001 00001 10001 01110',
+  '6':'00110 01000 10000 11110 10001 10001 01110','7':'11111 00001 00010 00100 01000 01000 01000','8':'01110 10001 10001 01110 10001 10001 01110',
+  '9':'01110 10001 10001 01111 00001 00010 01100','!':'1 1 1 1 1 0 1','?':'01110 10001 00001 00010 00100 00000 00100',
+  '.':'0 0 0 0 0 0 1',',':'00 00 00 00 00 01 10',"'":'1 1 0 0 0 0 0','-':'0000 0000 0000 1111 0000 0000 0000',
+  ':':'0 0 1 0 1 0 0','·':'0 0 0 1 0 0 0','&':'01100 10010 10100 01000 10101 10010 01101','/':'00001 00010 00010 00100 01000 01000 10000',
+};
+const LED_SPACE=3;
+function ledGlyph(ch:string){return LED_GLYPHS[ch]??LED_GLYPHS[ch.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase()]??(ch.trim()?LED_GLYPHS['?']:'');}
+/** Width of a string in LED columns (one dark column between glyphs). */
+function ledWidth(text:string){let w=0,n=0;for(const ch of text){const g=ledGlyph(ch);w+=g?g.split(' ')[0].length:LED_SPACE;n++;}return w+Math.max(0,n-1);}
+/** LED ticker crawl speed, em per second (em = the display's text height). */
+const TICKER_SPEED=8;
+/** Ticker gaps, em: between words of a line, between lines of a phrase. */
+const TICKER_GAP_WORD=.9,TICKER_GAP_LINE=1.2;
 
+/** Per-call render options; anything unset falls back to the instance fields. */
+/** proxy: half-size copies (drag/scrub/thumbs); full: full-size short-GOP copies (paused studio frames, same pixels as the
+ *  originals within encode noise); stale: checked after the media seeks, before anything is painted; true = drop this
+ *  frame (the canvas keeps the previous one), so a newer request never waits behind a slow paint. */
+export type RenderOpts={heavyOptics?:boolean;proxy?:boolean;full?:boolean;stale?:()=>boolean};
 export class StageRenderer {
-  project:Project;server:string;bg?:HTMLVideoElement;matte?:HTMLVideoElement;tracks?:Tracks;shots=new Map<string,HTMLVideoElement>();
+  project:Project;server:string;bg?:HTMLVideoElement;matte?:HTMLVideoElement;bgProxy?:HTMLVideoElement;matteProxy?:HTMLVideoElement;bgSeek?:HTMLVideoElement;matteSeek?:HTMLVideoElement;tracks?:Tracks;shots=new Map<string,HTMLVideoElement>();
   occupancy?:Occupancy;crop?:CropData;surfaceTracks=new Map<string,SurfaceTrack|null>();
   /** Set false to render positions exactly as authored (before/after comparisons). */
   autoPlace=true;
   /** Set false to skip the P0b optics (motion blur, chroma) — e.g. for fast scrubbing. Export keeps them. */
   heavyOptics=true;
+  /** Studio only: also load the half-size short-GOP preview proxies (media/proxy/<video>.mp4, <matte>/fg_proxy.webm) when the
+   *  server has made them; render({proxy:true}) then seeks those (~17 ms) instead of the originals (~100 ms). Never set on
+   *  the #/render route: export, TypesetRender and capture always read the originals. */
+  draftMedia=false;
+  /** Exports only (#/render?decode=seq): footage and matte advance by playing forward (advance()) instead of seeking. */
+  sequential=false;
+  private stale?:()=>boolean;
   private plan?:{sig:string;map:Map<string,LinePlacement>};private fixedBoxes:Placed[]=[];private occSource?:{key:object;crop?:CropData;src:OccupancySource};
   private unitCache?:{sig:string;units:Line[]};private buffers:HTMLCanvasElement[]=[];
   constructor(project:Project,server=''){this.project=project;this.server=server;}
+  /** Studio only: why the matte did not load (the stage still draws, Behind uncut). */
+  matteError?:string;
   async load(layer:Layer='composite'){
     const p=this.project;
     await loadFonts();
@@ -539,17 +818,27 @@ export class StageRenderer {
     if(p.frame?.crop&&!this.crop)this.crop=await json<CropData>(assetUrl(p,p.frame.crop,this.server));
     await this.loadFields();
     await this.loadSurfaceTracks();
-    if(layer!=='composite')return;
+    // Text-only renders (alpha overlay exports) load the footage too when a glyph fill reads its light.
+    if(layer!=='composite'&&!fillOf(this.look()))return;
     if(p.media.video)this.bg=await video(assetUrl(p,p.media.video.path,this.server));
-    if(p.analysis.matte)this.matte=await video(assetUrl(p,`${p.analysis.matte.replace(/\/$/,'')}/fg.webm`,this.server));
+    // Studio (draftMedia): a matte that will not load leaves Behind uncut (the studio flags it) instead of failing the stage.
+    if(p.analysis.matte)this.matte=await video(assetUrl(p,`${p.analysis.matte.replace(/\/$/,'')}/fg.webm`,this.server)).catch(e=>{if(!this.draftMedia)throw e;this.matteError=String(e);return undefined;});
+    if(this.draftMedia){const none=()=>undefined;const md=p.analysis.matte?.replace(/\/$/,'');[this.bgProxy,this.matteProxy,this.bgSeek,this.matteSeek]=await Promise.all([
+      p.media.video?video(assetUrl(p,proxyPath(p.media.video.path),this.server)).catch(none):undefined,
+      p.analysis.matte?video(assetUrl(p,`${p.analysis.matte.replace(/\/$/,'')}/fg_proxy.webm`,this.server)).catch(none):undefined,
+      p.media.video?video(assetUrl(p,seekPath(p.media.video.path),this.server)).catch(none):undefined,
+      md?video(assetUrl(p,`${md}/fg_seek.webm`,this.server)).catch(none):undefined]);}
     await Promise.all(p.shots.filter(s=>s.status==='done'&&s.video).map(async s=>this.shots.set(s.id,await video(assetUrl(p,s.video!,this.server)))));
   }
   /** Field data (motion, voice), loaded when the analysis exists. */
-  flow?:FlowField;voice?:VoiceField;
+  flow?:FlowField;voice?:SongField;audio?:SongField;
+  /** The field look.fields.source asks for (bass = analysis.audio, vocal = analysis.voice), else whichever exists. */
+  songField(look:Look){return look.fields?.source==='vocal'?this.voice??this.audio:this.audio??this.voice;}
   async loadFields(){
     const p=this.project;
     if(p.analysis.flow&&!this.flow){const d=await json<FlowDoc>(assetUrl(p,p.analysis.flow,this.server));if(d)this.flow=new FlowField(d);}
-    if(p.analysis.voice&&!this.voice){const d=await json<VoiceDoc>(assetUrl(p,p.analysis.voice,this.server));if(d)this.voice=new VoiceField(d);}
+    if(p.analysis.voice&&!this.voice){const d=await json<VoiceDoc>(assetUrl(p,p.analysis.voice,this.server));if(d)this.voice=songField(d);}
+    if(p.analysis.audio&&!this.audio){const d=await json<AudioDoc>(assetUrl(p,p.analysis.audio,this.server));if(d)this.audio=songField(d);}
   }
   async loadSurfaceTracks(){
     const p=this.project;
@@ -557,7 +846,7 @@ export class StageRenderer {
       this.surfaceTracks.set(`${s.id}:${s.track}`,(await json<SurfaceTrack>(assetUrl(p,s.track!,this.server)))||null);
     }));
   }
-  dispose(){for(const v of [this.bg,this.matte,...this.shots.values()])if(v){v.pause();v.removeAttribute('src');v.load();}}
+  dispose(){for(const v of [this.bg,this.matte,this.bgProxy,this.matteProxy,this.bgSeek,this.matteSeek,...this.shots.values()])if(v){v.pause();v.removeAttribute('src');v.load();}}
   occ(){
     const key=this.occupancy||this.tracks||this;const p=this.project;
     if(!this.occSource||this.occSource.key!==key||this.occSource.crop!==this.crop)
@@ -659,8 +948,13 @@ export class StageRenderer {
   /** Draw text units of one depth layer at time t (fractional frame `ft` for motion-blur sub-samples). */
   private renderWords(ctx:CanvasRenderingContext2D,t:number,frame:number,subset:'all'|'behind'|'front',blend:boolean,ft=frame){
     const p=this.timed();const plan=this.layout(ctx);const look=this.look();
+    const crawl=look?.motion==='marquee';
+    if(crawl&&this.subPass!==true&&this.freePass!==true)this.drawTicker(ctx,t,frame,subset,ft);
+    // Glyph fill: pinned to the shot (not through the motion field), under the units, never in the crisp subtitle pass.
+    if(look&&fillOf(look)&&this.env&&this.subPass!==true&&this.freePass!==true)this.drawFill(ctx,t,frame,subset,ft,look);
     for(const line of this.units(ctx)){
       if(t<line.start||t>=line.end)continue;
+      if(crawl&&!line.sub&&line.role!=='hud')continue;
       if(this.subPass!==undefined&&!!line.sub!==this.subPass)continue;
       // Motion field: only free-floating lines drift/ripple; walls and head-anchored labels are already locked to the shot.
       if(this.freePass!==undefined&&(line.placement!=='surface'&&line.placement!=='anchor'&&line.role!=='hud')!==this.freePass)continue;
@@ -687,9 +981,10 @@ export class StageRenderer {
         origin={x:auto.cx+(align==='left'?-half:align==='right'?half:0),y:auto.cy};
       }
       if(placement==='anchor'){
-        const anchor=first.anchor||{trackId:'person0',dx:0,dy:-.1};const point=anchorAtT(this.tracks,anchor.trackId,ft*(this.tracks?.fps||p.fps)/p.fps);
-        if(!point||!anchorAt(this.tracks,anchor.trackId,Math.round(t*(this.tracks?.fps||p.fps))))continue;const [cx,cy]=this.point(frame,point.cx,point.cy);
-        anchorPx=[cx*p.width,cy*p.height];origin={x:cx+anchor.dx,y:cy+anchor.dy};
+        const anchor=first.anchor||{trackId:'person0',dx:0,dy:-.1};
+        // No person at this frame: hold / interpolate the head, or with no track at all a screen label (no leader).
+        const head=headAt(this.tracks,anchor.trackId,ft*(this.tracks?.fps||p.fps)/p.fps,Math.round(t*(this.tracks?.fps||p.fps)));const point=head.point;const [cx,cy]=this.point(frame,point.cx,point.cy);
+        anchorPx=head.state==='none'?undefined:[cx*p.width,cy*p.height];origin={x:cx+anchor.dx,y:cy+anchor.dy};
         // Keep the label (and its HUD tag) on screen: proof D clipped it off the top.
         const hw=line.total*fit/2/p.width+.012,top=(line.height/2+line.size*(first.preset==='hud'?.85:.2))*fit/p.height,bot=(line.height/2+line.size*.2)*fit/p.height;
         // Horizontal extent from the origin: the label by its alignment, and the HUD tag (left-aligned on the box,
@@ -697,18 +992,18 @@ export class StageRenderer {
         const al=line.metrics[0].style.align,lx=-(al==='center'?line.total/2:al==='right'?line.total:0),pad=line.size*.3;
         const tagW=first.preset==='hud'?(`${anchor.trackId} · F0000 · 0.00`.length*.6+.6)*Math.max(13/fit,line.size*.36):0;
         const exL=(lx-pad)*fit/p.width,exR=Math.max(lx+line.total+pad,lx-pad+tagW)*fit/p.width;void hw;
-        const [smx,smy]=this.safeMargins(.03);origin={x:Math.min(1-exR-smx,Math.max(smx-exL,origin.x)),y:Math.min(1-bot-smy,Math.max(top+smy,origin.y))};
+        const [smx,smy]=this.safeMargins(.03);const off=(line.hudOff||0)*fit;
+        origin={x:Math.min(1-exR-smx,Math.max(smx-exL,origin.x)),y:Math.min(1-bot-off-smy,Math.max(top+smy,origin.y))+off};
         // Fixed text on screen now (HUD meta line, subtitles, titles): an anchored label drops below it.
         for(const o of this.fixedBoxes){if(frame<o.f0||frame>o.f1)continue;const [x0,y0,x1,y1]=o.box;
           const cl=.025;if(origin.x+exR>x0&&origin.x+exL<x1&&origin.y+bot>y0-cl&&origin.y-top<y1+cl&&y1+top+cl<1-bot-smy)origin={x:origin.x,y:y1+top+cl};}
       }
-      const opts:DrawOpts=look?{shadow:look.texture==='paper'?1:look.halo!=null&&!line.sub?look.halo:placement==='behind'&&look.palette.shadow?.5:0,shadowColor:look.palette.shadow,hard:look.texture==='paper',karaoke:look.palette.accent,
+      const pm=p.roleModel==='placement';const opts:DrawOpts=look?{paper:look.id==='paper-cut',roles:pm,shadow:look.texture==='paper'?1:look.halo!=null&&!line.sub?look.halo:(placement==='behind'||pm&&!line.sub)&&look.palette.shadow?.5:0,shadowColor:look.palette.shadow,hard:look.texture==='paper',karaoke:look.palette.accent,
           note:look.palette.note&&look.palette.shadow?{fill:look.palette.note,stroke:look.palette.shadow}:undefined,sparkle:(line.role==='hook'||line.role==='hero')?look.optics.sparkle:undefined,motion:look.intensity,flicker:look.flicker,
-          voice:this.voice&&look.fields?.voice&&line.role!=='hud'&&!line.sub?{field:this.voice,amount:look.fields.voice}:undefined}
-        :{shadow:first.style?.shadow??(placement==='behind'?.5:0)};
+          voice:this.songField(look)&&look.fields?.voice&&line.role!=='hud'&&!line.sub?{field:this.songField(look)!,amount:look.fields.voice,shift:p.media.audioClip?shiftOf(clipOf(p)):0}:undefined,meta:p.lineMeta||undefined,enter:look.enter,clean:!lookIsFrozen(look)&&look.finish!=='neon'}
+        :{shadow:first.style?.shadow??(placement==='behind'?.5:0),meta:p.lineMeta||undefined};
       ctx.save();ctx.translate(origin.x*p.width,origin.y*p.height);ctx.scale(fit,fit);
-      if(line.card&&look?.palette.card&&marqueeK===undefined){const pad=line.size*.32;const al=line.metrics[0].style.align;const x0=-(al==='center'?line.total/2:al==='right'?line.total:0);
-        ctx.fillStyle=look.palette.card;ctx.fillRect(x0-pad,-line.height/2-pad*.75,line.total+2*pad,line.height+pad*1.5);}
+      if(line.card&&look?.palette.card&&marqueeK===undefined)drawCard(ctx,line,t,look.palette.card,.75,line.sub?undefined:look.enter);
       if(marqueeK!==undefined&&line.card&&look?.palette.card){
         // LED band: the card becomes a full-width strip the line scrolls through.
         const pad=line.size*.32;ctx.fillStyle=look.palette.card;ctx.fillRect(-origin.x*p.width/fit,-line.height/2-pad*.75,p.width/fit,line.height+pad*1.5);}
@@ -719,7 +1014,7 @@ export class StageRenderer {
       }
       const hud=line.words.some(w=>w.preset==='hud');
       const hudColor=look?hudLine(look):undefined;
-      if(hud)this.drawHud(ctx,line,t,frame,fit,origin,anchorPx,first.anchor?.trackId||'person0',true,hudColor);
+      if(hud&&!(pm&&line.card))this.drawHud(ctx,line,t,frame,fit,origin,anchorPx,first.anchor?.trackId||'person0',true,hudColor);
       this.drawUnit(ctx,line,t,frame,fit,opts,look);
       if(hud)this.drawHud(ctx,line,t,frame,fit,origin,anchorPx,first.anchor?.trackId||'person0',false,hudColor);
       ctx.restore();
@@ -728,16 +1023,114 @@ export class StageRenderer {
   /** Per-unit draw site for screen text (context already at the unit's origin, scaled by fit). One place to hook
    *  per-unit/per-glyph effects. Neon look: tubes (subtitles and HUD stay crisp). */
   private drawUnit(ctx:CanvasRenderingContext2D,line:Line,t:number,frame:number,fit:number,opts:DrawOpts,look?:Look){
-    if(look?.finish==='neon'&&!line.sub&&line.role!=='hud'){if(!this.lightOnly)drawMount(ctx,line,line.key);drawTubes(ctx,line,t,frame,fit,{...opts,shadow:0,plain:true});return;}
+    if(look?.finish==='neon'&&!line.sub&&line.role!=='hud'){if(!this.lightOnly)drawMount(ctx,line,line.key);drawTubes(ctx,line,t,frame,fit,{...opts,shadow:0,plain:true},true);return;}
     if(look?.wall==='spray'&&!line.sub&&line.role!=='hud'){
       // Spray paint on the background: drawn in a screen buffer, then overspray, drips and the wall's own light.
       const b=this.buffer(28),g=b.getContext('2d')!;g.setTransform(ctx.getTransform());
-      drawWords(g,line,t,frame,{...opts,shadow:0,plain:true});drawSprayMarks(g,line,t,look.drips??.5,line.role!=='sat'&&line.role!=='verse');
+      drawWords(g,line,t,frame,{...opts,shadow:0,plain:true});drawSprayMarks(g,line,t,look.drips??.5,line.role!=='sat'&&line.role!=='verse');sprayWear(g,line,line.key);
       const m=ctx.getTransform();sprayify(b,this.buffer(29),line.size*Math.hypot(m.a,m.b),this.env);
       ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha*=.94;ctx.drawImage(b,0,0);ctx.restore();return;
     }
     drawWords(ctx,line,t,frame,opts);
   }
+  private glyph?:GlyphFill;
+  /** v4.3 glyph fill (looks.ts lineIsFilled): the filled lines of this frame as letter grids lit by this.env (the graded
+   *  footage), masked by the matte (subject / world) or warped onto their wall. See glyph.ts. */
+  private drawFill(ctx:CanvasRenderingContext2D,t:number,frame:number,subset:'all'|'behind'|'front',ft:number,look:Look){
+    const p=this.timed();const fill=fillOf(look)!;const env=this.env;if(!env)return;
+    const groups=new Map<string,Word[]>();
+    for(const w of p.words){if(w.placement==='inworld'||!wordIsShown(p,w))continue;const key=`${w.lineId}:${w.placement}`;const g=groups.get(key);if(g)g.push(w);else groups.set(key,[w]);}
+    const lines:FillLine[]=[];
+    for(const [key,ws] of groups){if(!lineIsFilled(p,ws[0].lineId))continue;
+      lines.push({key,words:ws,start:Math.min(...ws.map(w=>w.start)),end:Math.max(...ws.map(w=>w.end)),surfaceId:ws[0].placement==='surface'?ws[0].surfaceId:null});}
+    if(!lines.length)return;
+    const quadOf=(id:string)=>{const s=p.surfaces?.find(x=>x.id===id);if(!s)return undefined;
+      const tr=s.track?this.surfaceTracks.get(`${s.id}:${s.track}`)||undefined:undefined;const corners=surfaceCornersAt(s,tr,ft);if(!corners)return undefined;
+      const quad=corners.map(([x,y])=>{const [ox,oy]=this.point(frame,x,y);return [ox*p.width,oy*p.height] as Point;});
+      if(quad.every(([x])=>x<0)||quad.every(([x])=>x>p.width)||quad.every(([,y])=>y<0)||quad.every(([,y])=>y>p.height))return undefined;
+      return quadIsConvex(quad)?quad:undefined;};
+    const matte=this.matte;const m=matte?(g:CanvasRenderingContext2D,w:number,h:number)=>this.drawMediaTo(g,matte,frame,w,h):undefined;
+    (this.glyph||(this.glyph=new GlyphFill())).draw(ctx,{look,fill,W:p.width,H:p.height,t,frame,fps:p.fps,env,matte:m,lines,quadOf,subset,draft:!this.heavyOptics});
+  }
+  /** A media frame through the crop, scaled to w×h. */
+  private drawMediaTo(g:CanvasRenderingContext2D,v:HTMLVideoElement,frame:number,w:number,h:number){
+    const c=cropAt(this.crop,frame);
+    if(c){const vw=v.videoWidth,vh=v.videoHeight;g.drawImage(v,c.x*vw,c.y*vh,c.w*vw,c.h*vh,0,0,w,h);}else g.drawImage(v,0,0,w,h);
+  }
+  /** Ticker stream: every shown (non-subtitle) word in time order with its entry time, so words enter the display on
+   *  their timing and never overlap: enter_i = max(start_i, enter_{i-1} + (width_{i-1} + gap) / speed). Cached. */
+  private tickerCache=new Map<string,{sig:string;items:{text:string;enter:number;w:number;start:number}[];font:string}>();
+  private tickerStream(look:Look,lane:'surface'|'behind'|'front'){
+    const p=this.timed();const sig=JSON.stringify([p.words,p.lineMeta,p.look]);const cached=this.tickerCache.get(lane);if(cached?.sig===sig)return cached;
+    const font='led5x7';
+    const ws=p.words.filter(w=>wordIsShown(p,w)&&!isSubtitleLine(p,w.lineId)&&(lane==='surface'?w.placement==='surface':lane==='behind'?w.placement==='behind':w.placement==='overlay')).sort((a,b)=>a.start-b.start);
+    // Lines, not words: each line crawls as one string, its words packed at TICKER_GAP_WORD em.
+    const byLine=new Map<string,Word[]>();for(const w of ws){const g=byLine.get(w.lineId);if(g)g.push(w);else byLine.set(w.lineId,[w]);}
+    type TL={words:{text:string;w:number;off:number}[];start:number;last:number;width:number;key:string};const tls:TL[]=[];
+    for(const lw of [...byLine.values()].sort((a,b)=>a[0].start-b[0].start)){let off=0;
+      const words=lw.map(w=>{const text=applyCase(w.text,look.font.heroCase);const x={text,w:ledWidth(text)/7,off};off+=x.w+TICKER_GAP_WORD;return x;});// em (7 LED rows)
+      const key=words.map(x=>x.text.toLowerCase()).join(' ');
+      // The same line shown twice (wall title + HUD label of one sung phrase) enters once.
+      if(tls.some(o=>o.key===key&&Math.abs(o.start-lw[0].start)<3))continue;
+      tls.push({words,start:lw[0].start,last:lw[lw.length-1].start,width:off-TICKER_GAP_WORD,key});}
+    // Phrases: lines sung back to back (< 1.5 s from the previous line's last word) crawl evenly, TICKER_GAP_LINE em
+    // apart; the phrase starts as late as needed (≤ 0.9 s) so no line ever shows before its first word is sung.
+    // A pause in the singing (or a line that cannot fit) starts a new phrase, which enters on its own onset (late if
+    // the previous phrase is still entering; never dropped).
+    const items:{text:string;enter:number;w:number;start:number}[]=[];let free=-Infinity;const S=TICKER_SPEED;
+    for(let i=0;i<tls.length;){
+      let e0=Math.max(tls[i].start,free+TICKER_GAP_LINE/S);const mem=[i],offs=[0];let off=tls[i].width/S,j=i+1;
+      for(;j<tls.length;j++){if(tls[j].start-tls[j-1].last>1.5)break;const o=off+TICKER_GAP_LINE/S,e=Math.max(e0,tls[j].start-o);
+        if(e-Math.max(tls[i].start,free+TICKER_GAP_LINE/S)>.9)break;e0=e;mem.push(j);offs.push(o);off=o+tls[j].width/S;}
+      mem.forEach((k,m)=>{for(const x of tls[k].words)items.push({text:x.text,enter:e0+offs[m]+x.off/S,w:x.w,start:tls[k].start});});
+      free=e0+off;i=j;}
+    const value={sig,items,font};this.tickerCache.set(lane,value);return value;
+  }
+  /** LED dot-matrix ticker: the word stream crawls right→left through a display at TICKER_SPEED em/s. Mounted on the
+   *  wall (the union of the surfaces in use, middle band, behind the subject) when there is one, else a screen band. */
+  private drawTicker(ctx:CanvasRenderingContext2D,t:number,frame:number,subset:'all'|'behind'|'front',ft:number){
+    if(subset!=='front'){this.drawTickerLane(ctx,t,frame,'surface',ft);this.drawTickerLane(ctx,t,frame,'behind',ft);}
+    if(subset!=='behind')this.drawTickerLane(ctx,t,frame,'front',ft);
+  }
+  private drawTickerLane(ctx:CanvasRenderingContext2D,t:number,frame:number,lane:'surface'|'behind'|'front',ft:number){
+    const p=this.timed();const look=this.look()!;const {items}=this.tickerStream(look,lane);
+    const live=items.some(it=>t>=it.enter-.05&&t<it.enter+(it.w+40)/TICKER_SPEED);if(!live)return;
+    // Surfaces in use around now: those with a surface word on screen from 3 s before its onset to 0.5 s after its end.
+    const ids=lane==='surface'?[...new Set(p.words.filter(w=>w.placement==='surface'&&w.surfaceId&&t>w.start-3&&t<w.end+.5).map(w=>w.surfaceId!))]:[];
+    const quads:Point[][]=[];
+    for(const id of ids){const s=p.surfaces?.find(x=>x.id===id);if(!s)continue;const tr=s.track?this.surfaceTracks.get(`${s.id}:${s.track}`)||undefined:undefined;
+      const c=surfaceCornersAt(s,tr,ft);if(c)quads.push(c.map(([x,y])=>{const [ox,oy]=this.point(frame,x,y);return [ox*p.width,oy*p.height] as Point;}));}
+    const mounted=quads.length>0;if(lane==='surface'&&!mounted)return;
+    let dst:Point[];let bw:number,bh:number;
+    if(mounted){const pick=(f:(q:Point[])=>number)=>quads.reduce((a,b)=>f(b)<f(a)?b:a);
+      const U:Point[]=[pick(q=>q[0][0]+q[0][1])[0],pick(q=>-q[1][0]+q[1][1])[1],pick(q=>-q[2][0]-q[2][1])[2],pick(q=>q[3][0]-q[3][1])[3]];
+      if(!quadIsConvex(U))return;const [uw,uh]=quadSize(U);const hh=Math.min(.34,uw*.16/Math.max(1,uh));dst=subQuad(U,[.03,.5-hh/2,.97,.5+hh/2]);
+      bw=uw*.94;bh=uh*hh;}
+    else{bh=p.height*.13;bw=p.width;dst=[[0,p.height*.74],[p.width,p.height*.74],[p.width,p.height*.74+bh],[0,p.height*.74+bh]];}
+    // 9 LED rows: the 5×7 glyphs on rows 1–7 with a dark row above and below.
+    const rows=9,pitch=Math.max(2,bh/rows),cols=Math.ceil(bw/pitch);
+    // 1. lit cells: the stream crawls one whole LED column at a time (em = 7 rows).
+    const lit=new Uint8Array(cols*rows);const em=7;
+    for(const it of items){const x0=Math.round(cols-(t-it.enter)*TICKER_SPEED*em);if(x0>=cols||x0+it.w*em<0)continue;
+      let cx=x0;for(const ch of it.text){const gl=ledGlyph(ch);if(!gl){cx+=LED_SPACE+1;continue;}const rs=gl.split(' '),gw=rs[0].length;
+        for(let r=0;r<7;r++)for(let c=0;c<gw;c++)if(rs[r][c]==='1'){const X=cx+c;if(X>=0&&X<cols)lit[(r+1)*cols+X]=1;}
+        cx+=gw+1;}}
+    // 2. display in its own pixels: housing, faint unlit dots, round lit dots with a hot centre, a tight bloom.
+    const cs=Math.min(16,Math.max(3,pitch)),W=Math.max(16,Math.round(cols*cs)),H=Math.max(4,Math.round(rows*cs));
+    const d=this.tickerDisp||(this.tickerDisp=document.createElement('canvas'));d.width=W;d.height=H;const g=d.getContext('2d')!;
+    const ledColor=look.palette.text,housing=look.palette.card||'#0b0703';
+    g.fillStyle=housing;g.fillRect(0,0,W,H);
+    const dots=(gx:CanvasRenderingContext2D,on:boolean,rad:number)=>{gx.beginPath();for(let r=0;r<rows;r++)for(let c=0;c<cols;c++)if(!!lit[r*cols+c]===on){
+      const x=(c+.5)*W/cols,y=(r+.5)*H/rows;gx.moveTo(x+rad,y);gx.arc(x,y,rad,0,Math.PI*2);}gx.fill();};
+    g.save();g.globalAlpha=.1;g.fillStyle=ledColor;dots(g,false,cs*.38);g.restore();
+    const L=this.tickerMask||(this.tickerMask=document.createElement('canvas'));L.width=W;L.height=H;const lg=L.getContext('2d')!;
+    lg.fillStyle=ledColor;dots(lg,true,cs*.44);lg.fillStyle=mixHex(ledColor,'#ffffff',.55);dots(lg,true,cs*.2);
+    g.save();g.globalCompositeOperation='lighter';g.filter=`blur(${(cs*.55).toFixed(1)}px)`;g.globalAlpha=.55;g.drawImage(L,0,0);g.filter='none';g.globalAlpha=1;g.drawImage(L,0,0);g.restore();
+    // bezel
+    g.strokeStyle='rgba(255,255,255,.08)';g.lineWidth=Math.max(1,cs*.5);g.strokeRect(0,0,W,H);
+    drawWarped(ctx,d,dst);
+  }
+  private tickerMask?:HTMLCanvasElement;private tickerDisp?:HTMLCanvasElement;
   /** this frame's graded footage (graffiti modulation, neon spill); undefined outside composite renders. */
   private env?:HTMLCanvasElement;
   /** Neon light pass in progress: draw tubes only (no hardware). */
@@ -754,7 +1147,7 @@ export class StageRenderer {
     let W=0,X=0,Y=0,R=0,G=0,B=0,bottom=0;
     for(let i=0;i<sw*sh;i++){const a=d[i*4+3]/255;if(a<.03)continue;const w=a*(d[i*4]+d[i*4+1]+d[i*4+2])/765;W+=w;X+=w*(i%sw);Y+=w*Math.floor(i/sw);R+=w*d[i*4];G+=w*d[i*4+1];B+=w*d[i*4+2];bottom=Math.max(bottom,Math.floor(i/sw));}
     if(W<.3){this.light=undefined;return;}
-    const light={x:(X/W+.5)/sw,y:(Y/W+.5)/sh,color:[R/W,G/W,B/W],power:Math.min(1,W/(sw*sh)*16),bottom:(bottom+1)/sh};this.light=light;
+    const light={x:(X/W+.5)/sw,y:(Y/W+.5)/sh,color:[R/W,G/W,B/W],power:Math.min(1,Math.sqrt(W/(sw*sh))*5),bottom:(bottom+1)/sh};this.light=light;
     const S=this.buffer(21),g=S.getContext('2d')!;g.fillStyle='#000';g.fillRect(0,0,S.width,S.height);g.globalCompositeOperation='lighter';
     g.filter=`blur(${(p.height*.045).toFixed(1)}px)`;g.drawImage(L,0,0);g.drawImage(L,0,0);
     g.filter=`blur(${(p.height*.16).toFixed(1)}px)`;g.drawImage(L,0,0);g.drawImage(L,0,0);g.drawImage(L,0,0);g.filter='none';
@@ -763,6 +1156,9 @@ export class StageRenderer {
     if(floor<p.height*.97){const T=this.buffer(22),tg=T.getContext('2d')!;tg.setTransform(1,0,0,-.55,0,floor*1.55);tg.filter=`blur(${(p.height*.012).toFixed(1)}px)`;tg.drawImage(L,0,0);tg.filter='none';tg.setTransform(1,0,0,1,0,0);
       const gr=tg.createLinearGradient(0,floor,0,floor+p.height*.3);gr.addColorStop(0,'rgba(0,0,0,.55)');gr.addColorStop(1,'rgba(0,0,0,0)');
       tg.globalCompositeOperation='destination-in';tg.fillStyle=gr;tg.fillRect(0,0,T.width,T.height);tg.globalCompositeOperation='source-over';g.drawImage(T,0,0);}
+    // Ambient: the whole scene picks up the sign's colour (scaled by its power), then everything is multiplied by the
+    // footage's luminance so lit surfaces take the light and dark sky stays dark.
+    g.fillStyle=`rgb(${light.color.map(c=>Math.round(c)).join(',')})`;g.globalAlpha=Math.min(.6,.45*Math.max(.55,light.power));g.fillRect(0,0,S.width,S.height);g.globalAlpha=1;
     g.globalCompositeOperation='multiply';g.filter='grayscale(1) brightness(1.7)';if(this.env)g.drawImage(this.env,0,0);g.filter='none';g.globalCompositeOperation='source-over';
     ctx.save();ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.min(1,amount);ctx.drawImage(S,0,0);ctx.restore();
   }
@@ -787,18 +1183,20 @@ export class StageRenderer {
     const p=this.project;const size=line.size;const align=line.metrics[0].style.align;
     const x0=-(align==='center'?line.total/2:align==='right'?line.total:0);const pad=size*.28;
     // Beat jitter: a few frames of deterministic shake after each word onset.
-    const onset=line.words.some(w=>{const k=Math.round((t-w.start)*p.fps);return k>=0&&k<3;});
+    // ('type' entrance: steady, no shake.)
+    const onset=this.look()?.enter!=='type'&&line.words.some(w=>{const k=Math.round((t-w.start)*p.fps);return k>=0&&k<3;});
     const jx=onset?(hash01(`${line.key}:${frame}`)-.5)*size*.12:0;
     const bx=x0-pad+jx,by=-line.height/2-size*.18,bw=line.total+2*pad,bh=line.height+size*.36;
     ctx.save();ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=Math.max(1.5,p.height/480)/fit;ctx.globalAlpha=onset?1:.92;
     if(backdrop){ctx.fillStyle='rgba(8,10,6,.45)';ctx.fillRect(bx,by,bw,bh);ctx.restore();return;}
     bracket(ctx,bx,by,bw,bh,Math.min(bw,bh)*.32);
-    if(anchorPx){
+    if(anchorPx&&!line.hudSlot){
       // Leader from the nearest box edge to the tracked point.
       const ax=(anchorPx[0]-origin.x*p.width)/fit,ay=(anchorPx[1]-origin.y*p.height)/fit;
       const ex=Math.min(bx+bw,Math.max(bx,ax)),ey=Math.min(by+bh,Math.max(by,ay));
       if(Math.hypot(ax-ex,ay-ey)>size*.3){ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(ax,ay);ctx.stroke();ctx.beginPath();ctx.arc(ax,ay,Math.max(3,size*.09),0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.arc(ax,ay,Math.max(1.2,size*.03),0,Math.PI*2);ctx.fill();}
     }
+    if(line.hudSlot){ctx.restore();return;}
     const tag=Math.max(13/fit,size*.36);ctx.font=`700 ${tag}px "Space Mono"`;ctx.textBaseline='bottom';ctx.textAlign='left';
     const conf=(.86+hash01(`${trackId}:${Math.floor(frame/6)}`)*.13).toFixed(2);
     const label=`${trackId.toUpperCase()} · F${String(frame).padStart(4,'0')} · ${conf}`;
@@ -843,7 +1241,7 @@ export class StageRenderer {
     };
     if(moving){this.freePass=true;try{draw(g);}finally{this.freePass=undefined;}}else draw(g);
     let src:HTMLCanvasElement=buf;
-    if(look.texture==='paper'){g.globalCompositeOperation='destination-out';g.globalAlpha=.55;g.drawImage(erosionMask(`paper:${p.id}`,Math.ceil(buf.width/2),Math.ceil(buf.height/2),.6,3),0,0,buf.width,buf.height);g.globalAlpha=1;g.globalCompositeOperation='source-over';}
+    if(look.texture==='paper'&&look.id!=='paper-cut'){g.globalCompositeOperation='destination-out';g.globalAlpha=.55;g.drawImage(erosionMask(`paper:${p.id}`,Math.ceil(buf.width/2),Math.ceil(buf.height/2),.6,3),0,0,buf.width,buf.height);g.globalAlpha=1;g.globalCompositeOperation='source-over';}
     if(moving){
       // Motion field: free lines drift with the camera (inertia) and are pushed like liquid by what moves through them;
       // pinned lines (walls, anchors, HUD) are drawn on top unmoved.
@@ -903,25 +1301,37 @@ export class StageRenderer {
     const p=this.project;const c=cropAt(this.crop,frame);
     if(c){const vw=v.videoWidth,vh=v.videoHeight;g.drawImage(v,c.x*vw,c.y*vh,c.w*vw,c.h*vh,0,0,p.width,p.height);}else g.drawImage(v,0,0,p.width,p.height);
   }
-  async render(canvas:HTMLCanvasElement,frame:number,layer:Layer='composite'){
+  /** One frame. opts apply to this call only (draft previews while scrubbing/dragging): heavyOptics overrides the instance
+   *  switch; proxy seeks the preview proxies when loaded. Defaults = instance state, so export, TypesetRender and capture
+   *  are unchanged. Calls on one instance are serialized by the callers (studio loop, thumb loop). */
+  async render(canvas:HTMLCanvasElement,frame:number,layer:Layer='composite',opts?:RenderOpts){
+    const prev=this.heavyOptics,bg=this.bg,matte=this.matte;if(opts?.heavyOptics!==undefined)this.heavyOptics=opts.heavyOptics;
+    if(opts?.proxy&&this.bgProxy){this.bg=this.bgProxy;if(this.matteProxy)this.matte=this.matteProxy;}
+    else if(opts?.full){if(this.bgSeek)this.bg=this.bgSeek;if(this.matteSeek)this.matte=this.matteSeek;}
+    this.stale=opts?.stale;
+    try{await this.renderFrame(canvas,frame,layer);}finally{this.heavyOptics=prev;this.bg=bg;this.matte=matte;this.stale=undefined;}
+  }
+  private async renderFrame(canvas:HTMLCanvasElement,frame:number,layer:Layer){
     const p=this.project;const last=Math.max(0,Math.round(p.duration*p.fps)-1);frame=Math.max(0,Math.min(last,frame));const t=frame/p.fps;
     await this.loadSurfaceTracks();
-    if(canvas.width!==p.width)canvas.width=p.width;if(canvas.height!==p.height)canvas.height=p.height;
     const ctx=canvas.getContext('2d')!;
     const fl=this.grade()?.flash;
     if(fl&&this.beats===undefined&&p.id!=='sample')this.beats=(await json<BeatGrid>(assetUrl(p,(p.analysis as {beats?:string|null}).beats||'analysis/beats.json',this.server)))||null;
-    this.flashNow=fl&&this.beats?flashAt(this.beats,t,fl):0;
+    this.flashNow=fl&&this.beats&&audibleAt(p,t)?flashAt(this.beats,toSong(p,t),fl):0;
+    const fit=()=>{if(canvas.width!==p.width)canvas.width=p.width;if(canvas.height!==p.height)canvas.height=p.height;};
     if(layer==='composite'){
       const shot=p.shots.find(s=>s.status==='done'&&s.video&&s.start<=t&&s.end>t);const clip=shot?this.shots.get(shot.id):this.bg;
       // Seek every media source before touching the visible canvas; never expose a half-painted frame.
       // Mid-frame times: frame f's pts is f/fps rounded to the container timebase, so seeking to exactly f/fps can
       // land a hair before it and show frame f-1. Half a frame in is unambiguous for both the footage and the matte.
       const mid=.5/p.fps;
-      await Promise.all([clip?seek(clip,(shot?t-shot.start:t)+mid):Promise.resolve(),this.matte&&!shot?seek(this.matte,t+mid):Promise.resolve()]);
+      const go=(v:HTMLVideoElement,at:number,seq:boolean)=>seq?advance(v,at,p.fps):seek(v,at);
+      await Promise.all([clip?go(clip,(shot?t-shot.start:t)+mid,this.sequential&&!shot):Promise.resolve(),this.matte&&!shot?go(this.matte,t+mid,this.sequential):Promise.resolve()]);
+      if(this.stale?.())return;fit();
       ctx.clearRect(0,0,p.width,p.height);
       if(clip)this.paintVideo(ctx,clip,frame,true);else{ctx.fillStyle='#242923';ctx.fillRect(0,0,p.width,p.height);}
       // Scene looks (graffiti, neon) read the graded footage: paint takes the wall's light, signs light the wall.
-      const look=this.look();const scene=look?.wall==='spray'||look?.finish==='neon';
+      const look=this.look();const scene=look?.wall==='spray'||look?.finish==='neon'||!!fillOf(look);
       if(scene){const e=this.buffer(30);e.getContext('2d')!.drawImage(canvas,0,0);this.env=e;}
       const neonLight=look?.finish==='neon'?look.light??.8:0;
       if(neonLight>0)this.lightPass(ctx,t,frame,neonLight);else this.light=undefined;
@@ -935,6 +1345,15 @@ export class StageRenderer {
         const tile=grainTile(frame%4);const pat=ctx.createPattern(tile,'repeat')!;const ox=Math.floor(hash01(`g${frame}x`)*256),oy=Math.floor(hash01(`g${frame}y`)*256);
         ctx.save();ctx.globalCompositeOperation='overlay';ctx.globalAlpha=Math.min(1,grain*.6);ctx.translate(-ox,-oy);ctx.fillStyle=pat;ctx.fillRect(ox,oy,p.width,p.height);ctx.restore();
       }
-    }else{this.env=undefined;ctx.clearRect(0,0,p.width,p.height);this.textPass(ctx,t,frame,layer==='text-behind'?'behind':layer==='text-front'?'front':'all',false);}
+    }else{
+      this.env=undefined;
+      if(fillOf(this.look())&&this.bg){
+        // Glyph fill reads the footage: seek it (and the matte) for text-only renders too, then grade it into env.
+        const mid=.5/p.fps;const go=(v:HTMLVideoElement,at:number)=>this.sequential?advance(v,at,p.fps):seek(v,at);
+        await Promise.all([go(this.bg,t+mid),this.matte?go(this.matte,t+mid):Promise.resolve()]);
+        if(this.stale?.())return;
+        const e=this.buffer(30);this.paintVideo(e.getContext('2d')!,this.bg,frame,true);this.env=e;
+      }
+      fit();ctx.clearRect(0,0,p.width,p.height);this.textPass(ctx,t,frame,layer==='text-behind'?'behind':layer==='text-front'?'front':'all',false);this.env=undefined;}
   }
 }

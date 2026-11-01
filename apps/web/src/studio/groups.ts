@@ -18,6 +18,29 @@ export function inGroup(l:LineInfo,g:GroupId){
   }
 }
 export const groupLines=(lines:LineInfo[],g:GroupId)=>lines.filter(l=>inGroup(l,g)).map(l=>l.id);
+/** The one group a line belongs to for timeline packing (a behind hook packs with the hooks). */
+export const groupOf=(l:LineInfo):GroupId=>l.hook?'hooks':l.role==='behind'?'behind':l.role==='wall'?'wall':l.role==='hud'||l.role==='anchor'?'hud':l.role==='inworld'?'inworld':'captions';
+
+export type Track = {group:GroupId;rows:number;lines:{line:LineInfo;row:number}[]};
+/** Timeline tracks: one per group, lines packed greedily into rows, spilling to a new row only when times overlap.
+ *  `prev` (lineId → row from the last pass) keeps rows stable while editing: a line stays on its row while it fits. */
+export function packTracks(lines:LineInfo[],prev?:Map<string,number>,gap=.02,hold=false):Track[]{
+  const out:Track[]=[];
+  for(const g of GROUPS){
+    const ls=lines.filter(l=>groupOf(l)===g.id).sort((a,b)=>a.start-b.start||a.id.localeCompare(b.id));if(!ls.length)continue;
+    const rows:[number,number][][]=[];const fits=(r:number,l:LineInfo)=>!(rows[r]||[]).some(([a,b])=>l.start<b+gap&&a<l.end+gap);
+    const put=(r:number,l:LineInfo)=>{while(rows.length<=r)rows.push([]);rows[r].push([l.start,l.end]);at.set(l.id,r);};
+    const at=new Map<string,number>();
+    // Keepers first (their previous row still fits), then the rest greedily in start order.
+    // hold: mid-drag, every known line keeps its row even if it overlaps for a moment.
+    for(const l of ls){const r=prev?.get(l.id);if(r!=null&&(hold||fits(r,l)))put(r,l);}
+    for(const l of ls){if(at.has(l.id))continue;let r=0;while(!fits(r,l))r++;put(r,l);}
+    // Drop rows emptied by edits, keeping order.
+    const used=[...new Set(at.values())].sort((a,b)=>a-b);const remap=new Map(used.map((r,i)=>[r,i]));
+    out.push({group:g.id,rows:used.length,lines:ls.map(l=>({line:l,row:remap.get(at.get(l.id)!)!}))});
+  }
+  return out;
+}
 
 /** Per-line colour overrides (renderer contract: lineMeta.fill / karaoke / dim win over the look; unset = look). */
 export type ColorKey = 'fill'|'karaoke'|'dim';

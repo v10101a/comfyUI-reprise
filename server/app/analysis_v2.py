@@ -661,27 +661,112 @@ def analyze_flow(store: ProjectStore, pid: str, ctx: JobContext):
             "seconds": round(time.monotonic() - t0, 2)}
 
 
-# ---- V. voice field -----------------------------------------------------------------------
+# ---- V. voice + audio fields ---------------------------------------------------------------
+# Both are in song time: frame f of the doc is song second t0 + f / fps (t0 = media.audioClip.in, else 0), so the
+# studio maps them through the clip like beats.json. Only the part of the clip heard in the project is analysed.
+
+def _song_section(store: ProjectStore, project: Project, out_wav: Path, sr: int) -> tuple[Path, float, float]:
+    """Song (media.audio, else the video's own track) → mono wav of the audioClip section; (wav, t0, seconds)."""
+    from .audioclip import clip_of
+    from .media import ffmpeg
+    source = project.media.audio or project.media.video
+    if source is None:
+        raise ValueError("Upload audio or video first")
+    c = clip_of(project)
+    dur = float(project.duration or 0) or float(source.duration or 0)
+    if c:  # the part of the clip that plays inside the project (song time); normalisation fits what is heard
+        t0 = c["in"] + max(0.0, -c["offset"])
+        t1 = min(c["out"], c["in"] - c["offset"] + dur)
+        if t1 - t0 < .1:
+            raise ValueError("The song clip does not play inside the project")
+    else:
+        t0, t1 = 0.0, min(float(source.duration or dur), dur)
+    out_wav.parent.mkdir(parents=True, exist_ok=True)
+    ffmpeg(["-ss", f"{t0:.4f}", "-to", f"{t1:.4f}", "-i", _ppath(store, project.id, source.path), "-vn",
+            "-ac", "1", "-ar", str(sr), "-c:a", "pcm_s16le", out_wav], what="ffmpeg(song section)")
+    return out_wav, t0, t1 - t0
+
+
+def _band_local(wav: Path, fps: float, duration: float, band: tuple[float, float]) -> dict:
+    """In-process TypesetAudioField (numpy only): same band_doc as the node."""
+    import importlib.util
+    import wave as wavmod
+    path = Path(__file__).resolve().parents[2] / "custom_nodes_dev" / "typeset_nodes" / "audio_field.py"
+    spec = importlib.util.spec_from_file_location("typeset_audio_field", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    with wavmod.open(str(wav), "rb") as w:
+        sr, raw = w.getframerate(), w.readframes(w.getnframes())
+    y = np.frombuffer(raw, "<i2").astype(np.float32) / 32768.0
+    return mod.band_doc(y, sr, fps, duration, band)
+
+
+def analyze_audio(store: ProjectStore, pid: str, ctx: JobContext, band: tuple[float, float] = (40.0, 140.0)):
+    """analysis/audio_<job>.json + .png: the full mix's low band (kick/bass) as a smooth 0..1 pulse per frame
+    (TypesetAudioField). ComfyUI workflow audio.api.json; in-process numpy when ComfyUI is down."""
+    from .media import stage_to_comfy_input
+    project = store.load(pid)
+    t_start = time.monotonic()
+    pdir = store.project_dir(pid)
+    ctx.progress(.05, "Audio: extracting the song")
+    wav, t0, seconds = _song_section(store, project, pdir / "analysis" / f"audio_{ctx.id[:8]}.wav", 22050)
+    run_dir = pdir / "analysis" / f"audio_run_{ctx.id[:8]}"
+    preview: list[Path] = []
+
+    def comfy():
+        from .comfy import runner, read_json_output
+        rel_audio = stage_to_comfy_input(wav, pid, wav.name)
+        result = runner.run("audio", {"audio": rel_audio, "fps": project.fps, "duration": seconds,
+                                      "band_low": band[0], "band_high": band[1]}, run_dir,
+                            progress=_comfy_progress(ctx, "Audio field", .2))
+        if result.first("preview"):
+            preview.append(result.first("preview"))
+        return read_json_output(result.outputs["voice_json"]), result.job_id
+
+    doc, engine, note = run_analysis("audio", "Audio field", ctx, comfy,
+                                     lambda: _band_local(wav, project.fps, seconds, band), .2)
+    note = note.replace("OpenCV", "numpy")
+    doc["t0"] = round(t0, 4)
+    # A new file per run: the studio reloads fields when the path changes (same path = cached field).
+    rel = f"analysis/audio_{ctx.id[:8]}.json"
+    write_json_atomic(_ppath(store, pid, rel), doc)
+    if preview:
+        shutil.copy2(preview[0], pdir / "analysis" / f"audio_{ctx.id[:8]}.png")
+    old = []
+    def update(p):
+        if p.analysis.audio and p.analysis.audio != rel:
+            old.append(p.analysis.audio)
+        p.analysis.audio = rel
+    store.update(pid, update)
+    for o in old:  # previous run's curve + preview
+        for f in (_ppath(store, pid, o), _ppath(store, pid, o).with_suffix(".png")):
+            f.unlink(missing_ok=True)
+    wav.unlink(missing_ok=True)
+    ctx.progress(1, f"Audio field: {doc['frames']} frames, {doc['band'][0]:g}-{doc['band'][1]:g} Hz — {note}")
+    return {"path": rel, "frames": doc["frames"], "band": doc["band"], "t0": doc["t0"], "engine": engine,
+            "elapsedSeconds": round(time.monotonic() - t_start, 2)}
+
 
 def analyze_voice(store: ProjectStore, pid: str, ctx: JobContext):
     """analysis/voice.json + voice.png: per-frame vocal loudness, pitch, vibrato, onsets (TypesetVoiceField).
     ComfyUI only (HDemucs + librosa live in the ComfyUI venv)."""
-    from .media import extract_audio_wav, stage_to_comfy_input
+    from .media import stage_to_comfy_input
     project = store.load(pid)
-    source = project.media.audio or project.media.video
-    if source is None:
+    if (project.media.audio or project.media.video) is None:
         raise ValueError("Upload audio or video first")
     if not comfy_up():
         raise RuntimeError("Voice analysis runs as a ComfyUI workflow (HDemucs + pYIN); ComfyUI is unreachable")
     t0 = time.monotonic()
     pdir = store.project_dir(pid)
     ctx.progress(.05, "Voice: extracting audio")
-    wav = extract_audio_wav(_ppath(store, pid, source.path), pdir / "analysis" / f"voice_{ctx.id[:8]}.wav", 44100)
+    wav, s0, seconds = _song_section(store, project, pdir / "analysis" / f"voice_{ctx.id[:8]}.wav", 44100)
     rel_audio = stage_to_comfy_input(wav, pid, wav.name)
     from .comfy import runner, read_json_output
-    result = runner.run("voice", {"audio": rel_audio, "fps": project.fps, "duration": project.duration},
+    result = runner.run("voice", {"audio": rel_audio, "fps": project.fps, "duration": seconds},
                         pdir / "analysis" / f"voice_run_{ctx.id[:8]}", progress=_comfy_progress(ctx, "Voice field", .2))
     doc = read_json_output(result.outputs["voice_json"])
+    if s0:
+        doc["t0"] = round(s0, 4)
     write_json_atomic(pdir / "analysis" / "voice.json", doc)
     if result.first("preview"):
         shutil.copy2(result.first("preview"), pdir / "analysis" / "voice.png")

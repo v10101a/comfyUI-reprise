@@ -88,7 +88,9 @@ export function lookOf(p:Pick<Project,'look'>):Look|undefined{
   // A swapped face drops the preset's weight for it (the preset weight may not exist in the new face).
   if(o.font?.hero&&o.font.hero!==base.font.hero&&o.font.heroWeight===undefined)delete font.heroWeight;
   if(o.font?.body&&o.font.body!==base.font.body&&o.font.bodyWeight===undefined)delete font.bodyWeight;
-  return {...base,...o,id:base.id,font,palette:{...base.palette,...(o.palette||{})},optics:{...base.optics,...(o.optics||{})}};
+  // fill merges one level deep too (a studio override of one fill field keeps the preset's region); null switches it off.
+  const fill=o.fill===null?null:o.fill?{...(base.fill||{}),...o.fill}:base.fill;
+  return {...base,...o,id:base.id,font,palette:{...base.palette,...(o.palette||{})},optics:{...base.optics,...(o.optics||{})},fill};
 }
 
 // ---------- grade (footage) ----------
@@ -149,7 +151,7 @@ export function setGradeAmount(p:Project,amount:number):Project{
  * The shared, small parameter set a look exposes for editing. Each param reads from the resolved Look and writes
  * into project.look.overrides (deep-merged into palette / font / optics). Same keys as the TypesetLook node's widgets.
  */
-export type LookParamKey='ink'|'accent'|'card'|'cards'|'font'|'body'|'case'|'layout'|'scale'|'motion'|'glow'|'flicker'|'drips'|'light'|'outline'|'halo'|'soft'|'tubes'|'scroll'|'hooks'|'flow'|'voice';
+export type LookParamKey='ink'|'accent'|'card'|'cards'|'font'|'body'|'case'|'layout'|'scale'|'motion'|'glow'|'flicker'|'drips'|'light'|'outline'|'halo'|'soft'|'tubes'|'scroll'|'hooks'|'flow'|'voice'|'fill'|'cell'|'backing';
 export type LookParam={key:LookParamKey;label:string;kind:'color'|'font'|'select'|'range'|'toggle';options?:string[];min?:number;max?:number;step?:number};
 export const LOOK_PARAMS:LookParam[]=[
   {key:'ink',label:'Ink',kind:'color'},
@@ -158,7 +160,7 @@ export const LOOK_PARAMS:LookParam[]=[
   {key:'font',label:'Font',kind:'font'},
   {key:'body',label:'Body',kind:'font'},
   {key:'case',label:'Case',kind:'select',options:['upper','lower','as-is']},
-  {key:'layout',label:'Layout',kind:'select',options:['line','hero','stack','constellation']},
+  {key:'layout',label:'Layout',kind:'select',options:['line','hero','stack','constellation','hud']},
   {key:'scale',label:'Size',kind:'range',min:.4,max:2,step:.05},
   {key:'motion',label:'Motion',kind:'range',min:0,max:2,step:.05},
   {key:'glow',label:'Glow',kind:'range',min:0,max:1,step:.05},
@@ -167,23 +169,31 @@ export const LOOK_PARAMS:LookParam[]=[
   {key:'light',label:'Light',kind:'range',min:0,max:1,step:.05},
   {key:'outline',label:'Outline',kind:'range',min:0,max:.15,step:.005},
   {key:'halo',label:'Halo',kind:'range',min:0,max:1,step:.05},
-  {key:'soft',label:'Soft',kind:'range',min:0,max:1,step:.05},
+  {key:'soft',label:'Blur',kind:'range',min:0,max:1,step:.05},
   {key:'cards',label:'Cards',kind:'toggle'},
   {key:'tubes',label:'Tubes',kind:'toggle'},
   {key:'scroll',label:'Scroll',kind:'toggle'},
   {key:'hooks',label:'Hooks',kind:'toggle'},
   {key:'flow',label:'Flow',kind:'range',min:0,max:1,step:.05},
-  {key:'voice',label:'Voice',kind:'range',min:0,max:1,step:.05},
+  {key:'voice',label:'Audio',kind:'range',min:0,max:1,step:.05},
+  // v4.3 glyph fill (any look): filled lines become a letter grid lit by the footage (see Look.fill).
+  {key:'fill',label:'Fill',kind:'select',options:['off','subject','world','frame']},
+  {key:'cell',label:'Cell',kind:'range',min:.008,max:.03,step:.001},
+  {key:'backing',label:'Backing',kind:'range',min:0,max:1,step:.05},
 ];
+/** The look's glyph fill when it is on (Look.fill with a region). */
+export function fillOf(look:Look|undefined|null):NonNullable<Look['fill']>|undefined{const f=look?.fill;return f&&f.region?f:undefined;}
 export function lookParam(look:Look,key:LookParamKey):string|number|boolean{
   switch(key){
     case 'ink':return look.palette.text;case 'accent':return look.palette.accent;case 'card':return look.palette.card||'#2f6bff';
     case 'cards':return !!look.card;case 'font':return look.font.hero;case 'body':return look.font.body;
     case 'case':return look.font.heroCase||'as-is';case 'layout':return look.layout;case 'scale':return look.scale??1;
     case 'motion':return look.intensity??1;case 'glow':return look.optics.glow||0;case 'outline':return look.outlineWidth??0;
-    case 'halo':return look.halo??0;case 'soft':return look.optics.blur||0;case 'scroll':return look.motion==='marquee';
-    case 'hooks':return look.quiet==='hooks-only';case 'flicker':return look.flicker??0;case 'drips':return look.drips??.5;case 'light':return look.light??.8;case 'tubes':return look.finish==='neon';
+    case 'halo':return look.halo??(look.palette.shadow?.5:0);case 'soft':return look.optics.blur||0;case 'scroll':return look.motion==='marquee';
+    // Under a glyph fill the Hooks toggle means "only hook lines fill" (others keep the look's register).
+    case 'hooks':return fillOf(look)?look.fill!.hooks!==false:look.quiet==='hooks-only';case 'flicker':return look.flicker??0;case 'drips':return look.drips??.5;case 'light':return look.light??.8;case 'tubes':return look.finish==='neon';
     case 'flow':return look.fields?.motion??0;case 'voice':return look.fields?.voice??0;
+    case 'fill':return fillOf(look)?.region??'off';case 'cell':return look.fill?.cell??FILL_DEFAULTS.cell;case 'backing':return look.fill?.backing??FILL_DEFAULTS.backing;
   }
 }
 type Overrides=NonNullable<LookRef['overrides']>;
@@ -191,18 +201,75 @@ type Overrides=NonNullable<LookRef['overrides']>;
 export function lookParamPatch(look:Look,key:LookParamKey,v:string|number|boolean):Overrides{
   switch(key){
     case 'ink':return {palette:{text:String(v)} as Look['palette']};case 'accent':return {palette:{accent:String(v)} as Look['palette']};
-    case 'card':return {palette:{card:String(v)} as Look['palette'],card:true};case 'cards':return v&&!look.palette.card?{card:true,palette:{card:'#2f6bff'} as Look['palette']}:{card:!!v};
+    // The card colour is also the glyph fill's backing: under a fill it does not switch cards on.
+    case 'card':return fillOf(look)?{palette:{card:String(v)} as Look['palette']}:{palette:{card:String(v)} as Look['palette'],card:true};case 'cards':return v&&!look.palette.card?{card:true,palette:{card:'#2f6bff'} as Look['palette']}:{card:!!v};
     case 'font':return {font:{hero:String(v)} as Look['font']};case 'body':return {font:{body:String(v)} as Look['font']};
     case 'case':return {font:{heroCase:v,bodyCase:v} as Look['font']};case 'layout':return {layout:v as Look['layout']};
     case 'scale':return {scale:Number(v)};case 'motion':return {intensity:Number(v)};case 'glow':return {optics:{glow:Number(v)}};
     case 'outline':return {outlineWidth:Number(v)};case 'halo':return {halo:Number(v)};case 'soft':return {optics:{blur:Number(v)}};
-    case 'scroll':return {motion:v?'marquee':'none'};case 'hooks':return {quiet:v?'hooks-only':'none'};
+    case 'scroll':return {motion:v?'marquee':'none'};case 'hooks':return fillOf(look)?{fill:{...look.fill!,hooks:!!v}}:{quiet:v?'hooks-only':'none'};
     case 'flicker':return {flicker:Number(v)};case 'drips':return {drips:Number(v)};case 'light':return {light:Number(v)};case 'tubes':return {finish:v?'neon':null};
     case 'flow':return {fields:{...look.fields,motion:Number(v)}};case 'voice':return {fields:{...look.fields,voice:Number(v)}};
+    case 'fill':return v==='off'||!v?{fill:null}:{fill:{...(look.fill||{}),region:v as NonNullable<Look['fill']>['region']}};
+    case 'cell':return {fill:{region:'subject',...(look.fill||{}),cell:Number(v)}};
+    case 'backing':return {fill:{region:'subject',...(look.fill||{}),backing:Number(v)}};
   }
 }
+/** Glyph fill defaults (Look.fill fields left unset). */
+export const FILL_DEFAULTS={cell:.014,backing:.85,gain:1.4};
 export function setLookParam(p:Project,key:LookParamKey,v:string|number|boolean):Project{
   const look=lookOf(p);if(!look)return p;return setLookOverrides(p,lookParamPatch(look,key,v));
+}
+/** Hidden looks are frozen (kept only so older projects such as Fall For Me render byte-identically): renderer fixes
+ *  that would move their pixels are switched off for them. */
+export function lookIsFrozen(look:Pick<Look,'id'>){return !!FILE.looks[look.id]?.hidden;}
+/**
+ * What the line panel's Size (and the stage corner handles) edits for a line: 'font' = the words' fontSize, 'scale' =
+ * lineMeta.scale on top of the size the look's layout computes (walls; hero/stack/constellation/HUD layouts and capped
+ * verses, which ignore fontSize), 'none' = nothing can resize it (in-world shots, lines crawling in the LED ticker).
+ */
+export function lineSizeMode(p:Project,lineId:string):'font'|'scale'|'none'{
+  const ws=p.words.filter(w=>w.lineId===lineId);if(!ws.length)return 'none';const pl=ws[0].placement;
+  if(pl==='inworld')return 'none';
+  const look=lookOf(p);
+  if(!look)return pl==='surface'?'scale':'font';
+  if(isSubtitleLine(p,lineId))return 'font';
+  if(look.layout==='hud')return 'scale';
+  if(look.motion==='marquee'&&pl!=='anchor')return 'none';
+  if(pl==='surface')return 'scale';
+  if(pl==='anchor')return 'font';
+  if(look.id==='flat-card')return 'scale';
+  if(look.layout==='line')return lineIsHook(p,lineId)?'font':'scale';
+  return 'scale';
+}
+/**
+ * Whether a param visibly changes this project under this look (measured per look on rendered frames; the studio only
+ * shows these). Colour/type/flag params always apply.
+ */
+export function lookParamApplies(p:Project,look:Look,key:LookParamKey):boolean{
+  const shown=p.words.filter(w=>w.placement!=='inworld'&&wordIsShown(p,w)&&!isSubtitleLine(p,w.lineId));
+  const screen=shown.some(w=>w.placement!=='surface'||look.layout==='hud');
+  const marquee=look.motion==='marquee',neon=look.finish==='neon',spray=look.wall==='spray';
+  switch(key){
+    case 'card':return !!look.card||!!fillOf(look);
+    case 'cell':case 'backing':return !!fillOf(look);
+    case 'drips':return spray;
+    case 'light':return neon;
+    // Ticker: the LED display has its own size; walls take the wall's size.
+    case 'scale':return !marquee&&screen;
+    // Entrance amount: only the pop entrance (looks without their own entrance) reads it.
+    case 'motion':return !look.enter&&!marquee&&shown.some(w=>w.preset==='pop'&&w.placement!=='surface');
+    // Neon catching / pop-in dropouts. Looks without the flicker entrance keep it only while it is on, to turn it off.
+    case 'flicker':return look.enter==='flicker'||neon||!look.enter&&(look.flicker??0)>0;
+    // Neon tubes, the LED ticker and the HUD label draw their own strokes.
+    case 'outline':return !neon&&!marquee&&look.layout!=='hud'&&shown.length>0;
+    // Paper casts a hard shadow; paint and tubes have no halo; walls never take one.
+    case 'halo':return look.texture!=='paper'&&!spray&&!neon&&!marquee&&screen;
+    case 'glow':case 'soft':return shown.length>0;
+    case 'flow':return !!p.analysis.flow;
+    case 'voice':return !!(p.analysis.voice||p.analysis.audio);
+    default:return true;
+  }
 }
 
 // ---------- mutators (pure) ----------
@@ -212,7 +279,7 @@ export function setLook(p:Project,id:LookId|null,overrides?:LookRef['overrides']
 /** Merge into project.look.overrides (palette / font / optics / verse merge one level deep). */
 export function setLookOverrides(p:Project,partial:NonNullable<LookRef['overrides']>):Project{
   if(!p.look)return p;const cur=p.look.overrides||{};const out:Record<string,unknown>={...cur,...partial};
-  for(const k of ['palette','font','optics','verse'] as const)if(partial[k]&&cur[k])out[k]={...cur[k],...partial[k]};
+  for(const k of ['palette','font','optics','verse','fill'] as const)if(partial[k]&&cur[k])out[k]={...cur[k],...partial[k]};
   return {...p,look:{...p.look,overrides:out as NonNullable<LookRef['overrides']>}};
 }
 export function clearLookOverrides(p:Project):Project{return p.look?{...p,look:{...p.look,overrides:null}}:p;}
@@ -268,6 +335,15 @@ export function isSubtitleLine(p:Project,lineId:string){
   const ws=p.words.filter(w=>w.lineId===lineId);if(!ws.length||ws.some(w=>w.placement!=='overlay'))return false;
   if(ws.every(w=>w.preset==='karaoke'))return true;
   return ws.every(w=>w.position&&w.autoPlace===false&&(w.style?.fontSize??p.style.fontSize)<=.045);
+}
+/** Glyph fill: a shown screen or wall line that the look's fill consumes (drawn as a letter grid, not as type).
+ *  Subtitles and head-anchored labels never fill; with fill.hooks (default) only hook lines fill. */
+export function lineIsFilled(p:Project,lineId:string){
+  const f=fillOf(lookOf(p));if(!f)return false;
+  const ws=p.words.filter(w=>w.lineId===lineId);if(!ws.length)return false;
+  const pl=ws[0].placement;if(pl==='inworld'||pl==='anchor'||isSubtitleLine(p,lineId))return false;
+  if(!ws.some(w=>wordIsShown(p,w)))return false;
+  return f.hooks===false||lineIsHook(p,lineId);
 }
 export function wordIsShown(p:Project,w:Word){
   if(w.hidden||p.lineMeta?.[w.lineId]?.hidden)return false;

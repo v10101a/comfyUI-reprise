@@ -2,7 +2,7 @@
  "id": "4fe706a3-f25d-47dd-bc76-f53c5e25e0b5",
  "revision": 0,
  "last_node_id": 12,
- "last_link_id": 23,
+ "last_link_id": 24,
  "nodes": [
   {
    "id": 1,
@@ -141,7 +141,8 @@
       2,
       7,
       9,
-      22
+      22,
+      11
      ]
     },
     {
@@ -1782,9 +1783,7 @@
      "type": "IMAGE",
      "pos": null,
      "slot_index": null,
-     "links": [
-      11
-     ]
+     "links": []
     },
     {
      "color_off": null,
@@ -1800,7 +1799,9 @@
      "type": "STRING",
      "pos": null,
      "slot_index": null,
-     "links": null
+     "links": [
+      24
+     ]
     }
    ],
    "title": "grade",
@@ -2024,6 +2025,38 @@
       "name": "height"
      },
      "link": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "grade_json",
+     "locked": null,
+     "name": "grade_json",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "STRING",
+     "pos": null,
+     "link": 24
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "renderer",
+     "locked": null,
+     "name": "renderer",
+     "nameLocked": null,
+     "removable": null,
+     "shape": 7,
+     "type": "COMBO",
+     "widget": {
+      "name": "renderer"
+     },
+     "link": null
     }
    ],
    "outputs": [
@@ -2060,6 +2093,22 @@
      "pos": null,
      "slot_index": null,
      "links": null
+    },
+    {
+     "color_off": null,
+     "color_on": null,
+     "dir": null,
+     "label": null,
+     "localized_name": "renderer",
+     "locked": null,
+     "name": "renderer",
+     "nameLocked": null,
+     "removable": null,
+     "shape": null,
+     "type": "STRING",
+     "pos": null,
+     "slot_index": null,
+     "links": null
     }
    ],
    "title": "typeset",
@@ -2071,14 +2120,16 @@
     1,
     1,
     0.16,
-    0.42
+    0.42,
+    "auto"
    ],
    "widgets_values_named": {
     "fps": 24,
     "voice": 1,
     "flow": 1,
     "size": 0.16,
-    "height": 0.42
+    "height": 0.42,
+    "renderer": "auto"
    }
   },
   {
@@ -2584,7 +2635,7 @@
   ],
   [
    11,
-   8,
+   2,
    0,
    9,
    0,
@@ -2685,6 +2736,14 @@
    12,
    1,
    "MASK"
+  ],
+  [
+   24,
+   8,
+   1,
+   9,
+   11,
+   "STRING"
   ]
  ],
  "floatingLinks": null,

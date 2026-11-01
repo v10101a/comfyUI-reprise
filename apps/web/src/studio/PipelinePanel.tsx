@@ -16,7 +16,7 @@ export function PipelinePanel({project,jobs,occKind,hasBeats,beatsNote,comparing
   const statuses=STEPS.map(s=>({def:s,st:stepStatus(s,project,jobs,{occKind,hasBeats,beatsNote,comparing})}));
   const comfyDone=statuses.filter(x=>x.def.engine==='comfy'&&x.st.state==='done').length;
   const comfySecs=statuses.filter(x=>x.def.engine==='comfy'&&x.st.state==='done').reduce((n,x)=>n+(x.st.seconds||0),0);
-  const runnable:Partial<Record<StepId,string>>={words:'listen',matte:'cut out the subject',occupancy:'map the space',beats:'find the beat'};
+  const runnable:Partial<Record<StepId,string>>={words:'listen',matte:'cut out the subject',occupancy:'map the space',beats:'find the beat',audio:'feel the low end',voice:'follow the singer'};
   const meta=health?.comfyui?`${health.comfyuiVersion?`v${health.comfyuiVersion} · `:''}${(health.comfyuiUrl||'').replace(/^https?:\/\//,'')} · ${health.generationTarget==='remote'?'remote gen':'local'} · ${comfyDone} ran${comfySecs?` · ${fmtS(comfySecs)}`:''}`:health?'comfyui not reachable':'server offline · npm run dev';
   return <div className="pipeline">
     <div className={`comfy-head ${health?.comfyui?'up':'down'}`} title={meta}>
@@ -38,6 +38,12 @@ export function PipelinePanel({project,jobs,occKind,hasBeats,beatsNote,comparing
       </li>)}
     </ol>
   </div>;
+}
+
+/** Collapsed left panel: one status dot per step (tooltip = step and state); click opens the pipeline. */
+export function PipelineRail({project,jobs,occKind,hasBeats,comparing,onOpen}:{project:Project;jobs:Map<string,JobRecord>;occKind?:string;hasBeats:boolean;comparing:boolean;onOpen:()=>void}){
+  return <div className="rail-dots" role="list">{STEPS.map(def=>{const st=stepStatus(def,project,jobs,{occKind,hasBeats,comparing});
+    return <button key={def.id} role="listitem" className="rail-dot" onClick={onOpen} aria-label={`${def.title}: ${st.state}`} title={`${def.title} · ${st.state}`}><i className={`step-dot path-${st.state}`}/></button>;})}</div>;
 }
 
 type Node = {id:string;cls:string;inputs:[string,string][];refs:string[];title?:string};

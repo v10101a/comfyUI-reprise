@@ -50,6 +50,66 @@ class AnalysisNodeTests(unittest.TestCase):
         self.assertAlmostEqual(last["corners"][0][0] * W, 0.3 * W - 4 * (N - 1 - 6), delta=1.0)
         self.assertEqual(prev.shape[0], 3)
 
+    def test_planar_track_low_texture_wall_stays_rigid(self):
+        """Near-blank wall (soft light falloff + a few faint marks) panning under a moving occluder: the quad must
+        translate, not skew/shrink, and confidence must come from alignment."""
+        import cv2
+        W, H, N, key = 320, 180, 40, 20
+        yy, xx = np.mgrid[0:H + 40, 0:W + 200].astype(np.float32)
+        wall = 150 + 40 * np.exp(-((xx - 200) ** 2) / (2 * 60 ** 2)) + np.random.default_rng(1).normal(0, 1.5, xx.shape)
+        for x, y in [(40, 50), (120, 140), (210, 30), (300, 120), (380, 80), (470, 150)]:
+            cv2.circle(wall, (x, y), 3, 110, -1)
+        wall = cv2.GaussianBlur(wall, (0, 0), 1.2).clip(0, 255).astype(np.uint8)
+        frames, alphas = [], []
+        for t in range(N):
+            fr = wall[20:20 + H, 3 * t:3 * t + W].copy()
+            a = np.zeros((H, W), np.uint8)
+            cv2.rectangle(a, (30 + 6 * t, 20), (70 + 6 * t, H), 255, -1)
+            frames.append(np.where(a > 0, 30, fr).astype(np.uint8)); alphas.append(a)
+        quad = np.array([[60, 30], [260, 30], [260, 90], [60, 90]], float)
+        info = {}
+        tr = cv.track_plane(lambda i: frames[i], N, key, quad, lambda i: alphas[i], cv.TrackParams(smooth=0), info=info)
+        self.assertGreaterEqual(len(tr), N - 2)
+        for f, (c, conf) in tr.items():
+            exp = quad - [3 * (f - key), 0]
+            self.assertLess(np.abs(c - exp).max(), 2.5, f"frame {f}")
+            d = cv.quad_drift(c, quad)
+            self.assertLess(d["skew"], 3.0)
+            self.assertLess(abs(d["area"] - 1), 0.05)
+
+    def test_planar_track_occluder_crossing_quad_is_stable(self):
+        """A subject walks right across the quad (covering most of it for several frames) while the wall pans:
+        no frame is dropped, the quad keeps following the pan, and the trajectory has no per-frame jitter."""
+        import cv2
+        W, H, N, key = 320, 180, 48, 24
+        yy, xx = np.mgrid[0:H + 40, 0:W + 240].astype(np.float32)
+        wall = 140 + 30 * np.exp(-((xx - 220) ** 2) / (2 * 80 ** 2)) + np.random.default_rng(3).normal(0, 2.0, xx.shape)
+        for x, y in [(30, 60), (90, 150), (170, 40), (240, 120), (330, 70), (410, 160), (500, 50)]:
+            cv2.circle(wall, (x, y), 4, 100, -1)
+        wall = cv2.GaussianBlur(wall, (0, 0), 1.0).clip(0, 255).astype(np.uint8)
+        frames, alphas = [], []
+        for t in range(N):
+            fr = wall[20:20 + H, 2 * t:2 * t + W].copy()
+            a = np.zeros((H, W), np.uint8)
+            cv2.rectangle(a, (-60 + 9 * t, 10), (20 + 9 * t, H), 255, -1)  # 80 px wide, crosses the whole frame
+            frames.append(np.where(a > 0, 25, fr).astype(np.uint8)); alphas.append(a)
+        quad = np.array([[90, 40], [230, 40], [230, 120], [90, 120]], float)
+        info = {}
+        tr = cv.track_plane(lambda i: frames[i], N, key, quad, lambda i: alphas[i], cv.TrackParams(smooth=2), info=info)
+        self.assertEqual(len(tr), N)
+        self.assertGreater(info["occluded"], 3)
+        err = np.array([np.abs(tr[f][0] - (quad - [2 * (f - key), 0])).max() for f in range(N)])
+        self.assertLess(err.max(), 1.5)
+        acc = np.array([np.abs(tr[f + 1][0] - 2 * tr[f][0] + tr[f - 1][0]).max() for f in range(1, N - 1)])
+        self.assertLess(acc.max(), 0.5)  # second difference: no jitter
+
+    def test_quad_drift_flags_skew_and_shrink(self):
+        ref = np.array([[0, 0], [100, 0], [100, 50], [0, 50]], float)
+        skewed = np.array([[-20, 5], [90, -10], [80, 30], [20, 70]], float)
+        d = cv.quad_drift(skewed, ref)
+        self.assertGreater(d["skew"], 20)
+        self.assertLess(cv.quad_drift(ref * 0.5, ref)["area"], 0.3)
+
     def test_reframe_node_from_mask_and_preview(self):
         N, H, W = 24, 90, 160
         mask = torch.zeros(N, H, W)

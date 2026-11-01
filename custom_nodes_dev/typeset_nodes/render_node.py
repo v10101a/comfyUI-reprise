@@ -1,13 +1,20 @@
 """TypesetRender: words + look (+ subject matte, voice and motion fields) burned into an IMAGE batch, in the graph.
 
-The draft renderer for App Mode and plain ComfyUI graphs: one lyric line at a time, centred at a height you pick,
-words popping in on their timing, behind the subject when a mask is connected. The voice field swells
-each word (size only), the motion field carries the type with the camera and pushes it like liquid around moving bodies. Same rules as the studio renderer (apps/web
-src/voice.ts, src/flow.ts) at draft fidelity: for walls, HUDs, hand-placed lines and pixel-exact export, open the
-project in the studio (/typeset).
+Two renderers, picked by the `renderer` input:
+  studio  the graph's inputs become a Typeset project that headless Chromium renders through the studio's own
+          renderer (browser_render.py): every look (walls, neon relight, graffiti, ticker, HUD, entrances, fields),
+          pixel-identical to a studio export of that project. Needs the /typeset host (studio_host.py), a built
+          studio (apps/web/dist) and Playwright.
+  draft   this file's Python port: one lyric line at a time, centred at `height`, words popping in on their timing,
+          behind the subject when a mask is connected; font, palette and glow only. No browser needed.
+  auto    studio when available, otherwise draft. The `renderer` output and the log say which one ran.
+
+The draft's voice/flow rules follow apps/web src/voice.ts and src/flow.ts at draft fidelity.
 """
 import json
+import logging
 import math
+import time
 
 import cv2
 import numpy as np
@@ -15,7 +22,9 @@ import torch
 from PIL import Image, ImageDraw, ImageFilter
 
 from . import core_vision as cv
-from .looks import _hex, apply_case, load_font, resolve_look
+from .looks import _hex, apply_case, grade_frames, load_font, resolve_grade, resolve_look
+
+log = logging.getLogger("typeset.render")
 
 DEFAULT_LOOK = {"id": "red-glow", "overrides": None}
 
@@ -27,7 +36,7 @@ class Voice:
         self.doc = doc
 
     def _val(self, key, t):
-        a, x = self.doc[key], t * self.doc["fps"]
+        a, x = self.doc[key], (t - (self.doc.get("t0") or 0)) * self.doc["fps"]
         i, k = int(math.floor(x)), x - math.floor(x)
         a0 = a[i] if 0 <= i < len(a) else None
         a1 = a[i + 1] if 0 <= i + 1 < len(a) else None
@@ -49,8 +58,22 @@ class Voice:
         fps = self.doc["fps"]
         return max(((self._val("onset", t - i / fps) or 0) * math.exp(-i / (.15 * fps)) for i in range(8)), default=0)
 
+    def _level(self, t):
+        """TypesetAudioField doc (kind 'bass'): frame value held for the whole frame, release-only smoothing over the
+        last 3 frames (0.25 s), as voice.ts AudioField: rises at once on the kick, never before it."""
+        a, fps = self.doc["level"], self.doc["fps"]
+
+        def v(tt):
+            i = int(math.floor((tt - (self.doc.get("t0") or 0)) * fps + 1e-6))
+            return a[i] if 0 <= i < len(a) else 0
+        d, r = 1 / fps, math.exp(-1 / (fps * .25))
+        return max(v(t - k * d) * r ** k for k in range(4))
+
     def ref_pitch(self, t0, t1):
-        f0, f1 = max(0, int(t0 * self.doc["fps"])), min(self.doc["frames"], int(math.ceil(t1 * self.doc["fps"])))
+        if self.doc.get("kind") == "bass":
+            return None
+        o = self.doc.get("t0") or 0
+        f0, f1 = max(0, int((t0 - o) * self.doc["fps"])), min(self.doc["frames"], int(math.ceil((t1 - o) * self.doc["fps"])))
         ps = sorted(p for p in self.doc["pitch"][f0:f1] if p is not None)
         return ps[len(ps) // 2] if ps else None
 
@@ -59,6 +82,9 @@ class Voice:
         if amount <= 0 or t < start:
             return 0.0, 1.0, 1.0, 0.0
         tt, hold = min(t, end), (math.exp(-(t - end) / .4) if t > end else 1.0)
+        if self.doc.get("kind") == "bass":  # the mix's low band: size pulse only
+            s = 1 + amount * .24 * self._level(tt) * hold
+            return 0.0, s, s, 0.0
         loud = (self._smooth("loud", tt) or 0) * hold
         p = self._smooth("pitch", tt)
         vib = (self._smooth("vibrato", tt) or 0) * hold
@@ -222,6 +248,17 @@ def draw_line(W, H, line, t, look, size, y, voice, voice_amount):
     return a
 
 
+def _linked(prompt, unique_id, output=None, input_name=None):
+    """From the hidden PROMPT: is this node's `output` index used downstream / is `input_name` connected?"""
+    if not isinstance(prompt, dict) or unique_id is None:
+        return None
+    uid = str(unique_id)
+    if input_name is not None:
+        return isinstance(((prompt.get(uid) or {}).get("inputs") or {}).get(input_name), list)
+    return any(isinstance(v, list) and len(v) == 2 and str(v[0]) == uid and v[1] == output
+               for node in prompt.values() for v in (node.get("inputs") or {}).values())
+
+
 class TypesetRender:
     @classmethod
     def INPUT_TYPES(cls):
@@ -230,25 +267,93 @@ class TypesetRender:
             "words_json": ("STRING", {"forceInput": True, "tooltip": "words.json from Align Lyrics / Whisper Words."}),
             "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 240.0, "step": 0.001}),
         }, "optional": {
-            "look_json": ("STRING", {"forceInput": True, "tooltip": "From the Look node ({id, overrides}). Default: red-glow."}),
+            "look_json": ("STRING", {"forceInput": True, "tooltip": "From the Look node ({id, overrides}). Not connected: red-glow."}),
             "subject_mask": ("MASK", {"tooltip": "Subject matte: the words go behind the person."}),
             "voice_json": ("STRING", {"forceInput": True, "tooltip": "From the Voice Field node."}),
             "flow_json": ("STRING", {"forceInput": True, "tooltip": "From the Motion Field node."}),
             "voice": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05, "tooltip": "How much the voice moves the type."}),
             "flow": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05, "tooltip": "Camera drift + liquid push from what moves through the type."}),
-            "size": ("FLOAT", {"default": 0.16, "min": 0.03, "max": 0.5, "step": 0.01, "tooltip": "Type size, fraction of frame height."}),
-            "height": ("FLOAT", {"default": 0.42, "min": 0.05, "max": 0.95, "step": 0.01, "tooltip": "Line centre, fraction of frame height."}),
-        }}
+            "size": ("FLOAT", {"default": 0.16, "min": 0.03, "max": 0.5, "step": 0.01, "tooltip": "Draft renderer only: type size, fraction of frame height."}),
+            "height": ("FLOAT", {"default": 0.42, "min": 0.05, "max": 0.95, "step": 0.01, "tooltip": "Draft renderer only: line centre, fraction of frame height."}),
+            "grade_json": ("STRING", {"forceInput": True, "tooltip": "From the Grade node (project.grade). Connect UNgraded images: the renderer grades footage and subject, as the studio does."}),
+            "renderer": (["auto", "studio", "draft"], {"default": "auto", "tooltip": "studio: the studio's renderer in headless Chromium (pixel-exact, every look). draft: Python approximation. auto: studio when available."}),
+        }, "hidden": {"prompt": "PROMPT", "unique_id": "UNIQUE_ID"}}
 
-    RETURN_TYPES = ("IMAGE", "IMAGE")
-    RETURN_NAMES = ("images", "text_layer")
+    RETURN_TYPES = ("IMAGE", "IMAGE", "STRING")
+    RETURN_NAMES = ("images", "text_layer", "renderer")
     FUNCTION = "run"
     CATEGORY = "typeset/render"
-    DESCRIPTION = "Burn lyric type into footage: behind the subject, moved by the voice and by motion in the shot."
+    DESCRIPTION = "Burn lyric type into footage with the studio's renderer: behind the subject, moved by the voice and by motion in the shot."
 
     def run(self, images, words_json, fps, look_json="", subject_mask=None, voice_json="", flow_json="",
-            voice=1.0, flow=1.0, size=0.16, height=0.42):
-        look = resolve_look(json.loads(look_json) if look_json else DEFAULT_LOOK) or resolve_look(DEFAULT_LOOK)
+            voice=1.0, flow=1.0, size=0.16, height=0.42, grade_json="", renderer="auto", prompt=None, unique_id=None):
+        want_text = _linked(prompt, unique_id, output=1)
+        look_linked = _linked(prompt, unique_id, input_name="look_json")
+        look_ref = json.loads(look_json) if look_json else (None if look_linked else DEFAULT_LOOK)
+        grade_ref = json.loads(grade_json) if grade_json else None
+        reason = None
+        if renderer != "draft":
+            from . import browser_render as br
+            reason = br.unavailable()
+            if reason is None:
+                try:
+                    return self.studio(br, images, words_json, fps, look_ref, grade_ref, subject_mask, voice_json,
+                                       flow_json, voice, flow, want_text is not False)
+                except Exception as exc:  # noqa: BLE001 — fall back, and say so
+                    if renderer == "studio":
+                        raise
+                    log.exception("TypesetRender: studio renderer failed; using the draft renderer")
+                    reason = f"studio renderer failed: {type(exc).__name__}: {str(exc)[:300]}"
+            elif renderer == "studio":
+                raise RuntimeError(f"TypesetRender: studio renderer unavailable: {reason}")
+        t0 = time.monotonic()
+        if grade_ref:
+            images = torch.from_numpy(grade_frames(images.detach().cpu().numpy()[..., :3].astype(np.float32),
+                                                   resolve_grade(grade_ref), fps))
+        out, text = self.draft(images, words_json, fps, look_ref or DEFAULT_LOOK, subject_mask, voice_json, flow_json,
+                               voice, flow, size, height)
+        info = f"draft (python) · {out.shape[0]} frames in {time.monotonic() - t0:.1f}s" + (f" · {reason}" if reason else "")
+        log.info("TypesetRender: %s", info)
+        print(f"[typeset] TypesetRender: {info}")
+        return {"ui": {"text": [info]}, "result": (out, text, info)}
+
+    def studio(self, br, images, words_json, fps, look_ref, grade_ref, subject_mask, voice_json, flow_json, voice, flow,
+               want_text):
+        import shutil
+        t0 = time.monotonic()
+        B = images.shape[0]
+        fields = {}
+        if flow_json:
+            fields["motion"] = flow
+        if voice_json:
+            fields["voice"] = voice
+        project = br.build_project(images, words_json, fps, look_ref, grade_ref, subject_mask, voice_json, flow_json,
+                                   fields)
+        t1 = time.monotonic()
+        layers = ("composite", "text") if want_text else ("composite",)
+        pbar = None
+        try:
+            import comfy.utils
+            pbar = comfy.utils.ProgressBar(B * len(layers))
+        except Exception:
+            pass
+        frames, work = br.render(project, layers, tick=(lambda: pbar.update(1)) if pbar else None)
+        try:
+            out = torch.from_numpy(br.load_rgb(frames["composite"]))
+            text = torch.from_numpy(br.load_rgb(frames["text"], premultiply_alpha=True)) if want_text else torch.zeros_like(out[:1])
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        if out.shape[1:3] != images.shape[1:3]:
+            raise RuntimeError(f"studio renderer returned {tuple(out.shape[1:3])}, expected {tuple(images.shape[1:3])}")
+        info = (f"studio (chromium) · project {project.id} · {B} frames · look {(look_ref or {}).get('id', 'default')}"
+                f" · prepare {t1 - t0:.1f}s + render {time.monotonic() - t1:.1f}s"
+                + ("" if want_text else " · text_layer not connected, skipped") + f" · {br.studio_url(project)}")
+        log.info("TypesetRender: %s", info)
+        print(f"[typeset] TypesetRender: {info}")
+        return {"ui": {"text": [info]}, "result": (out, text, info)}
+
+    def draft(self, images, words_json, fps, look_json, subject_mask, voice_json, flow_json, voice, flow, size, height):
+        look = resolve_look(look_json) or resolve_look(DEFAULT_LOOK)
         lines = parse_lines(words_json)
         vf = Voice(json.loads(voice_json)) if voice_json and voice > 0 else None
         ff = Flow(json.loads(flow_json)) if flow_json and flow > 0 else None

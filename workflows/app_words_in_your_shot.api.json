@@ -122,7 +122,9 @@
       "tubes": "preset",
       "scroll": "preset",
       "hooks": "preset",
-      "sample": "LOUDER"
+      "sample": "LOUDER",
+      "drips": -1.0,
+      "light": -1.0
     },
     "_meta": {
       "title": "look"
@@ -158,7 +160,7 @@
     "class_type": "TypesetRender",
     "inputs": {
       "images": [
-        "8",
+        "2",
         0
       ],
       "words_json": [
@@ -188,7 +190,12 @@
       "voice": 1.0,
       "flow": 1.0,
       "size": 0.16,
-      "height": 0.42
+      "height": 0.42,
+      "grade_json": [
+        "8",
+        1
+      ],
+      "renderer": "auto"
     },
     "_meta": {
       "title": "typeset"

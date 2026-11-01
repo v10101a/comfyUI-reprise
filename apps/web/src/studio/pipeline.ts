@@ -4,7 +4,7 @@ import type {Project,Job} from '../types';
 import {at} from '../base';
 
 export type Engine = 'comfy'|'cpu'|'remote'|'browser';
-export type StepId = 'words'|'matte'|'occupancy'|'surface'|'reframe'|'beats'|'flow'|'voice'|'generate';
+export type StepId = 'words'|'matte'|'occupancy'|'surface'|'reframe'|'beats'|'flow'|'audio'|'voice'|'generate';
 export type JobRecord = Job & {createdAt?:string|null;updatedAt?:string|null};
 export type StepState = 'done'|'running'|'failed'|'fallback'|'idle'|'n/a';
 
@@ -33,9 +33,11 @@ export const STEPS:StepDef[] = [
     workflow:{href:at('/workflows/beats.api.json'),repo:'workflows/beats.api.json'},jobKinds:['beats'],produces:'analysis/beats.json → timeline grid + snap'},
   {id:'flow',title:'Motion field',model:'DIS optical flow → coarse field (CPU, no weights)',engine:'comfy',nodes:['LoadVideo','GetVideoComponents','TypesetFlowField','SaveTextFile'],
     workflow:{href:at('/workflows/flow.api.json'),repo:'workflows/flow.api.json'},jobKinds:['flow'],produces:'analysis/flow.json → look · flow pushes the type'},
+  {id:'audio',title:'Audio field',model:'mix STFT → 40–140 Hz energy (dB, percentile-normalised) → instant attack, 250 ms release',engine:'comfy',nodes:['LoadAudio','TypesetAudioField','SaveTextFile','SaveImage'],
+    workflow:{href:at('/workflows/audio.api.json'),repo:'workflows/audio.api.json'},jobKinds:['audio'],produces:'analysis/audio_<job>.json → look · audio pulses the type'},
   {id:'voice',title:'Voice field',model:'HDemucs vocals → loudness, pYIN pitch, vibrato, onsets',engine:'comfy',nodes:['LoadAudio','TypesetVoiceField','SaveTextFile','SaveImage'],
     workflow:{href:at('/workflows/voice.api.json'),repo:'workflows/voice.api.json'},jobKinds:['voice'],produces:'analysis/voice.json → look · voice moves the type'},
-  {id:'generate',title:'In-world shot',model:'Text plate → LTX I2V · or Qwen edit → MiniMax',engine:'comfy',nodes:['LoadImage','TypesetTextPlate','LTXVImgToVideo','SamplerCustom','VAEDecode','VHS_VideoCombine'],
+  {id:'generate',title:'In-world shot',model:'Qwen edit writes the line into the frame (local) → MiniMax H3 I2V (remote 4090)',engine:'comfy',nodes:['LoadImage','TypesetTextPlate','LTXVImgToVideo','SamplerCustom','VAEDecode','VHS_VideoCombine'],
     workflow:{href:at('/workflows/ltx_i2v.api.json'),repo:'workflows/ltx_i2v.api.json'},jobKinds:['inworld'],produces:'generated shot with the word in the world'},
 ];
 
@@ -98,6 +100,9 @@ export function stepStatus(step:StepDef,p:Project,jobs:Map<string,JobRecord>,ctx
     case 'flow':
       if(p.analysis.flow)return via({...base,state:'done',path:'ComfyUI',engineNote:'motion field · look → flow'});
       return {...base,state:'idle',path:'—',engineNote:job?.status==='failed'?'failed':'not run · optional'};
+    case 'audio':
+      if(p.analysis.audio)return via({...base,state:'done',path:'ComfyUI',engineNote:'low-band pulse · look → audio'});
+      return {...base,state:job?.status==='failed'?'failed':'idle',path:'—',engineNote:job?.status==='failed'?'failed':'not run · optional'};
     case 'voice':
       if(p.analysis.voice)return {...base,state:'done',path:'ComfyUI',engineNote:'voice field · look → voice'};
       return {...base,state:job?.status==='failed'?'failed':'idle',path:job?.status==='failed'?'ComfyUI':'—',engineNote:job?.status==='failed'?'failed':'not run · optional'};

@@ -2,7 +2,7 @@
 
 A ComfyUI node pack for putting lyrics and captions **inside** real footage. It finds where the subject isn't, glues a quad to a wall, reframes landscape to vertical around the head, puts a beat grid on the music and aligns sung lyrics to their timing. Every node outputs plain JSON (documented below) and a preview, so the results also feed other tools: the Typeset editor, a TouchDesigner/Resolve script, or your own renderer.
 
-All analysis is deterministic CPU/OpenCV code. The only models are optional: Whisper for words and any matte node, such as BiRefNet, for the subject mask. MIT licensed. Fonts are SIL OFL.
+Tracking, occupancy, reframe and motion fields use CPU/OpenCV code. Word analysis uses Whisper or HDemucs + MMS_FA forced alignment, and subject masks come from a matte node such as BiRefNet. The code is MIT; model weights and bundled fonts have their own licences.
 
 ![The showcase workflow in ComfyUI](docs/showcase_graph.png)
 
@@ -78,7 +78,7 @@ On the demo songs, measured against independent anchors: hero line starts vs pYI
 
 ### Look and Grade: Typeset styling without the app (`TypesetLook`, `TypesetGrade`)
 The Typeset app splits **look** (text: face, colour, layout, motion, text optics) from **grade** (footage). Both nodes use the app's presets (`look_presets.json`) and output the exact JSON the app stores, so fine-tuning in ComfyUI can be pasted back into a project.
-- `TypesetLook`: preset (`flat-card`, `paper-cut`, `graffiti`, `neon`, `xerox`, `ticker`, `lens-bound`, `night-code`, `scatter`; hidden but kept for old projects: `red-glow`, `dreamy`, `grey-noise`) + every param as a widget (ink/accent/card colours, font/body face from the bundled OFL fonts, case, layout, size, motion, glow, flicker, drips (graffiti), light (neon), outline, halo, soft, cards/tubes/scroll/hooks; "preset"/empty/-1 keeps the preset value) → `look_json` (`{"id","overrides"}` = `project.look`) + a type preview. Connect `look_json` to `TypesetTextPlate` to set the plate in that look (`workflows/text_plate.api.json` has it wired, input `look`, default `default` = prompt colours as before).
+- `TypesetLook`: preset (`flat-card`, `paper-cut`, `graffiti`, `neon`, `hud`, `glyph`, `xerox`, `ticker`, `lens-bound`, `night-code`, `scatter`; hidden but kept for old projects: `red-glow`, `dreamy`, `grey-noise`) + every param as a widget (ink/accent/card colours, font/body face from the bundled OFL fonts, case, layout, size, motion, glow, flicker, drips (graffiti), light (neon), outline, halo, soft, cards/tubes/scroll/hooks, fill/cell/backing (glyph fill: the lyric as a letter grid lit by the footage, on the subject, the world, the frame or the line's wall); "preset"/empty/-1 keeps the preset value) → `look_json` (`{"id","overrides"}` = `project.look`) + a type preview. Connect `look_json` to `TypesetTextPlate` to set the plate in that look (`workflows/text_plate.api.json` has it wired, input `look`, default `default` = prompt colours as before).
 - `TypesetGrade`: IMAGE batch + grade (`none`, `mono`, `xerox`, `teal`, `film`, `wash`, `night`), amount, tint/grain/halation/contrast/flash overrides, optional `beats_json` (from Beat Grid) for the xerox beat flash → graded IMAGE + `grade_json` (= `project.grade`). Same maths as the web renderer (luminance-keeping colour tint, halation, photocopy curve, seeded grain); close, not bit-identical.
 
 ### Motion Field and Voice Field: what moves the type (`TypesetFlowField`, `TypesetVoiceField`)
@@ -86,12 +86,15 @@ The Typeset app splits **look** (text: face, colour, layout, motion, text optics
   - Typeset turns the camera part into **drift**: the type floats with the shot and settles back.
   - It turns quick local motion, like a waving hand, into **glass ripples** that refract the type.
 - **`TypesetVoiceField`:** `AUDIO` (or a connected vocal stem, e.g. Align Lyrics' `vocals`) → per-frame vocal loudness, pitch (pYIN), vibrato and onsets.
-  - The sung word swells in weight and width, rides the melody and wobbles on vibrato.
+  - The studio uses vocal energy and onsets to animate the type's weight and width. Pitch and vibrato are available in the analysis JSON; melody/vibrato displacement is currently disabled in the renderer.
+- **`TypesetAudioField`:** `AUDIO` (full mix) → per-frame 40–140 Hz bass energy + preview. The studio's Audio control switches between bass and vocal response; the bass pulse uses centred analysis windows, immediate attack and a smoothed release.
 
 ### Typeset Render: words in the shot, in the graph (`TypesetRender`)
-- **In:** `IMAGE` batch + `words_json`, plus optionally `look_json` (Look node), `subject_mask` (the words go behind the person), `voice_json` and `flow_json`.
-- **Out:** the frames with the type burned in, plus the text layer.
-- **Fidelity:** a draft, one line at a time. For walls, HUD labels and pixel-exact export, open the project in the studio at `/typeset`.
+- **In:** `IMAGE` batch + `words_json`, plus optionally `look_json` (Look node), `grade_json` (Grade node; connect ungraded frames), `subject_mask` (the words go behind the person), `voice_json` and `flow_json`.
+- **Out:** the frames with the type burned in, the text layer (rendered only when connected), and `renderer`: which renderer ran.
+- **Renderer** (`auto` default):
+  - `studio`: the inputs become a Typeset project (`comfy-<footage hash>`, updated in place on re-runs), and headless Chromium renders it with the studio's own renderer. Every look; same pixels as a studio export. Needs the `/typeset` host, a built studio (`apps/web/dist`) and Playwright (in ComfyUI's venv, or the repo's `server/.venv`).
+  - `draft`: the Python port, one line at a time; font, palette and glow only. `auto` falls back to it when the studio renderer is unavailable or fails, and says why.
 
 ### App: words in your shot
 The template **typeset - words in your shot** (`example_workflows/`) is one graph you can use as an App Mode form:

@@ -1,120 +1,147 @@
 # Typeset
 
-**Words that live in the scene.** Typeset puts lyrics and kinetic type *inside* a shot. Words pass behind the person, get painted onto walls that the camera moves past, and lock to a head as a HUD. It then restyles the result with one-click looks and re-lays it out for 9:16. Video models can't spell reliably, so every letter is real type. It is composited into the scene, stays editable, and renders identically in preview and export. ComfyUI does the perception (words, matte, tracking, reframe), and the generative models make the footage.
+**Words that live in the scene.** Typeset is a typography studio and ComfyUI node pack for lyrics, titles and motion graphics. Put words behind a person, track them onto a wall, anchor a label to a head, or let the music and movement shape the type. Every letter stays editable.
 
-![Typeset hero: stencil lyrics tracked onto a wall she walks past, then HOLD | ON on the plaza walls behind her](docs/media/hero.gif)
+ComfyUI prepares the scene: word timings, subject mattes, wall tracks, beats and motion fields. You direct the result in a timeline. Changing a word, a look or an animation uses that saved analysis, without generating the shot again.
 
-*Hero clip (22 s). The footage and song are generated (MiniMax H3, ACE-Step). Every word on screen was placed in the Typeset studio.*
+[![Neon Rain: editable lyrics behind the subject and tracked onto walls](docs/media/neon-rain.gif)](apps/web/public/showcase/hero-16x9.mp4)
 
-| Wall-tracked stencil, occluded by her | Head-anchored HUD + count-in | Words behind the subject |
-|---|---|---|
-| ![wall](docs/media/hero_wall.jpg) | ![hud](docs/media/hero_hud.jpg) | ![drop](docs/media/hero_drop.jpg) |
+*Excerpts from **Neon Rain**, the current 22-second lyric edit. The footage and song were generated with MiniMax H3 and ACE-Step; the typography is rendered by Typeset. [Watch with sound](apps/web/public/showcase/hero-16x9.mp4) · [Original footage](apps/web/public/showcase/hero-source.mp4).*
 
-## Features
+## Try the current examples
 
-- **Behind the subject.** A per-frame BiRefNet matte puts any line behind the person. An occupancy grid steers auto-placement toward the space that stays readable.
-- **Wall tracking.** Draw a quad on one frame. The `TypesetPlanarTrack` node tracks it through the shot as a per-frame homography, with the subject masked out, and stops at cuts. Text is warped onto the plane as *paint* (eroded stencil), *flat* or *neon*.
-- **HUD.** Labels and leader lines anchor to the subject's head, using the matte's tracked region rather than face recognition.
-- **Lyrics that land when they're sung.** Acoustic forced alignment of your lyric sheet to the vocal: `TypesetAlignLyrics` isolates the vocal with HDemucs and aligns with MMS_FA, falling back to faster-whisper. It also builds a beat grid, and a small text lead (`timing.leadMs`) gives perceived sync. Every word's timing, placement, motion and style stays editable on the timeline.
-- **Looks.** One field restyles a whole video, covering font, palette, case, texture, grade and optics (glow, chroma, lens warp, extrusion). There are seven presets: `lens-bound`, `red-glow`, `paper-cut`, `ticker`, `flat-card`, `dreamy` and `default`. Placement, tracking and timing don't change.
-- **9:16 reframe.** A subject-following crop with re-layout: off-crop walls become title rows, hero words keep off the face, and text keeps a 6% edge margin. *Focus regions* can keep a wide element in the crop by panning across it or zooming out.
-- **Generated word shots (`generate/inworld`).** A frame of your shot goes to Qwen-Image-Edit (or FLUX.2 Klein), which writes the word into the scene. MiniMax H3 then animates it, and the shot is attached to the timeline. The hero's LOUDER sign was made this way: the edit spells it, and the video model lights and moves it.
-- **Deterministic export.** Each frame is rendered as a function of time, so preview equals export. Outputs are an H.264 MP4 with audio, plus ProRes 4444 and VP9-alpha text-only overlays.
-- **ComfyUI node pack and workflows.** `custom_nodes_dev/typeset_nodes` and the API graphs in `workflows/` run the analysis. The studio's pipeline panel shows each workflow that ran, with its status and timing.
-
-![Same clip, three looks: lens-bound, red-glow, paper-cut](docs/media/three_looks.jpg)
-
-| One-click 9:16 (drop · LOUDER pan · ending) | Generated word shot | Own footage: *Fall For Me* |
-|---|---|---|
-| ![9:16](docs/media/vertical_9x16.jpg) | ![louder](docs/media/hero_louder.jpg) | ![ffm](docs/media/ffm.jpg) |
-
-## How it works
-
-```
-footage + song ──► ComfyUI (via comfy-sdk)                         ──► Typeset studio (React)        ──► export
-                   align.api.json     forced alignment (HDemucs+MMS_FA)      timeline, placements, looks       Chromium frame capture
-                   matte.api.json     BiRefNet → RGBA cutouts + tracks   deterministic canvas renderer     → ffmpeg MP4 / ProRes 4444 /
-                   occupancy.api.json where text stays readable          (background → behind text →         VP9-alpha
-                   surface_track      planar homography per frame         subject → front text)
-                   reframe.api.json   smoothed 9:16 crop
-                   beats.api.json     beat / downbeat grid
-                   generate/inworld   Qwen-Image-Edit / Klein → MiniMax H3 (remote GPU)
-```
-
-The FastAPI server (`server/`) stores projects, submits the workflows and runs jobs. The studio (`apps/web/`) does all text rendering in the browser. The same renderer drives export, which is why preview and export match.
-
-## Node pack
-
-`custom_nodes_dev/typeset_nodes` (V1 node API):
-
-| Node | Does |
+| Example | What to look for |
 |---|---|
-| `WhisperWords` | audio (+ optional lyrics) → word timestamps JSON (faster-whisper, CPU int8) |
-| `TypesetAlignLyrics` | acoustic forced alignment of a lyric sheet to the vocal (HDemucs stem + MMS_FA; Whisper fallback) |
-| `TypesetBeatGrid`, `AudioBeatMarkers` | beats / downbeats / sections JSON |
-| `MaskToTracks` | matte batch → per-frame subject region (anchor for behind/HUD text) |
-| `TypesetOccupancyGrid` | matte batch → where text stays readable + heatmap |
-| `TypesetPlanarTrack` | image batch + quad (+ subject mask) → per-frame corners |
-| `TypesetReframeCrop` | tracks / mask + aspect → smoothed crop |
-| `TypesetLoadImageSequence`, `SaveTextFile`, `TextToMask` | I/O helpers; text → mask with bundled OFL fonts |
+| [Neon Rain · 22 s](apps/web/public/showcase/hero-16x9.mp4) | Flat card lyrics, wall tracking, behind-subject type, a head-anchored HUD and a timed count-in. |
+| [DANCING · 8 s](apps/web/public/showcase/louder-fields.mp4) | Large Glow lettering behind the dancer, shaped by motion and vocal energy. Compare the [clean source](apps/web/public/showcase/louder-source.mp4). |
+| [Fall For Me · 24 s](apps/web/public/showcase/ffm.mp4) | A tighter lyric edit over stylized footage, with editable word timing and a trimmed song. Compare the [original](apps/web/public/showcase/ffm-source.mp4). |
+| [Looks comparison · 4 s](apps/web/public/showcase/README.md#looks-section-srclookssectiontsx) | Eight looks on the same wall shot, each in four footage grades. Open the local demo page to switch looks and grades on one audio clock. |
 
-The production graphs are in `workflows/*.api.json`, each with an `.inputs.json` sidecar. `workflows/showcase/typeset_analysis.json` is the analysis graph for opening in the ComfyUI editor.
+[![DANCING: glowing type responds to movement behind a dancer](docs/media/dancing.gif)](apps/web/public/showcase/louder-fields.mp4)
 
-## Setup
+*DANCING excerpt. The full clip includes audio; the GIF is silent.*
 
-Requirements: Python 3.12, Node/npm, ffmpeg/ffprobe, and a ComfyUI install (by default `~/ComfyUI`). The analysis path runs locally on Apple Silicon. Generated shots (MiniMax H3) run on a remote NVIDIA ComfyUI; ours was an RTX 4090.
+**Looks style the text; grades style the footage.** These are actual renders of the same shot and lyric sequence:
+
+| Flat card | Paper cut | Neon |
+|---|---|---|
+| [![Flat card](apps/web/public/showcase/looks/flat-card.jpg)](apps/web/public/showcase/looks/flat-card.mp4) | [![Paper cut](apps/web/public/showcase/looks/paper-cut.jpg)](apps/web/public/showcase/looks/paper-cut.mp4) | [![Neon](apps/web/public/showcase/looks/neon.jpg)](apps/web/public/showcase/looks/neon.mp4) |
+| Photocopy | Graffiti | Marquee |
+| [![Photocopy](apps/web/public/showcase/looks/xerox.jpg)](apps/web/public/showcase/looks/xerox.mp4) | [![Graffiti](apps/web/public/showcase/looks/graffiti.jpg)](apps/web/public/showcase/looks/graffiti.mp4) | [![Marquee](apps/web/public/showcase/looks/ticker.jpg)](apps/web/public/showcase/looks/ticker.mp4) |
+
+Paper cut uses opaque fibres and a cut-paper shadow. Photocopy uses printed strips and photocopied texture. Neon has thin tubes and scene lighting; Marquee uses scrolling dot-matrix lettering. The demo also includes HUD and Scatter, with ungraded, Mono, Noir and Film comparisons. [Media and render notes](apps/web/public/showcase/README.md).
+
+Studio also includes **Glyph**: a grid of letters from your lyric line, lit by the footage and confined to the subject, the surrounding scene, the frame or a tracked wall. Its cell size and backing are editable independently of the words.
+
+## Direct it in Studio
+
+![Typeset Studio: scene preview, text looks, grouped lyric tracks and audio waveform](docs/media/studio.jpg)
+
+- **Edit the timeline.** Add text on a track, double-click a word to edit, drag and trim clips, copy/paste, split at the playhead, hide tracks and undo/redo. Filmstrips, the waveform, beat markers and zoom help place words precisely.
+- **Place text in the shot.** Draw and adjust a wall quad, track it through the scene, put a title behind the subject, or use a head-anchored HUD. Adjust each line's size, position and left/centre/right alignment.
+- **Keep the words visible while styling.** Look thumbnails preview your text; the inspector follows the selected line or group and exposes the controls relevant to its look.
+- **Work with the song.** Trim, move or slip the audio clip, optionally moving linked lyrics with it. Forced alignment gives a starting point; word timing remains editable.
+- **Animate from signals.** Motion fields drive drift and local distortion. Bass and vocal fields drive the type's pulse. These controls reuse precomputed analysis.
+- **Finish independently.** Change the footage grade, reframe to 9:16, and export an MP4 with audio or text-only ProRes 4444 / VP9-alpha overlays.
+
+Timeline shortcuts: **⌘/Ctrl+C** copy, **⌘/Ctrl+V** paste, **⌘/Ctrl+B** split, **⌘/Ctrl+Z** undo; **+ / −** zoom and `\` fit. Double-click empty track space to add text.
+
+## Prepare → animate → finish
+
+```text
+Footage + song + lyrics
+  │
+  ├─ Prepare in ComfyUI
+  │    alignment · subject matte · wall tracks · beats · motion/audio fields
+  │    saved as reusable project data
+  │
+  ├─ Animate in Studio
+  │    editable words · timeline · placement · looks · signal-driven motion
+  │    lightweight media during playback and dragging
+  │
+  └─ Finish
+       footage grade · reframe · full-quality browser render → ffmpeg
+       MP4 with audio / ProRes 4444 / VP9 alpha
+```
+
+The React studio, server export and ComfyUI's `TypesetRender` share the browser renderer. Text geometry and timing come from the same project data. Interactive playback uses smaller proxies and cheaper effects; a settled preview restores quality, and export uses the original media. Preview compression can therefore differ from the final output.
+
+Recent performance work separates thumbnail generation from dragging, coalesces obsolete frame requests, and uses short-GOP preview/seek copies. Sequential decoding accelerates eligible exports, with a seek fallback. Measurement scripts live in [`scripts/perf/`](scripts/perf/).
+
+The standalone demo page also has synchronized **Typeset / Original** switches. Saving a mapped showcase project queues a refreshed demo render. The [piece registry](apps/web/src/showcase-pieces.json) controls which projects and encodes it uses.
+
+## ComfyUI nodes and workflows
+
+Use the studio inside ComfyUI at `/typeset/`, or start with the [**words in your shot** App Mode workflow](custom_nodes_dev/typeset_nodes/example_workflows/typeset%20-%20words%20in%20your%20shot.json): clip + lyrics → look, grade, voice and flow controls → lyric video. Switch to the graph to rewire the steps.
+
+| Nodes | Purpose |
+|---|---|
+| `TypesetAlignLyrics`, `WhisperWords` | Align a lyric sheet to the vocal, or transcribe word timestamps. |
+| `MaskToTracks`, `TypesetOccupancyGrid` | Turn subject masks into anchors and readability maps. |
+| `TypesetPlanarTrack`, `TypesetReframeCrop` | Track a wall plane and build a subject-following crop. |
+| `TypesetBeatGrid`, `TypesetAudioField`, `TypesetVoiceField`, `TypesetFlowField` | Extract beats, bass energy, vocal features and motion. |
+| `TypesetLook`, `TypesetGrade` | Set text styling and footage grading independently. |
+| `TypesetRender` | Render through the studio engine in Chromium; an explicitly reported Python draft is available as a fallback. |
+
+Analysis outputs are plain JSON, so they can also feed another renderer. See the [node-pack reference](custom_nodes_dev/typeset_nodes/README.md), [project schema](docs/SCHEMA.md) and [API workflows](workflows/).
+
+## Run locally
+
+Requirements: Python 3.12, Node/npm, ffmpeg/ffprobe and ComfyUI (the commands below assume `~/ComfyUI`).
 
 ```bash
-# app
 python3.12 -m venv server/.venv
 server/.venv/bin/python -m pip install -r server/requirements.txt
 server/.venv/bin/python -m playwright install chromium
-(cd apps/web && npm install)
+(cd apps/web && npm install && npm run build)
 
-# ComfyUI: link the node pack; also install ComfyUI-RMBG (BiRefNet) and VideoHelperSuite
+# Link the nodes; also install ComfyUI-RMBG and VideoHelperSuite.
 ln -s "$PWD/custom_nodes_dev/typeset_nodes" ~/ComfyUI/custom_nodes/typeset_nodes
 ~/ComfyUI/.venv/bin/python -m pip install -r custom_nodes_dev/typeset_nodes/requirements.txt
-
-# run
-scripts/comfy.sh start   # ComfyUI + comfy-api-proxy
-scripts/dev.sh           # API on :8787 + studio (prints the URL; studio at /#/studio)
 ```
 
-The studio opens with an offline sample, which needs no GPU or API. Projects, analysis, generation and export need the API and ComfyUI. Model downloads and the custom-node dependencies are covered in [docs/comfy-integration.md](docs/comfy-integration.md). The remote-GPU setup for generated shots is in [docs/remote-comfy.md](docs/remote-comfy.md), and API settings (ports, `FFMPEG`, CORS) are in [docs/server.md](docs/server.md).
+**Inside ComfyUI:** restart ComfyUI, then open `http://127.0.0.1:8188/typeset/`. The built studio is served by the node pack. Rebuild `apps/web` after changing the renderer. Graph-based Chromium rendering needs Playwright in the ComfyUI environment or the repo's `server/.venv`.
 
-## Models and licences
+**Standalone development:**
 
-| Model | Used for | Licence |
-|---|---|---|
-| Whisper small via faster-whisper | fallback word timestamps (no lyric sheet) | MIT |
-| BiRefNet (lite) via ComfyUI-RMBG | subject matte | MIT |
-| Hybrid Demucs (`HDEMUCS_HIGH_MUSDB_PLUS`, torchaudio) | vocal stem for forced alignment | Demucs code MIT; see the torchaudio bundle docs for the weights |
-| MMS_FA (torchaudio wav2vec2 forced aligner) | word-level forced alignment | CC-BY-NC 4.0 (non-commercial) |
-| Qwen-Image-Edit-2511 | writing a word into a frame (`generate/inworld`) | Apache-2.0 |
-| FLUX.2 Klein 4B | alternative edit model for `generate/inworld` | Apache-2.0 |
-| MiniMax H3 (image-to-video, reference-to-video) | generated shots; the hero footage and character consistency | open weights, see the MiniMax H3 model card |
-| LTX-Video 2B 0.9.8 distilled (optional) | text-plate-to-video path | LTXV Open Weights License |
-| ACE-Step 1.5 | the hero's song (made for the demo, not used by the app) | Apache-2.0 |
+```bash
+scripts/comfy.sh start  # ComfyUI + comfy-api-proxy
+scripts/dev.sh          # API on :8787; prints the web URL
+```
 
-Libraries: OpenCV (planar tracking), librosa (beats), ffmpeg and Playwright/Chromium (export). Bundled fonts are OFL, except Permanent Marker (Apache-2.0). Their licence files are in `apps/web/public/fonts/`. Check each model card before commercial use.
+Open the printed web URL for the demos, or `/#/studio` for the editor. The offline sample needs no model download; analysis and project exports need the backend. Use one host at a time for a shared project store.
 
-## Limits
+See [ComfyUI setup and model dependencies](docs/comfy-integration.md), [server settings](docs/server.md) and the optional [remote generation setup](docs/remote-comfy.md).
 
-- The HUD anchors to the matte's tracked region. It is not face recognition or identity tracking, so review multi-person shots.
-- Forced alignment needs the lyric sheet. Without one, timing comes from Whisper, and sung lines can need a nudge.
-- Surface tracking is planar, which suits walls and signs but not cloth or curved surfaces.
-- Generated word shots depend on the edit model spelling the word right. Check the frame before animating.
-- Text-only (alpha) exports are unoccluded. To reproduce behind-subject placement in another editor, also export the matte.
+## Current limits
+
+- Wall tracking assumes a plane; cloth and curved surfaces need another approach.
+- Behind-subject text needs a usable matte. HUD placement follows the matte's tracked region, so multi-person shots need review.
+- Singing alignment can need manual timing corrections, especially with dense mixes or long instrumental intros.
+- The Python draft renderer supports fewer effects than Chromium. Graph App Mode currently uses the clip's audio; Studio's audio-clip edits are a separate path.
+- Text-only alpha exports are unoccluded; another editor also needs the matte to recreate behind-subject placement.
+- The optional generated in-world shot path depends on configured edit/video models and is separate from editable text compositing.
+
+## Development checks
+
+```bash
+(cd apps/web && npm run build)
+node --experimental-strip-types --test apps/web/scripts/test_timeline_edits.mjs
+(cd server && .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v)
+~/ComfyUI/.venv/bin/python -m unittest discover -s custom_nodes_dev/typeset_nodes/tests -v
+```
+
+The Node test command requires a version that supports `--experimental-strip-types`. Browser checks in `apps/web/scripts/` use the local demo projects; they are not self-contained fixtures.
 
 ## Repository
 
 | Path | Contents |
 |---|---|
-| `apps/web/` | Studio, renderer, looks, fonts |
-| `server/` | FastAPI service, projects, jobs, exporter, remote generation |
-| `custom_nodes_dev/typeset_nodes/` | ComfyUI node pack |
-| `workflows/` | Production API graphs and sidecars |
-| `docs/` | Architecture, schema, setup, the hero clip's making-of ([docs/HERO.md](docs/HERO.md)) |
-| `scripts/content/` | Scripts that produced the demo clips |
+| `apps/web/` | Studio, demo page, shared renderer, looks and fonts |
+| `server/` | Project API, analysis jobs, proxies and export capture |
+| `custom_nodes_dev/typeset_nodes/` | ComfyUI nodes and the mounted studio host |
+| `workflows/` | API graphs, input sidecars and editor workflows |
+| `scripts/content/`, `scripts/perf/` | Demo production and performance probes |
+| `docs/` | Schema, integration notes, design and earlier making-of material |
 
-Code is [MIT](LICENSE).
+Code is [MIT](LICENSE). Fonts and model weights have separate licences; see the [bundled font files](apps/web/public/fonts/) and [integration notes](docs/comfy-integration.md).

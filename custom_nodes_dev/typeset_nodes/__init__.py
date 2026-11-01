@@ -10,6 +10,7 @@ Nodes (all V1 node API):
   WhisperWords      AUDIO (+ optional lyrics) -> words.json STRING (faster-whisper, CPU int8)
   TypesetFlowField          IMAGE batch -> motion field JSON (DIS optical flow on a coarse grid) + preview
   TypesetVoiceField         AUDIO -> per-frame vocal loudness / pitch / vibrato / onsets JSON + preview
+  TypesetAudioField         AUDIO (mix) -> per-frame low-band (kick/bass) pulse JSON + preview
   TypesetMatteRefine        IMAGE + MASK -> RGBA + MASK with holes inside the subject filled
   TypesetRender             IMAGE + words (+ look, matte, voice/flow fields) -> type burned into the frames
   TypesetAlignLyrics AUDIO + known lyrics -> words.json by forced alignment (HDemucs vocals, MMS_FA CTC, onsets) + preview
@@ -33,6 +34,7 @@ from .lyric_align import NODE_CLASS_MAPPINGS as _align, NODE_DISPLAY_NAME_MAPPIN
 from .looks import NODE_CLASS_MAPPINGS as _looks, NODE_DISPLAY_NAME_MAPPINGS as _looks_names
 from .flow_field import NODE_CLASS_MAPPINGS as _flow, NODE_DISPLAY_NAME_MAPPINGS as _flow_names
 from .voice_field import NODE_CLASS_MAPPINGS as _voice, NODE_DISPLAY_NAME_MAPPINGS as _voice_names
+from .audio_field import NODE_CLASS_MAPPINGS as _audio, NODE_DISPLAY_NAME_MAPPINGS as _audio_names
 from .render_node import NODE_CLASS_MAPPINGS as _render, NODE_DISPLAY_NAME_MAPPINGS as _render_names
 from .matte_refine import NODE_CLASS_MAPPINGS as _refine, NODE_DISPLAY_NAME_MAPPINGS as _refine_names
 
@@ -40,7 +42,7 @@ NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 for _m, _n in ((_beats, _beats_names), (_save, _save_names), (_tracks, _tracks_names),
                (_text, _text_names), (_whisper, _whisper_names), (_plate, _plate_names),
-               (_analysis, _analysis_names), (_align, _align_names), (_flow, _flow_names), (_voice, _voice_names), (_render, _render_names), (_refine, _refine_names),
+               (_analysis, _analysis_names), (_align, _align_names), (_flow, _flow_names), (_voice, _voice_names), (_audio, _audio_names), (_render, _render_names), (_refine, _refine_names),
                (_looks, _looks_names)):
     NODE_CLASS_MAPPINGS.update(_m)
     NODE_DISPLAY_NAME_MAPPINGS.update(_n)

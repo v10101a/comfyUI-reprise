@@ -50,8 +50,15 @@ DEFAULT_WEIGHT = {"Inter": 800, "Archivo Narrow": 500, "Big Shoulders Display": 
 
 # ---------------------------------------------------------------- look params (mirror of looks.ts LOOK_PARAMS)
 PARAMS = ["ink", "accent", "card", "cards", "font", "body", "case", "layout", "scale", "motion", "glow",
-          "flicker", "drips", "light", "outline", "halo", "soft", "tubes", "scroll", "hooks"]
-_DEEP = ("palette", "font", "optics", "verse")
+          "flicker", "drips", "light", "outline", "halo", "soft", "tubes", "scroll", "hooks", "fill", "cell", "backing"]
+_DEEP = ("palette", "font", "optics", "verse", "fill")
+FILL_DEFAULTS = {"cell": .014, "backing": .85, "gain": 1.4}
+
+
+def fill_of(look):
+    """The look's glyph fill when it is on (looks.ts fillOf)."""
+    f = (look or {}).get("fill")
+    return f if f and f.get("region") else None
 
 
 def merge_overrides(cur, patch):
@@ -73,15 +80,16 @@ def resolve_look(ref):
     for role in ("hero", "body"):
         if (o.get("font") or {}).get(role) not in (None, base["font"][role]) and f"{role}Weight" not in (o.get("font") or {}):
             font.pop(f"{role}Weight", None)
+    fill = None if ("fill" in o and o["fill"] is None) else {**(base.get("fill") or {}), **o["fill"]} if o.get("fill") else base.get("fill")
     return {**base, **o, "id": base["id"], "font": font, "palette": {**base["palette"], **(o.get("palette") or {})},
-            "optics": {**base.get("optics", {}), **(o.get("optics") or {})}}
+            "optics": {**base.get("optics", {}), **(o.get("optics") or {})}, "fill": fill}
 
 
 def look_param_patch(look, key, v):
     """Overrides patch for one param (looks.ts lookParamPatch)."""
     if key == "ink": return {"palette": {"text": v}}
     if key == "accent": return {"palette": {"accent": v}}
-    if key == "card": return {"palette": {"card": v}, "card": True}
+    if key == "card": return {"palette": {"card": v}} if fill_of(look) else {"palette": {"card": v}, "card": True}
     if key == "cards": return {"card": True, "palette": {"card": "#2f6bff"}} if v and not look["palette"].get("card") else {"card": bool(v)}
     if key == "font": return {"font": {"hero": v}}
     if key == "body": return {"font": {"body": v}}
@@ -94,11 +102,15 @@ def look_param_patch(look, key, v):
     if key == "halo": return {"halo": float(v)}
     if key == "soft": return {"optics": {"blur": float(v)}}
     if key == "scroll": return {"motion": "marquee" if v else "none"}
-    if key == "hooks": return {"quiet": "hooks-only" if v else "none"}
+    if key == "hooks": return {"fill": {**look["fill"], "hooks": bool(v)}} if fill_of(look) else {"quiet": "hooks-only" if v else "none"}
     if key == "flicker": return {"flicker": float(v)}
     if key == "drips": return {"drips": float(v)}
     if key == "light": return {"light": float(v)}
     if key == "tubes": return {"finish": "neon"} if v else {"finish": None}
+    # v4.3 glyph fill (any look)
+    if key == "fill": return {"fill": None} if v in (None, "", "off") else {"fill": {**(look.get("fill") or {}), "region": v}}
+    if key == "cell": return {"fill": {"region": "subject", **(look.get("fill") or {}), "cell": float(v)}}
+    if key == "backing": return {"fill": {"region": "subject", **(look.get("fill") or {}), "backing": float(v)}}
     raise KeyError(key)
 
 
@@ -310,7 +322,7 @@ class TypesetLook:
             "font": (["preset"] + FAMILIES, {"default": "preset"}),
             "body": (["preset"] + FAMILIES, {"default": "preset"}),
             "case": (["preset", "upper", "lower", "as-is"], {"default": "preset"}),
-            "layout": (["preset", "line", "hero", "stack", "constellation"], {"default": "preset"}),
+            "layout": (["preset", "line", "hero", "stack", "constellation", "hud"], {"default": "preset"}),
             "scale": f(1.0, .4, 2.0, .05, "Type size multiplier"),
             "motion": f(1.0, 0.0, 2.0, .05, "Entrance motion amount"),
             "glow": f(-1.0, -1.0, 1.0, .05, "-1 = preset"),
@@ -323,7 +335,10 @@ class TypesetLook:
             "cards": (_TRI, {"default": "preset"}),
             "tubes": (_TRI, {"default": "preset", "tooltip": "Neon tubes for all text"}),
             "scroll": (_TRI, {"default": "preset", "tooltip": "LED marquee"}),
-            "hooks": (_TRI, {"default": "preset", "tooltip": "Only hook lines speak"}),
+            "hooks": (_TRI, {"default": "preset", "tooltip": "Only hook lines speak (under a glyph fill: only hook lines fill)"}),
+            "fill": (["preset", "off", "subject", "world", "frame"], {"default": "preset", "tooltip": "Glyph fill: filled lines become a letter grid lit by the footage (subject = inside the matte, world = around it, frame = everything; wall lines fill their wall)"}),
+            "cell": f(-1.0, -1.0, .03, .001, "Glyph cell width, fraction of min(w,h); -1 = preset"),
+            "backing": f(-1.0, -1.0, 1.0, .05, "Card opacity under the glyphs; -1 = preset"),
         }, "optional": {"sample": ("STRING", {"default": "hold on"})}}
 
     RETURN_TYPES = ("STRING", "IMAGE")
@@ -333,7 +348,7 @@ class TypesetLook:
 
     def run(self, preset, ink="", accent="", card="", font="preset", body="preset", case="preset", layout="preset",
             scale=1.0, motion=1.0, glow=-1.0, outline=-1.0, halo=-1.0, soft=-1.0, cards="preset", scroll="preset",
-            hooks="preset", sample="hold on", flicker=-1.0, tubes="preset", drips=-1.0, light=-1.0):
+            hooks="preset", sample="hold on", flicker=-1.0, tubes="preset", drips=-1.0, light=-1.0, fill="preset", cell=-1.0, backing=-1.0):
         import torch
         if preset == "default":
             return ("", torch.zeros(1, 432, 768, 3))
@@ -342,7 +357,8 @@ class TypesetLook:
                   "case": None if case == "preset" else case, "layout": None if layout == "preset" else layout,
                   "scale": None if scale == 1.0 else scale, "motion": None if motion == 1.0 else motion,
                   "glow": _neg(glow), "flicker": _neg(flicker), "drips": _neg(drips), "light": _neg(light), "tubes": _tri(tubes), "outline": _neg(outline), "halo": _neg(halo), "soft": _neg(soft),
-                  "cards": _tri(cards), "scroll": _tri(scroll), "hooks": _tri(hooks)}
+                  "cards": _tri(cards), "scroll": _tri(scroll), "hooks": _tri(hooks),
+                  "fill": None if fill == "preset" else fill, "cell": _neg(cell), "backing": _neg(backing)}
         ref = build_look(preset, params)
         bg = Image.new("RGB", (768, 432), (38, 41, 35))
         img, _ = draw_look_text(bg, sample or "hold on", resolve_look(ref))

@@ -183,7 +183,10 @@ def draw_quad(img: np.ndarray, corners_px: np.ndarray, conf: float | None, f: in
 
 class TypesetPlanarTrack:
     """Glue a quad to a wall: features inside (and around) the key-frame quad, subject masked out, LK tracked
-    forwards and backwards, key→frame homography with RANSAC, light smoothing; low-confidence frames dropped.
+    forwards and backwards, key→frame homography with RANSAC; then every frame is re-aligned directly to the key
+    frame (masked high-pass ECC + coarse template search) and the simplest of translation / similarity /
+    homography that the alignment supports is kept (blank walls stay rigid instead of skewing); shape sanity vs
+    the key frame, confidence = alignment, temporal smoothing; low-confidence frames dropped.
     JSON: {fps, frames: [{f, corners: [[x,y]×4 normalized TL,TR,BR,BL], conf}]}."""
 
     @classmethod

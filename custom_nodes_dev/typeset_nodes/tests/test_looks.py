@@ -27,7 +27,7 @@ class LookTests(unittest.TestCase):
     def test_picker_set(self):
         looks_ = looks.presets()["looks"]
         hidden = {k for k, v in looks_.items() if v.get("hidden")}
-        self.assertEqual(hidden, {"red-glow", "dreamy", "grey-noise"})  # kept for old projects, out of the picker
+        self.assertEqual(hidden, {"dreamy", "grey-noise", "lens-bound"})  # kept for old projects, out of the picker
         self.assertEqual(looks_["graffiti"]["look"]["wall"], "spray")
         self.assertEqual(looks_["neon"]["look"]["finish"], "neon")
         ref = json.loads(looks.TypesetLook().run("graffiti", drips=.9)[0])

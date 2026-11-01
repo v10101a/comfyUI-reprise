@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import service
+from . import service, showcase
 from .config import settings
 from .models import Project, CreateProjectBody, AnalyzeWordsBody, AnalyzeMatteBody, InworldBody, ExportBody, ReframeBody
 from .service import ApiError, store, jobs  # noqa: F401  (tests import store from here)
@@ -105,6 +105,11 @@ def voice(pid: str):
     return service.voice_job(pid)
 
 
+@app.post("/api/projects/{pid}/analyze/audio")
+def audio(pid: str):
+    return service.audio_job(pid)
+
+
 @app.post("/api/projects/{pid}/surfaces/{sid}/track")
 def surface_track(pid: str, sid: str):
     return service.surface_track_job(pid, sid)
@@ -128,6 +133,21 @@ def start_frames(pid: str):
 @app.put("/api/projects/{pid}/export/frames/{session}/{layer}/{index}")
 async def put_frame(pid: str, session: str, layer: str, index: int, request: Request):
     return service.put_frame(pid, session, layer, index, await request.body())
+
+
+@app.get("/api/showcase")
+def showcase_versions():
+    return showcase.versions()
+
+
+@app.post("/api/projects/{pid}/showcase")
+def showcase_refresh(pid: str):
+    """Re-render this project's demo-page clip (no-op 404 when the project has no showcase piece)."""
+    service.require_project(pid)
+    job = showcase.refresh_job(store, jobs, pid)
+    if job is None:
+        raise ApiError(404, "No showcase piece for this project")
+    return job
 
 
 @app.get("/api/jobs/{job_id}")

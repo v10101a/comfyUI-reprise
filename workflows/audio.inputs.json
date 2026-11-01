@@ -1,0 +1,58 @@
+{
+  "workflow": "audio.api.json",
+  "description": "Song (full mix) -> low-band (kick/bass) energy per frame, attack/release smoothed: the 'audio' field that pulses the type.",
+  "inputs": {
+    "audio": {
+      "node": "1",
+      "field": "audio",
+      "kind": "comfy_input_path"
+    },
+    "fps": {
+      "node": "2",
+      "field": "fps",
+      "kind": "float",
+      "default": 24
+    },
+    "band_low": {
+      "node": "2",
+      "field": "band_low",
+      "kind": "float",
+      "default": 40
+    },
+    "band_high": {
+      "node": "2",
+      "field": "band_high",
+      "kind": "float",
+      "default": 140
+    },
+    "duration": {
+      "node": "2",
+      "field": "duration",
+      "kind": "float",
+      "default": 0
+    },
+    "lead_frames": {
+      "node": "2",
+      "field": "lead_frames",
+      "kind": "float",
+      "default": 0.5
+    },
+    "release_ms": {
+      "node": "2",
+      "field": "release_ms",
+      "kind": "float",
+      "default": 250
+    }
+  },
+  "outputs": {
+    "voice_json": {
+      "node": "3",
+      "type": "text"
+    },
+    "preview": {
+      "node": "4",
+      "type": "image",
+      "optional": true
+    }
+  }
+}

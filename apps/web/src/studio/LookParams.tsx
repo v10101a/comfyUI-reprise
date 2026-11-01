@@ -2,7 +2,7 @@
 // the grade is project.grade (independent of the look). Groups are data: append a group to PARAM_GROUPS to add controls.
 import type {Project} from '../types';
 import type {GradeId} from '../types';
-import {LOOK_PARAMS,GRADES,FONT_FAMILIES,lookOf,lookParam,setLookParam,clearLookOverrides,gradeRefOf,setGrade,setGradeAmount,type LookParamKey,type LookParam} from '../looks';
+import {LOOK_PARAMS,GRADES,FONT_FAMILIES,lookOf,lookParam,lookParamApplies,setLookParam,setLookOverrides,clearLookOverrides,gradeRefOf,setGrade,setGradeAmount,type LookParamKey,type LookParam} from '../looks';
 
 export type ParamGroup={id:string;keys:LookParamKey[]};
 /** Rendered in order; each group is one row/grid. To add a group (e.g. Fields), add its keys to LOOK_PARAMS and a group here. */
@@ -11,6 +11,7 @@ export const PARAM_GROUPS:ParamGroup[]=[
   {id:'type',keys:['font','body','case','layout']},
   {id:'amount',keys:['scale','motion','glow','flicker','drips','light','outline','halo','soft']},
   {id:'flags',keys:['cards','tubes','scroll','hooks']},
+  {id:'fill',keys:['fill','cell','backing']},
   {id:'fields',keys:['flow','voice']},
 ];
 const BY_KEY=Object.fromEntries(LOOK_PARAMS.map(p=>[p.key,p])) as Record<LookParamKey,LookParam>;
@@ -34,8 +35,11 @@ export function LookParams({project,edit}:{project:Project;edit:(f:(p:Project)=>
     </div>
     {look&&<details className="lp-details">
       <summary>Adjust{project.look?.overrides&&Object.keys(project.look.overrides).length?<button className="lp-reset" onClick={e=>{e.preventDefault();edit(clearLookOverrides);}} title="back to the preset">Reset</button>:null}</summary>
-      {PARAM_GROUPS.map(gr=><div key={gr.id} className={`lp-group lp-${gr.id}`}>
-        {gr.keys.filter(k=>BY_KEY[k]&&!(k==='card'&&!look.card)&&!(k==='drips'&&look.wall!=='spray')&&!(k==='light'&&look.finish!=='neon')).map(k=><ParamControl key={k} param={BY_KEY[k]} value={lookParam(look,k)} onChange={v=>edit(p=>setLookParam(p,k,v))}/>)}
+      {PARAM_GROUPS.map(gr=>({...gr,keys:gr.keys.filter(k=>BY_KEY[k]&&lookParamApplies(project,look,k))})).filter(gr=>gr.keys.length).map(gr=><div key={gr.id} className={`lp-group lp-${gr.id}`}>
+        {gr.keys.map(k=><ParamControl key={k} param={BY_KEY[k]} value={lookParam(look,k)} onChange={v=>edit(p=>setLookParam(p,k,v))}/>)}
+        {gr.id==='fields'&&lookParamApplies(project,look,'voice')&&<div className="seg mini lp-source" role="radiogroup" aria-label="Audio source">{(['bass','vocal'] as const).map(src=>
+          <button key={src} role="radio" aria-checked={(look.fields?.source??'bass')===src} className={(look.fields?.source??'bass')===src?'active':''}
+            onClick={()=>edit(p=>{const l=lookOf(p);return l?setLookOverrides(p,{fields:{...l.fields,source:src}}):p;})}>{src==='bass'?'Bass':'Vocal'}</button>)}</div>}
       </div>)}
     </details>}
   </div>;

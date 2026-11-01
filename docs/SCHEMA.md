@@ -16,19 +16,39 @@ type Project = {
     video?: MediaRef;         // background footage (may contain the audio)
     audio?: MediaRef;         // separate music/VO; if absent, use video's audio
     lyrics?: string;          // optional user-provided lyrics text (newline-separated lines)
+    audioClip?: {in: number; out: number; offset: number};  // song clip, seconds (see below); absent = whole song from 0
   };
+  // media.audioClip (non-destructive; the song file is never rewritten):
+  //   in/out  = trim points in song time (0 ≤ in < out ≤ song duration)
+  //   offset  = project time at which `in` plays; may be < 0 (the head before 0 is cut)
+  //   Song time s plays at project time s + (offset − in); silence outside [in, out).
+  //   words[] stay in project time (the studio offers to shift them when the song slides);
+  //   analysis beats.json / voice.json stay in song time and are mapped through offset − in.
+  //   Exports (final.mp4, demo clips) apply it as ffmpeg atrim + adelay; the words job maps its
+  //   song-time result into project time and drops words outside the clip. Uploading a new song clears it.
   analysis: {
     words?: string;           // relative path: "analysis/words.json"
     matte?: string;           // relative dir:  "analysis/matte/" (contains fg_%05d.png and fg.webm)
     tracks?: string;          // relative path: "analysis/tracks.json"
     depth?: string;           // relative dir (Day 3, optional)
+    flow?: string;            // "analysis/flow.json" (TypesetFlowField)
+    voice?: string;           // "analysis/voice.json" (TypesetVoiceField): vocal loud/pitch/vibrato/onset per frame
+    audio?: string;           // "analysis/audio_<job>.json" (TypesetAudioField): {kind:'bass', fps, frames, band:[lo,hi] Hz,
+                              //   level[0..1] per frame = peak over song seconds [t0 + f/fps, t0 + (f+1)/fps), t0, leadFrames}.
+                              //   Centred STFT windows, low-band dB, percentile-normalised, instant attack / 250 ms release,
+                              //   lead 0.5 frame: hits land on the kick's frame, never after. New path per run (the studio reloads).
   };
+  // Both field docs cover only the audioClip section (t0 = clip in; absent = 0) and stay in song time.
+  // look.fields.voice (studio "Audio", 0..1) sizes the type; look.fields.source 'bass' (default) | 'vocal' picks
+  // analysis.audio or analysis.voice, falling back to whichever exists. A voice.json with kind 'bass' is read as audio.
   style: TextStyle;           // project defaults
   words: Word[];              // the editable timeline (seeded from analysis.words)
   shots: GenShot[];           // generative in-world clips (Day 2)
 };
 
 type MediaRef = { path: string; duration: number; width?: number; height?: number; fps?: number; hasAudio?: boolean };
+
+Studio preview proxies live beside the originals by convention (no project fields): `media/proxy/<video stem>.mp4` and `<matte dir>/fg_proxy.webm`, long edge 672, 12‑frame GOP, so a seek costs ~17 ms instead of ~100 ms. The server makes them on video upload and at the end of the matte job; `scripts/make_proxies.py` backfills. Only the studio's draft renders read them (`StageRenderer.draftMedia` + `render(…, {proxy: true})`); export, `#/render`, TypesetRender and capture always read the originals.
 
 type TextStyle = {
   fontFamily: string;         // one of the bundled fonts
@@ -98,6 +118,7 @@ Rules: words sorted by start; `end > start`; lines = Whisper segments, or user l
 ### `analysis/matte/`
 - `fg_%05d.png` — RGBA cutout of the foreground (subject) per frame, same size as project, 1‑based index starting at `fg_00001.png`.
 - `fg.webm` — VP9 with alpha (`-pix_fmt yuva420p`), same fps, for browser preview (Chrome/Chromium). Produced by the **server** from the PNGs.
+- `fg_proxy.webm` — half‑size, short‑GOP VP9‑alpha copy for studio scrubbing (see preview proxies above). Optional.
 - Optional `mask_%05d.png` grayscale.
 
 ## 3. Workflow sidecars — `workflows/<name>.inputs.json`
@@ -312,7 +333,31 @@ Presets live in code (`apps/web/src/looks.ts`); a project stores only `{id, over
 - **Render route:** `&grade=<id>[:amount]` and `&overrides=<json>` alongside `&look=`.
 
 ### v4.1 (L) — scene looks: Graffiti, physical Neon
-- Picker: flat-card, paper-cut, graffiti, neon, xerox, ticker, lens-bound, night-code, scatter. `dreamy` and `grey-noise` are now `hidden` (still render identically for Fall For Me and the angel project), like red-glow.
+- Picker: flat-card, paper-cut, graffiti, neon, hud, xerox, ticker, lens-bound, night-code, scatter. `dreamy` and `grey-noise` are now `hidden` (still render identically for Fall For Me and the angel project), like red-glow.
 - **`Look.wall: 'spray'`** (Graffiti): surface text becomes spray paint (`material` 'spray'): drawn in plane space with seeded drips (`Look.drips`, grow after each word's onset) and a stencil bridge, warped into screen space, then overspray (two blurs under the paint), uneven coverage (erosion) and **wall modulation**: multiplied by 0.4 + 0.6 × the graded footage's brightened luminance, so the paint takes the wall's light falloff, grain and cracks. Screen units (no surface) get the same finish on the background. Every non-subtitle unit sits `behind` (subject occludes via the matte; never promoted to front).
 - **`Look.finish: 'neon'` + `Look.light`** (Neon): units sit behind the subject on a mount (acrylic back-plate, standoffs, cable, blacked-out return tubes). Light pass (before the behind text): tubes alone → wide blurred spill + squashed wet-floor reflection below the sign, multiplied by the footage's luminance, added (`lighter`). Relight (after the matte): a rim on the matte edges facing the light centroid (matte − matte shifted toward the light, blurred, kept inside) added, plus a soft-light colour cast; strength = light × sign power × distance falloff. Light stats come from a 64-px readback of the tube layer: deterministic, same in preview and export.
 - Both read `env` = this frame's graded footage (composite renders only; text-layer exports skip modulation and light).
+- **Neon tubes** under the Neon look are hollow bent-glass outlines (bloom, tube, hot core; Inter caps), matching the old generated LOUDER sign; the light pass also adds an ambient cast of the sign colour multiplied by the footage luminance. Walls without the look keep the filled-tube neon material (unchanged).
+- **Graffiti wear** (uneven coverage) is computed in the text's own space (unit / surface-plane coordinates, seeded per line) so it moves with the words; only the wall-luminance modulation is screen space.
+- **`layout: 'hud'`** (HUD look): every non-subtitle line becomes a head-locked HUD label (`anchor` to person0, preset `hud`), lines alive at once stack in slots; slot 0 carries the leader and readout.
+- **Ticker (`motion: 'marquee'`)** is now an LED dot-matrix crawl: all shown non-subtitle words in time order enter at their onset (de-duplicated, never more than 0.9 s late, else dropped) and crawl right→left at 7 em/s; mounted on the union of the surfaces in use (middle band, behind the subject) or a screen band at 74 % height. Housing = palette.card, LEDs = palette.text, unlit dots, bloom.
+- **`LineMeta.fill / karaoke / dim`** (per-line colours, win over the look; unset = unchanged): fill = text colour (look, no-look, subtitle, HUD, neon surface), karaoke = active karaoke word, dim = upcoming karaoke words drawn at full opacity in that colour.
+- **Render route `&subs=0`** hides the subtitle/karaoke register for that render only (Looks showcase clips).
+
+### v4.2 (looks round 4) — entrances, monoline neon, LED font
+- **`Look.enter`** replaces the `pop` preset under the look (subtitles keep their presets; absent = authored presets, so dreamy / grey-noise / red-glow are unchanged): `wipe` (flat-card) = each word wipes in L→R over 0.26 s and the card grows with it; the card wipes out in the last 0.24 s. `paste` (paper-cut) = 3 % scale + lifted shadow settling over 0.22 s, no bounce. `spray` (graffiti) = soft-edged L→R reveal, stays. `flicker` (neon) = seeded dropouts for 0.45 s × `flicker`, then powers off at the end. `type` (hud, night-code) = 28 chars/s with a block cursor, no jitter, nothing shown before onset. `fade` (scatter) = 0.3 s in/out. `cut` (xerox, ticker) = hard cut. Exits only on lines ≥ 1 s.
+- **`Look.wallScale`** (paper-cut 1.4, graffiti 1.45): surface text grows about the plane centre past the drawn quad (width capped near the wall's width).
+- **Carded looks on painted walls** draw `flat` (no erosion): clean cards.
+- **Neon tubes** are monoline: Inter weight 100 (hero and body) stroked fat with round joins, so each stroke is one continuous tube; passes: tight bloom, saturated glass, brighter gas, near-white core. No back-plate, cable or return tubes; small supports only. Light pass / relight unchanged.
+- **HUD layout**: default anchor offset dx .24, dy −.15 (label farther from the head; leader kept).
+- **Ticker**: built-in 5×7 dot-matrix glyphs (trimmed widths, 1 dark column between glyphs) on a 9-row display, round lit dots with a hot centre, tighter bloom, crawls one column at a time at 8 em/s (em = 7 rows). The stream is per line: each line is one string (words 0.9 em apart) that enters no earlier than its first word's onset; a line already shown with the same text within 3 s (e.g. wall title + HUD label) is skipped. Lines sung back to back (< 1.5 s apart) form a phrase spaced evenly at 1.2 em, started up to 0.9 s late so no line shows early; a pause starts a new phrase on its own onset. Nothing is dropped. Mounted on the surfaces whose words are on screen (from 3 s before onset to 0.5 s after end), else a screen band.
+- **lens-bound** is `hidden` (code kept; existing projects render unchanged).
+
+### v4.3 (2026-10-31) — glyph fill: the lyric drawn with the footage's light
+- **`Look.fill`** `{region:'subject'|'world'|'frame'; cell?; backing?; gain?; hooks?}` (absent/null = off; any look may set it; the `glyph` preset ships with it on). A **filled line** is drawn as a fixed letter grid instead of type: the line's text (look case) tiled in reading order over cells of `cell` × min(w,h) width (default .014) and 1.9× that height, each cell's brightness from the graded footage under it (`gain`, default 1.4; the darkest cell in the region still shows its letter), over a card of `palette.card` at `backing` opacity (default .85).
+  - `subject`: inside the matte, in front of the cutout (no matte → whole frame). `world`: everything but the subject, behind the cutout (text-only renders of everything keep a hole for the subject). `frame`: everything, in front. A filled line placed on a wall fills that wall instead: the grid lives in the wall's plane (perspective-correct cells sampled through the surface homography), drawn behind the subject.
+  - Which lines fill (`looks.ts lineIsFilled`): shown screen or wall lines; never subtitles, head-anchored labels or in-world shots; with `hooks` (default true) only hook lines fill and the others keep the look's register. Filled lines are not built as units (`lookUnits` skips them), so nothing else of theirs is drawn.
+  - Deterministic and stateless: a cell keeps its letter for the whole line (rows are offset by 4 cells so repetitions stagger; the body moving over the grid reveals a stable page), sung words light up over 3 frames (unsung words at 22 %), the word being sung takes `palette.accent`, the fill fades in over 0.15 s at the line's start and out over 0.25 s after its end. Brightness is continuous (16 atlas levels per colour), never a quantised glyph ramp, so nothing flickers at level edges. Glyphs come from a per-look atlas (hero face/weight, 16 levels × ink/accent).
+  - Renderer: `drawFill` runs at the top of `renderWords` in the pinned pass only (the motion field never warps it; the crisp subtitle pass skips it), inside the optics chain (glow/blur apply; text-only exports carry it). The fill reads `env` (the graded footage of the frame), so text-only renders with a fill seek the footage and matte too (`load` loads them when a fill is on).
+  - Params (studio Adjust / `TypesetLook`): `fill` (off/subject/world/frame), `cell`, `backing`; `card` edits the backing colour without switching cards on; under a fill the `hooks` toggle means "only hook lines fill". Overrides merge `fill` one level deep (`lookOf`, `setLookOverrides`, `resolve_look`, `merge_overrides`); `fill: null` switches it off.
+  - Preset `glyph`: Space Mono 700 caps / IBM Plex Mono verses, ink #e8f1ff, accent #7cf7c4, card #06080a, layout `line`, `enter: fade`, glow .1, fill subject/.014/.85/1.4/hooks.

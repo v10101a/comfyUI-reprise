@@ -16,8 +16,8 @@ from pathlib import Path
 import cv2, numpy as np
 ROOT = Path(__file__).resolve().parents[2]; WORK = ROOT / "outputs/ffm/work"; FF = "/opt/homebrew/bin/ffmpeg"
 SRC = WORK / "ffm_v7_30.mp4"
-GEOM = {"16x9": dict(W=1920, H=1080, w=912, h=1080, x0=504, y0=0, axis="x"),
-        "9x16": dict(W=1080, H=1920, w=1080, h=1280, x0=0, y0=320, axis="y")}
+GEOM = {"16x9": dict(W=1920, H=1080, w=912, h=1080, x0=504, y0=0, axis="x", pct=35, feather=64),
+        "9x16": dict(W=1080, H=1920, w=1080, h=1280, x0=0, y0=320, axis="y", pct=50, feather=160)}   # 9:16: wider seam (bands were visible at 64 px)
 BAND, FEATHER, EMA = 48, 64, .2
 PCT, SMOOTH = 35, 90     # a low percentile ignores flashes/sparkles at the edge; heavy smoothing kills streaks
 rng = np.random.default_rng(7)
@@ -43,18 +43,18 @@ def draw_twinkle(img, x, y, a, r):
 class Extender:
     def __init__(self, aspect):
         self.g = GEOM[aspect]; self.prev = None; self.tw = make_twinkles(self.g)
-        ramp = np.linspace(0, 1, FEATHER)[:, None]
+        ramp = np.linspace(0, 1, self.g['feather'])[:, None]; self.F = self.g['feather']; self.P = self.g['pct']
         self.ramp = ramp
 
     def fill(self, small):
         g = self.g; f = small.astype(np.float32)
         if g["axis"] == "x":   # side pads: per-row colour of the left/right bands
-            L = np.percentile(f[:, :BAND], PCT, 1); R = np.percentile(f[:, -BAND:], PCT, 1)
-            L2 = np.percentile(f[:, BAND:3 * BAND], PCT, 1); R2 = np.percentile(f[:, -3 * BAND:-BAND], PCT, 1)
+            L = np.percentile(f[:, :BAND], self.P, 1); R = np.percentile(f[:, -BAND:], self.P, 1)
+            L2 = np.percentile(f[:, BAND:3 * BAND], self.P, 1); R2 = np.percentile(f[:, -3 * BAND:-BAND], self.P, 1)
             prof = np.stack([L, R, L - L2, R - R2]).astype(np.float32)    # (4, h, 3)
         else:                  # top/bottom pads: per-column colour
-            T = np.percentile(f[:BAND], PCT, 0); B = np.percentile(f[-BAND:], PCT, 0)
-            T2 = np.percentile(f[BAND:3 * BAND], PCT, 0); B2 = np.percentile(f[-3 * BAND:-BAND], PCT, 0)
+            T = np.percentile(f[:BAND], self.P, 0); B = np.percentile(f[-BAND:], self.P, 0)
+            T2 = np.percentile(f[BAND:3 * BAND], self.P, 0); B2 = np.percentile(f[-3 * BAND:-BAND], self.P, 0)
             prof = np.stack([T, B, T - T2, B - B2]).astype(np.float32)    # (4, w, 3)
         # smooth along the edge only (an image of 4 rows x n cols x 3 channels; ksize height 1 = no mixing between profiles)
         prof = cv2.GaussianBlur(prof, (0, 1), sigmaX=SMOOTH, borderType=cv2.BORDER_REFLECT)
@@ -94,11 +94,11 @@ class Extender:
         reg = out[g["y0"]:g["y0"] + g["h"], g["x0"]:g["x0"] + g["w"]]
         alpha = np.ones((g["h"], g["w"], 1), np.float32)
         if g["axis"] == "x":
-            alpha[:, :FEATHER, 0] = np.minimum(alpha[:, :FEATHER, 0], self.ramp[:, 0][None, :])
-            alpha[:, -FEATHER:, 0] = np.minimum(alpha[:, -FEATHER:, 0], self.ramp[::-1, 0][None, :])
+            alpha[:, :self.F, 0] = np.minimum(alpha[:, :self.F, 0], self.ramp[:, 0][None, :])
+            alpha[:, -self.F:, 0] = np.minimum(alpha[:, -self.F:, 0], self.ramp[::-1, 0][None, :])
         else:
-            alpha[:FEATHER] = np.minimum(alpha[:FEATHER], self.ramp[:, :, None])
-            alpha[-FEATHER:] = np.minimum(alpha[-FEATHER:], self.ramp[::-1, :, None])
+            alpha[:self.F] = np.minimum(alpha[:self.F], self.ramp[:, :, None])
+            alpha[-self.F:] = np.minimum(alpha[-self.F:], self.ramp[::-1, :, None])
         alpha = alpha ** .7
         # under the seam, the fill continues the edge colour rather than a hard pad
         under = np.empty_like(reg)

@@ -4,6 +4,7 @@
 import {useEffect,useRef} from 'react';
 import type {CropData} from '../types';
 import {cropAt} from '../geometry';
+import {proxyPath} from '../renderer';
 
 const CACHE_MAX=900;
 type Thumb={f:number;c:HTMLCanvasElement};
@@ -16,10 +17,12 @@ export function Filmstrip({src,fps,aspect,crop,pps,bodyW,height,viewLeft,viewWid
   const gen=useRef(0);
   const tw=Math.max(12,Math.round(height*aspect));
 
-  // One offscreen video per source.
+  // One offscreen video per source: the half-size preview proxy when the server has made one (seeks ~17 ms instead of
+  // ~100 ms; 46 px thumbs never need more), else the original.
   useEffect(()=>{cache.current.clear();if(!src){video.current=null;ready.current=undefined;return;}
     const v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='auto';v.crossOrigin='anonymous';
-    ready.current=new Promise(res=>{v.onloadeddata=()=>res(true);v.onerror=()=>res(false);});v.src=src;v.load();video.current=v;
+    const proxy=proxyPath(src);let fallback=proxy!==src;
+    ready.current=new Promise(res=>{v.onloadeddata=()=>res(true);v.onerror=()=>{if(fallback){fallback=false;v.src=src;v.load();}else res(false);};});v.src=proxy;v.load();video.current=v;
     return()=>{v.removeAttribute('src');v.load();video.current=null;};
   },[src]);
   useEffect(()=>{cache.current.clear();},[crop]);

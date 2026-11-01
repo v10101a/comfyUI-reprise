@@ -6,6 +6,8 @@ are thin adapters over these functions. Errors are `ApiError(status, detail)`.
 from __future__ import annotations
 
 import re
+import logging
+import threading
 import uuid
 from collections.abc import Iterable
 from typing import Any
@@ -14,11 +16,13 @@ from .comfy import runner, remote_runner
 from .config import settings
 from .exporter import export_project, frames_dir
 from .jobs import JobManager
-from .media import probe_media, safe_filename, fit_within
+from .media import probe_media, safe_filename, fit_within, encode_preview_proxy, proxy_rel
 from .models import Project, Job, CreateProjectBody, AnalyzeWordsBody, AnalyzeMatteBody, InworldBody, ExportBody, ReframeBody
-from .analysis_v2 import analyze_occupancy, track_surface, reframe_project, analyze_beats, analyze_flow, analyze_voice
+from .analysis_v2 import analyze_occupancy, track_surface, reframe_project, analyze_beats, analyze_flow, analyze_voice, analyze_audio
 from .pipeline import analyze_words, analyze_matte, generate_inworld, project_path
 from .store import ProjectStore, ProjectNotFound
+
+log = logging.getLogger(__name__)
 
 store = ProjectStore(settings.projects_dir)
 jobs = JobManager(settings.jobs_dir)
@@ -44,7 +48,7 @@ def validate_paths(project: Project):
     refs = [ref.path for ref in (project.media.video, project.media.audio) if ref]
     refs += [p for p in (project.analysis.words, project.analysis.matte, project.analysis.tracks, project.analysis.depth,
                          project.analysis.occupancy, project.analysis.beats, project.analysis.flow,
-                         project.analysis.voice) if p]
+                         project.analysis.voice, project.analysis.audio) if p]
     refs += [s.track for s in project.surfaces or [] if s.track]
     if project.frame and project.frame.crop:
         refs.append(project.frame.crop)
@@ -76,6 +80,17 @@ def save_project(pid: str, body: Project) -> Project:
         raise ApiError(400, str(exc)) from exc
     return store.save(body)
 
+
+
+def _make_video_proxy(src: Path, out: Path) -> None:
+    """Studio preview proxy (media.py), off the request thread; the studio reads the original until it exists."""
+    def run():
+        try:
+            encode_preview_proxy(src, out)
+            encode_preview_proxy(src, out.with_name(out.stem + ".full.mp4"), full=True)
+        except Exception as exc:  # non-fatal: scrubbing just stays slow for this clip
+            log.warning("preview proxy failed for %s: %s", src.name, exc)
+    threading.Thread(target=run, name="typeset-proxy", daemon=True).start()
 
 def upload_media(pid: str, filename: str, kind: str, chunks: Iterable[bytes]):
     """kind=reference stores an identity reference image for generate/inworld (`referenceImage`) and
@@ -110,6 +125,9 @@ def upload_media(pid: str, filename: str, kind: str, chunks: Iterable[bytes]):
         if ref.duration <= 0 or (kind == "video" and not ref.width) or (kind == "audio" and not ref.hasAudio):
             raise ApiError(400, f"File is not playable {kind} media")
         def update(p):
+            # A new song (or the video that carries it) invalidates the song clip.
+            if kind == "audio" or not p.media.audio:
+                setattr(p.media, "audioClip", None)
             setattr(p.media, kind, ref)
             if kind == "video":
                 p.width, p.height = fit_within(ref.width, ref.height)
@@ -121,6 +139,8 @@ def upload_media(pid: str, filename: str, kind: str, chunks: Iterable[bytes]):
             elif not p.media.video:
                 p.duration = ref.duration
         store.update(pid, update)
+        if kind == "video":
+            _make_video_proxy(path, project_path(store, pid, proxy_rel(rel)))
         return ref
     except ApiError:
         path.unlink(missing_ok=True)
@@ -187,6 +207,14 @@ def voice_job(pid: str) -> Job:
         raise ApiError(400, "Upload audio or video first")
     job = jobs.create("voice", pid)
     return jobs.submit(job, lambda ctx: analyze_voice(store, pid, ctx))
+
+
+def audio_job(pid: str) -> Job:
+    project = require_project(pid)
+    if not (project.media.audio or project.media.video):
+        raise ApiError(400, "Upload audio or video first")
+    job = jobs.create("audio", pid)
+    return jobs.submit(job, lambda ctx: analyze_audio(store, pid, ctx))
 
 
 def surface_track_job(pid: str, sid: str) -> Job:
