@@ -1,6 +1,16 @@
 // Figma-style groups: lines of the same kind (captions, hooks, behind, wall, HUD, in-world) selected and styled together.
-import type {Project,LineMeta} from '../types';
+import type {Project,LineMeta,Placement} from '../types';
 import type {LineInfo} from './Timeline';
+import {lineLookOf,setLineParam} from '../looks';
+
+/** Explicit placement overrides a HUD layout too, so Caption/Behind do what their controls say. */
+export function setTextRole(p:Project,lineIds:string[],placement:Placement):Project{
+  const ids=new Set(lineIds);let q=p;
+  if(placement!=='anchor')q=setLineParam(q,lineIds.filter(id=>lineLookOf(q,id)?.layout==='hud'),'layout','line');
+  return {...q,words:q.words.map(w=>!ids.has(w.lineId)?w:{...w,placement,
+    ...(placement==='anchor'?{preset:'hud' as const,anchor:w.anchor||{trackId:'person0',dx:0,dy:-.1}}:w.preset==='hud'?{preset:'pop' as const}:{}),
+    ...(placement==='surface'?{surfaceId:w.surfaceId||q.surfaces?.[0]?.id}:{})})};
+}
 
 export type GroupId = 'captions'|'hooks'|'behind'|'wall'|'hud'|'inworld';
 export const GROUPS:{id:GroupId;label:string}[] = [

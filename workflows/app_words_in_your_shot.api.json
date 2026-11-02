@@ -32,7 +32,7 @@
       "refine_foreground": false,
       "unload_model": true,
       "background": "Alpha",
-      "background_color": "#000000"
+      "background_color": "#222222"
     },
     "_meta": {
       "title": "subject matte"
@@ -124,33 +124,29 @@
       "hooks": "preset",
       "sample": "LOUDER",
       "drips": -1.0,
-      "light": -1.0
+      "light": -1.0,
+      "fill": "preset",
+      "cell": -1.0,
+      "backing": -1.0,
+      "dots": "preset",
+      "dot": -1.0,
+      "gap": -1.0
     },
     "_meta": {
       "title": "look"
     }
   },
   "8": {
-    "class_type": "TypesetGrade",
+    "class_type": "TypesetGradeSettings",
     "inputs": {
-      "images": [
-        "2",
-        0
-      ],
       "grade": "teal",
       "amount": 0.6,
-      "fps": [
-        "2",
-        2
-      ],
       "tint": "",
       "tint_amount": -1.0,
       "grain": -1.0,
       "halation": -1.0,
       "contrast": -1.0,
-      "flash": -1.0,
-      "beats_json": "",
-      "seed": 0
+      "flash": -1.0
     },
     "_meta": {
       "title": "grade"
@@ -193,7 +189,7 @@
       "height": 0.42,
       "grade_json": [
         "8",
-        1
+        0
       ],
       "renderer": "auto"
     },

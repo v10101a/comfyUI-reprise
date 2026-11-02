@@ -82,6 +82,13 @@ def main():
             page.evaluate('async()=>{await import("/src/main.tsx");}')
             page.wait_for_selector('.tl-ruler', timeout=30000)
             page.wait_for_timeout(6000)
+            # The timeline mounts before the media decoders finish. Under concurrent render load six seconds
+            # can still be too early; never count initial loading/first thumbnails as a scrub measurement.
+            page.wait_for_function('window.perfAudit.renders.some(r=>r.stage)', timeout=60000)
+            page.wait_for_function('''() => {
+                const cards=[...document.querySelectorAll('.look-card')];
+                return cards.length>0 && cards.every(c=>c.querySelector('img')?.complete);
+            }''', timeout=60000)
             start_data = page.evaluate('window.perfAudit')
             steps = []
             for kind, selector in [('scrub', '.tl-ruler'), ('line_drag', '.tl-region')]:

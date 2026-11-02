@@ -1,12 +1,47 @@
-data/
-outputs/
+# Local projects, renders, documentation and research (preserve on disk).
+/data/
+/outputs/
+/docs/
+/research/
+
+# Dependencies and Python build/test caches.
 node_modules/
 .venv/
+venv/
 __pycache__/
-*.part
-.DS_Store
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+*.tsbuildinfo
 
-# agent verification frames (regenerable)
-apps/web/.verify/
-apps/web/dist/
+# Local configuration and credentials; example environment files may be shared.
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+.claude/settings.local.json
+
+# Downloaded model weights. Keep the small, licensed detector used by the app.
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.onnx
+!/server/models/face_detection_yunet_2023mar.onnx
+
+# Temporary files, logs and OS metadata.
+*.part
+*.tmp
 *.log
+*.pid
+.DS_Store
+._*
+Thumbs.db

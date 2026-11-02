@@ -1,0 +1,51 @@
+.reference-board{position:absolute;inset:48px 0 0;z-index:18;display:flex;flex-direction:column;background:var(--bg);outline:none}
+.rb-toolbar{height:58px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid var(--ln2);background:var(--p1)}
+.rb-toolbar>div:first-child{display:flex;flex-direction:column;gap:2px;margin-right:12px}.rb-toolbar>div:first-child>b{font:500 20px var(--serif)}
+.rb-toolbar>div:first-child>span,.rb-assets>div>span{font-size:11px;color:var(--mut)}
+.rb-zoom{display:flex;align-items:center;gap:4px;margin-left:auto}.rb-zoom>span{font:11px var(--mono);min-width:38px;text-align:center}
+.rb-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 280px}
+.rb-space{display:flex;flex-direction:column;min-width:0;min-height:0}
+.rb-viewport{position:relative;flex:1;min-height:0;overflow:hidden;outline:none;background-color:var(--bg);background-image:radial-gradient(circle,var(--bd) 1px,transparent 1px);touch-action:none;cursor:grab}
+.rb-viewport.panning{cursor:grabbing}.rb-viewport.drop{box-shadow:inset 0 0 0 3px var(--acc)}
+.rb-world{position:absolute;left:0;top:0;transform-origin:0 0}
+.rb-card{position:absolute;display:flex;flex-direction:column;box-sizing:border-box;background:var(--p3);border:1px solid var(--bd);border-radius:9px;box-shadow:var(--shadow);overflow:hidden;outline:none;cursor:default}
+.rb-card.selected{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-mid),var(--shadow)}
+.rb-card-head{height:28px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 10px;border-bottom:1px solid var(--ln);cursor:grab;touch-action:none;user-select:none;background:var(--well)}
+.rb-grip{color:var(--dim)}.rb-role{font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.03em}
+.rb-card-media{flex:1;min-height:0;background:var(--well);overflow:hidden;display:grid;place-items:center}
+.rb-card-media>img,.rb-card-media>video{height:100%;width:100%;object-fit:contain;min-height:0;display:block}
+.rb-card-title{font-size:12px;padding:9px 11px 8px;font-weight:500;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;flex:none}
+.rb-used{font-size:10px;line-height:1.3;color:var(--acc);padding:0 11px 8px;flex:none}
+.rb-card.note .rb-card-title{font:500 20px/1.2 var(--serif);white-space:normal;padding-bottom:0}
+.rb-card-note{font-size:12px;line-height:1.6;white-space:pre-wrap;overflow:auto;margin:8px 12px 12px;color:var(--tx2)}
+.rb-card.group{background:var(--acc-soft);border:1px dashed var(--acc-mid);box-shadow:none;pointer-events:none;border-radius:14px;overflow:visible}
+.rb-card.group .rb-card-head{pointer-events:auto;border:0;border-radius:12px 12px 0 0;background:transparent}
+.rb-card.group .rb-card-title{font:500 24px var(--serif);color:var(--tx2);padding-top:0;pointer-events:none}
+.rb-card.group.selected{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc-mid)}
+.studio .rb-resize{position:absolute;right:2px;bottom:2px;width:16px;height:16px;padding:0;border:0;background:transparent;cursor:nwse-resize;pointer-events:auto;touch-action:none;box-shadow:none;border-radius:0}
+.rb-resize::after{content:'';position:absolute;right:3px;bottom:3px;width:6px;height:6px;border-right:1px solid var(--mut);border-bottom:1px solid var(--mut)}
+.rb-card.role-character .rb-role{color:var(--r-behind)}.rb-card.role-wardrobe .rb-role{color:var(--r-wall)}.rb-card.role-lighting .rb-role{color:var(--warn)}.rb-card.role-motion .rb-role{color:var(--r-hud)}
+.rb-help{position:absolute;bottom:12px;left:16px;pointer-events:none;font-size:10px;color:var(--mut);background:var(--p1);padding:5px 9px;border-radius:6px}
+.rb-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;cursor:default;pointer-events:none}.rb-empty button{pointer-events:auto}
+.rb-empty>span,.rb-intro>span{font-size:42px;color:var(--acc)}.rb-empty h2,.rb-intro h2{font:400 30px/1.15 var(--serif);margin:6px 0}
+.rb-empty p{font-size:13px;line-height:1.8;color:var(--mut);margin:12px 0 18px}.rb-empty small{font-size:10px;color:var(--mut);margin-top:24px}
+.rb-assets{height:130px;flex:none;padding:10px 14px;box-sizing:border-box;background:var(--p1);border-top:1px solid var(--ln2)}
+.rb-assets>div:first-child{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:11px}
+.rb-asset-strip{display:flex;gap:8px;overflow-x:auto;height:80px;padding-bottom:2px}
+.studio .rb-asset-strip>button{width:100px;height:74px;flex:none;display:flex;flex-direction:column;gap:0;overflow:hidden;padding:0;white-space:normal;cursor:grab}
+.rb-asset-strip img,.rb-asset-strip video{width:100%;height:52px;object-fit:contain;background:var(--well)}
+.rb-asset-strip span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;line-height:20px;padding:0 5px;box-sizing:border-box}
+.studio .rb-asset-strip>.rb-asset-add{display:grid;place-items:center;cursor:pointer}
+.rb-inspector{overflow:auto;padding:16px;background:var(--p1);border-left:1px solid var(--ln2);min-height:0;display:flex;flex-direction:column;gap:13px}
+.rb-inspector-head{display:flex;align-items:center;justify-content:space-between;font:500 20px var(--serif)}
+.rb-inspector label{display:flex;flex-direction:column;gap:5px;font-size:11px;color:var(--mut)}
+.rb-inspector input,.rb-inspector select,.rb-inspector textarea{width:100%;min-width:0;box-sizing:border-box;font-size:12px}
+.rb-inspector textarea{resize:vertical;line-height:1.6}.rb-inspector a{font-size:11px}
+.rb-binding{border-top:1px solid var(--ln2);padding-top:14px;display:flex;flex-direction:column;gap:12px}.rb-binding>b{font-size:12px}
+.rb-note,.rb-binding small{font-size:11px;line-height:1.6;color:var(--mut);margin:0}.rb-success{color:var(--ok);font-size:11px;margin:0}
+.rb-error{color:var(--err);font-size:12px;overflow-wrap:anywhere}.rb-error button{float:right}
+.rb-intro{padding-top:20px}.rb-intro h2{font-size:26px}.rb-intro p{font-size:12px;line-height:1.7;color:var(--mut)}
+.studio.board-open>.s-main,.studio.board-open>.tl{visibility:hidden;pointer-events:none}
+.s-actions .workspace-switch{display:flex;gap:2px;margin-right:8px}.s-actions .workspace-switch button{background:transparent;border-color:transparent;color:var(--mut)}
+.s-actions .workspace-switch button.active{color:var(--tx);background:var(--p3);border-color:var(--ln2)}
+@media(max-width:1000px){.rb-toolbar>div:first-child>span{display:none}.rb-toolbar{gap:4px;padding:0 8px}.rb-body{grid-template-columns:minmax(0,1fr) 240px}.rb-toolbar button{font-size:11px;padding:0 6px}}

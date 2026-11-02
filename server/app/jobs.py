@@ -22,7 +22,7 @@ from .store import write_json_atomic
 
 log = logging.getLogger("typeset.jobs")
 
-LANES = {"words": "comfy", "matte": "comfy", "inworld": "comfy", "export": "export",
+LANES = {"words": "comfy", "matte": "comfy", "heads": "cpu", "inworld": "comfy", "workflow": "comfy", "export": "export",
          "surface": "cpu", "reframe": "cpu", "occupancy": "cpu", "beats": "cpu", "flow": "cpu", "voice": "comfy", "audio": "cpu"}
 
 
@@ -67,6 +67,8 @@ class JobManager:
         self._lanes: dict[str, ThreadPoolExecutor] = {
             "comfy": ThreadPoolExecutor(max_workers=1, thread_name_prefix="typeset-comfy"),
             "export": ThreadPoolExecutor(max_workers=1, thread_name_prefix="typeset-export"),
+            # Demo-page clip refreshes (every save of a showcased project) never hold up the user's own export.
+            "showcase": ThreadPoolExecutor(max_workers=1, thread_name_prefix="typeset-showcase"),
             # OpenCV analysis (surface tracking, reframe, occupancy) never waits behind a model job.
             "cpu": ThreadPoolExecutor(max_workers=1, thread_name_prefix="typeset-cpu"),
             # Remote MiniMax shots wait minutes on the 4090; keep local words/matte flowing meanwhile.

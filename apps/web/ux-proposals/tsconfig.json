@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.app.json",
+  "compilerOptions": {"resolveJsonModule": true},
+  "include": ["SceneStudy.tsx", "scene-study-project.json", "../src/vite-env.d.ts"]
+}

@@ -4,6 +4,7 @@ import {cropAt} from './geometry';
 
 /** One frame of occupancy in OUTPUT space: cols×rows, row-major, values 0..1 (fraction covered by the subject). */
 export type Grid = {cols:number;rows:number;data:Float32Array};
+export type SourceMapping={frame:(f:number)=>number|undefined;point:(f:number,x:number,y:number)=>[number,number]};
 
 function decode(b64:string){const s=atob(b64);const out=new Uint8Array(s.length);for(let i=0;i<s.length;i++)out[i]=s.charCodeAt(i);return out;}
 
@@ -14,7 +15,7 @@ function decode(b64:string){const s=atob(b64);const out=new Uint8Array(s.length)
 export class OccupancySource {
   private cache=new Map<number,Grid|undefined>();private raw=new Map<number,Uint8Array>();
   readonly kind:'occupancy'|'tracks'|'none';
-  constructor(private occ:Occupancy|undefined,private tracks:Tracks|undefined,private fps:number,private crop?:CropData,private outPortrait=false){
+  constructor(private occ:Occupancy|undefined,private tracks:Tracks|undefined,private fps:number,private crop?:CropData,private outPortrait=false,private mapping?:SourceMapping){
     this.kind=occ?.frames.length?'occupancy':tracks?.tracks.length?'tracks':'none';
   }
   private sourceAt(frame:number):((x:number,y:number)=>number)|undefined{
@@ -33,11 +34,14 @@ export class OccupancySource {
   }
   at(frame:number):Grid|undefined{
     if(this.cache.has(frame))return this.cache.get(frame);
-    const src=this.sourceAt(frame);let grid:Grid|undefined;
+    const sourceFrame=this.mapping?this.mapping.frame(frame):frame;
+    const src=sourceFrame==null?undefined:this.sourceAt(sourceFrame);let grid:Grid|undefined;
     if(src){
       const cols=this.outPortrait?18:32,rows=this.outPortrait?32:18;const data=new Float32Array(cols*rows);const c=cropAt(this.crop,frame);
       // 3×3 supersample per output cell.
-      for(let r=0;r<rows;r++)for(let k=0;k<cols;k++){let s=0;for(let a=0;a<3;a++)for(let b=0;b<3;b++){const ox=(k+(b+.5)/3)/cols,oy=(r+(a+.5)/3)/rows;s+=c?src(c.x+ox*c.w,c.y+oy*c.h):src(ox,oy);}data[r*cols+k]=s/9;}
+      for(let r=0;r<rows;r++)for(let k=0;k<cols;k++){let s=0;for(let a=0;a<3;a++)for(let b=0;b<3;b++){const ox=(k+(b+.5)/3)/cols,oy=(r+(a+.5)/3)/rows;
+        const [x,y]=this.mapping?this.mapping.point(frame,ox,oy):c?[c.x+ox*c.w,c.y+oy*c.h]:[ox,oy];
+        s+=this.mapping&&(x<0||x>1||y<0||y>1)?0:src(x,y);}data[r*cols+k]=s/9;}
       grid={cols,rows,data};
     }
     if(this.cache.size>400)this.cache.clear();
@@ -71,6 +75,9 @@ export type LinePlacement = {cx:number;cy:number;scale:number;coverage:number;fr
 export type Placed = {box:[number,number,number,number];f0:number;f1:number};
 
 const SAFE_X0=.045,SAFE_Y0=.055;const SCALES=[1,.86,.74,.62,.52];
+// Coverage depends on footage, dimensions and time, not on other text. Keep bounded
+// candidate grids across edits so dragging one line does not rescan every other line.
+const coverageCache=new WeakMap<OccupancySource,Map<string,Float64Array>>();
 
 /**
  * Choose one stable position (box centre, normalized) and scale for each line over its whole span.
@@ -78,6 +85,7 @@ const SAFE_X0=.045,SAFE_Y0=.055;const SCALES=[1,.86,.74,.62,.52];
  * Pure: same requests + same occupancy → same answer.
  */
 export function autoPlace(reqs:LineRequest[],occ:OccupancySource,aspect:number,obstacles:Placed[]=[],safe:[number,number]=[.06,.06]):Map<string,LinePlacement>{
+  let coverage=coverageCache.get(occ);if(!coverage){coverage=new Map();coverageCache.set(occ,coverage);}
   // Title-safe margins on every edge (≥6%, more under a lens warp: see geometry.ts:warpSafeMargins).
   const SAFE_X=Math.max(SAFE_X0,safe[0]),SAFE_Y=Math.max(SAFE_Y0,safe[1]);
   // obstacles: fixed-position text (HUD meta, subtitles, ensembles) that auto-placed lines must also avoid.
@@ -99,10 +107,15 @@ export function autoPlace(reqs:LineRequest[],occ:OccupancySource,aspect:number,o
     let best:{score:number;p:LinePlacement}|undefined;
     for(const scale of scales){
       const w=Math.min(req.w*scale,1-2*SAFE_X),h=req.h*scale;let bestAtScale:{score:number;p:LinePlacement}|undefined;
+      const ck=JSON.stringify([req0.f0,req0.f1,w,h,!!req0.strict,SAFE_X,SAFE_Y]);
+      let grid=coverage!.get(ck);
+      if(grid){coverage!.delete(ck);coverage!.set(ck,grid);}
+      else{grid=new Float64Array(33*33).fill(NaN);coverage!.set(ck,grid);if(coverage!.size>128)coverage!.delete(coverage!.keys().next().value!);}
       for(let j=0;j<=32;j++){const cy=SAFE_Y+h/2+(1-2*SAFE_Y-h)*(j/32);if(h>1-2*SAFE_Y&&j>0)break;
         for(let i=0;i<=32;i++){const cx=SAFE_X+w/2+(1-2*SAFE_X-w)*(i/32);if(w>=1-2*SAFE_X-1e-6&&i>0)break;
           // Coverage of the whole box plus its core (the middle 60%, where glyphs are dense).
-          const c=cov(cx-w/2,cy-h*.38,cx+w/2,cy+h*.38);
+          const k=j*33+i;
+          const c=Number.isNaN(grid[k])?(grid[k]=cov(cx-w/2,cy-h*.38,cx+w/2,cy+h*.38)):grid[k];
           let score=8*Math.max(0,c-req.tolerance)+.6*c;
           if(req.hint)score+=.9*Math.hypot((cx-req.hint.x)*aspect,cy-req.hint.y)/Math.max(1,aspect);
           else score+=.35*Math.min(Math.abs(cy-.80),Math.abs(cy-.2)+.03)+.08*Math.abs(cx-.5);

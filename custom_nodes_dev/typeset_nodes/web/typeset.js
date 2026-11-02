@@ -1,12 +1,15 @@
-// Typeset inside ComfyUI: a sidebar tab (projects, recent footage from this graph) and
-// "open in typeset" on any node that produced a video or a song. The studio itself is at /typeset/.
+// Typeset inside ComfyUI: a sidebar tab (projects, recent footage from this graph, import this graph as a
+// workflow), "open in typeset" on any node that produced a video or a song, and "add to <project>" (the
+// project last opened in the studio) for videos and images. The studio itself is at /typeset/.
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
 const STUDIO = "/typeset/";
 const VIDEO = /\.(mp4|webm|mov|mkv|m4v)$/i;
 const AUDIO = /\.(wav|flac|mp3|m4a|ogg|opus)$/i;
+const IMAGE = /\.(png|jpe?g|webp)$/i;
 const recent = []; // newest first: {filename, subfolder, type, kind, node}
+let current = null; // {projectId, name}: the project open in the studio
 const byNode = new Map(); // node id -> media from its last execution
 let rerender = () => {};
 
@@ -16,7 +19,7 @@ function mediaOf(output) {
     if (!Array.isArray(items)) continue;
     for (const it of items) {
       if (!it || typeof it.filename !== "string") continue;
-      const kind = VIDEO.test(it.filename) ? "video" : AUDIO.test(it.filename) ? "audio" : null;
+      const kind = VIDEO.test(it.filename) ? "video" : AUDIO.test(it.filename) ? "audio" : IMAGE.test(it.filename) ? "image" : null;
       if (kind) out.push({ filename: it.filename, subfolder: it.subfolder || "", type: it.type || "output", kind });
     }
   }
@@ -33,8 +36,42 @@ async function openInTypeset(ref) {
     if (tab) tab.location.href = url; else window.open(url, "_blank");
   } catch (err) {
     tab?.close();
-    app.extensionManager?.toast?.add({ severity: "error", summary: "typeset", detail: String(err.message || err), life: 6000 });
+    toast("error", String(err.message || err), 6000);
   }
+}
+
+const toast = (severity, detail, life = 4000) => app.extensionManager?.toast?.add({ severity, summary: "typeset", detail, life });
+
+async function refreshCurrent() {
+  try { const s = await (await fetch(`${STUDIO}api/session`)).json(); current = s?.projectId ? s : null; } catch { current = null; }
+  return current;
+}
+
+async function post(path, body) {
+  const r = await fetch(`${STUDIO}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const out = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(out.detail || r.statusText);
+  return out;
+}
+
+// Land a Comfy output in the project being edited: an asset plus a layer under the text.
+async function addToProject(ref) {
+  if (!current) return toast("warn", "open a project in the studio first");
+  try {
+    await post(`api/projects/${encodeURIComponent(current.projectId)}/assets`,
+      { comfy: { filename: ref.filename, subfolder: ref.subfolder, type: ref.type }, addLayer: true, source: { node: ref.node } });
+    toast("success", `added to ${current.name || "project"}`);
+  } catch (err) { toast("error", String(err.message || err), 6000); }
+}
+
+// The open graph becomes a Typeset workflow: Comfy's own conversion gives the API form (subgraphs, dynamic widgets).
+async function importGraph() {
+  try {
+    const { output, workflow } = await app.graphToPrompt();
+    const name = app.extensionManager?.workflow?.activeWorkflow?.filename || document.title.replace(/[*\s-]*ComfyUI.*$/, "") || "";
+    const wf = await post("api/workflows", { name, graph: output, ui: workflow, source: "comfy" });
+    toast(wf.missing?.length ? "warn" : "success", wf.missing?.length ? `imported; missing ${wf.missing.join(", ")}` : `imported ${wf.name}`);
+  } catch (err) { toast("error", String(err.message || err), 6000); }
 }
 
 const CSS = `
@@ -51,6 +88,7 @@ const CSS = `
 .ts-side li{display:flex;gap:6px;white-space:nowrap}
 .ts-side li .t{color:#767676}
 .ts-side li .n{overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.ts-side .acts{display:flex;gap:14px}
 .ts-side .empty{color:var(--mut)}
 `;
 
@@ -78,13 +116,18 @@ async function renderSide(root) {
   root.replaceChildren();
   const side = el("div", { className: "ts-side" });
   side.append(el("style", {}, CSS), el("h1", {}, "typeset"), el("div", { className: "sub" }, "words that live in the shot ✦"));
-  side.append(el("a", { className: "open", href: STUDIO, target: "_blank" }, "open studio ↗"));
+  await refreshCurrent();
+  const acts = el("div", { className: "acts" });
+  acts.append(el("a", { className: "open", href: STUDIO + (current ? `#/studio?project=${encodeURIComponent(current.projectId)}` : ""), target: "_blank" }, "open studio ↗"),
+    Object.assign(el("button", { className: "open", title: "use this graph as a typeset workflow" }, "import graph"), { onclick: importGraph }));
+  side.append(acts);
 
   side.append(el("div", { className: "rule" }), el("div", { className: "h" }, "from this graph/"));
   side.append(tree(recent.slice(0, 8), r => [
     el("span", { className: "n", title: r.filename }, r.filename),
-    Object.assign(el("button", {}, "→ typeset"), { onclick: () => openInTypeset(r) }),
-  ]) || el("div", { className: "empty" }, "run a graph that saves a video or a song; it shows up here."));
+    ...(current && r.kind !== "audio" ? [Object.assign(el("button", { title: `add to ${current.name || "the open project"}` }, "+ add"), { onclick: () => addToProject(r) })] : []),
+    ...(r.kind !== "image" ? [Object.assign(el("button", { title: "new project" }, "→ new"), { onclick: () => openInTypeset(r) })] : []),
+  ]) || el("div", { className: "empty" }, "run a graph that saves a video, an image or a song; it shows up here."));
 
   side.append(el("div", { className: "rule" }), el("div", { className: "h" }, "projects/"));
   try {
@@ -104,6 +147,8 @@ app.registerExtension({
     for (const href of ["https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&family=Newsreader:opsz@6..72&display=swap"]) {
       document.head.append(Object.assign(document.createElement("link"), { rel: "stylesheet", href }));
     }
+    refreshCurrent();
+    window.addEventListener("focus", refreshCurrent);
     api.addEventListener("executed", ({ detail }) => {
       const media = mediaOf(detail?.output);
       if (media.length) byNode.set(String(detail.display_node ?? detail.node), media);
@@ -123,7 +168,11 @@ app.registerExtension({
     });
   },
   getNodeMenuItems(node) {
-    const media = byNode.get(String(node.id)) || [];
-    return media.slice(0, 3).map(m => ({ content: `open in typeset${media.length > 1 ? ` · ${m.filename}` : ""}`, callback: () => openInTypeset(m) }));
+    const media = (byNode.get(String(node.id)) || []).slice(0, 3);
+    const tag = m => (media.length > 1 ? ` · ${m.filename}` : "");
+    return [
+      ...media.filter(m => m.kind !== "image").map(m => ({ content: `open in typeset${tag(m)}`, callback: () => openInTypeset(m) })),
+      ...(current ? media.filter(m => m.kind !== "audio").map(m => ({ content: `add to ${current.name || "typeset project"}${tag(m)}`, callback: () => addToProject(m) })) : []),
+    ];
   },
 });

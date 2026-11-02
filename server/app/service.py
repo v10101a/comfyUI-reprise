@@ -5,11 +5,13 @@ are thin adapters over these functions. Errors are `ApiError(status, detail)`.
 """
 from __future__ import annotations
 
+import json
 import re
 import logging
 import threading
 import uuid
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any
 
 from .comfy import runner, remote_runner
@@ -20,7 +22,9 @@ from .media import probe_media, safe_filename, fit_within, encode_preview_proxy,
 from .models import Project, Job, CreateProjectBody, AnalyzeWordsBody, AnalyzeMatteBody, InworldBody, ExportBody, ReframeBody
 from .analysis_v2 import analyze_occupancy, track_surface, reframe_project, analyze_beats, analyze_flow, analyze_voice, analyze_audio
 from .pipeline import analyze_words, analyze_matte, generate_inworld, project_path
-from .store import ProjectStore, ProjectNotFound
+from .matte_source import matte_source
+from .head_tracking import head_sources, analyze_heads
+from .store import ProjectStore, ProjectNotFound, write_json_atomic
 
 log = logging.getLogger(__name__)
 
@@ -50,9 +54,11 @@ def validate_paths(project: Project):
                          project.analysis.occupancy, project.analysis.beats, project.analysis.flow,
                          project.analysis.voice, project.analysis.audio) if p]
     refs += [s.track for s in project.surfaces or [] if s.track]
+    refs += list(project.analysis.headTracks) + list(project.analysis.headTracks.values())
     if project.frame and project.frame.crop:
         refs.append(project.frame.crop)
     refs += [p for shot in project.shots for p in (shot.plate, shot.video) if p]
+    refs += [a.get("path") for a in getattr(project, "assets", None) or [] if isinstance(a, dict) and a.get("path")]
     for ref in refs:
         project_path(store, project.id, ref)
 
@@ -78,7 +84,36 @@ def save_project(pid: str, body: Project) -> Project:
         validate_paths(body)
     except ValueError as exc:
         raise ApiError(400, str(exc)) from exc
-    return store.save(body)
+    with store.lock(pid):
+        current = store.load(pid)
+        # Head tracks belong to immutable source media, independent of trim and edit time.
+        body.analysis.headTracks = {**body.analysis.headTracks, **current.analysis.headTracks}
+        # Analysis can finish in another tab/worker while this editor has an older
+        # copy. A same-footage save must not discard completed server assets.
+        if (body.media.video == current.media.video and body.width == current.width
+                and body.height == current.height and body.fps == current.fps):
+            if body.analysis.matte is None and current.analysis.matte:
+                # Provenance and all three outputs are one result, never mix sources.
+                for key in ("matte", "tracks", "occupancy", "matteSource"):
+                    setattr(body.analysis, key, getattr(current.analysis, key))
+            for key in ("tracks", "occupancy"):
+                if body.analysis.matte == current.analysis.matte and getattr(body.analysis, key) is None and getattr(current.analysis, key):
+                    setattr(body.analysis, key, getattr(current.analysis, key))
+        # The asset bin is additive: assets added on the server (uploads, workflow outputs) since this editor loaded survive.
+        have = {a.get("id") for a in getattr(body, "assets", None) or [] if isinstance(a, dict)}
+        extra = [a for a in getattr(current, "assets", None) or [] if isinstance(a, dict) and a.get("id") not in have]
+        if extra:
+            body.assets = [*(getattr(body, "assets", None) or []), *extra]
+            # ...and so do layers made with them (addLayer), at their stack position when the body's stack allows.
+            new_ids = {a.get("id") for a in extra}
+            cur_layers = getattr(current, "layers", None) or []
+            fresh = [(i, l) for i, l in enumerate(cur_layers) if isinstance(l, dict) and l.get("assetId") in new_ids]
+            if fresh:
+                layers = [dict(l) for l in (getattr(body, "layers", None) or DEFAULT_LAYERS)]
+                for i, l in fresh:
+                    layers.insert(min(i, len(layers)), l)
+                body.layers = layers
+        return store.save(body)
 
 
 
@@ -134,7 +169,8 @@ def upload_media(pid: str, filename: str, kind: str, chunks: Iterable[bytes]):
                 p.fps = min(60., ref.fps or 24.)
                 p.duration = ref.duration
                 # Old mattes/tracks belong to old footage.
-                p.analysis.matte = p.analysis.tracks = None
+                p.analysis.matte = p.analysis.tracks = p.analysis.occupancy = p.analysis.matteSource = None
+                p.analysis.headTracks = {}
                 p.shots = []
             elif not p.media.video:
                 p.duration = ref.duration
@@ -150,6 +186,119 @@ def upload_media(pid: str, filename: str, kind: str, chunks: Iterable[bytes]):
         raise ApiError(400, f"Cannot read uploaded media: {exc}") from exc
 
 
+# ---- asset bin + layer stack (docs/SCHEMA.md §1 assets/layers) -------------------------
+
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+# The implied stack of a project without `layers` (renderer.ts DEFAULT_LAYERS): plate, behind text, subject, front text.
+DEFAULT_LAYERS = [{"id": "plate", "kind": "plate"}, {"id": "text-behind", "kind": "text", "which": "behind"},
+                  {"id": "subject", "kind": "subject"}, {"id": "text-front", "kind": "text", "which": "front"}]
+
+
+def _probe_asset(path: Path, rel: str) -> dict[str, Any]:
+    """{kind, path, width, height[, duration, fps, hasAudio]} for an image or a playable video; ApiError otherwise."""
+    if path.suffix.lower() in IMAGE_EXTS:
+        from PIL import Image
+        try:
+            with Image.open(path) as im:
+                w, h = im.size
+        except Exception:
+            raise ApiError(400, "File is not a readable image") from None
+        return {"kind": "image", "path": rel, "width": w, "height": h}
+    ref = probe_media(path, rel)
+    if ref.duration <= 0 or not ref.width:
+        raise ApiError(400, "File is not playable video or a readable image")
+    return {"kind": "video", "path": rel, "duration": ref.duration, "width": ref.width, "height": ref.height,
+            "fps": ref.fps, "hasAudio": ref.hasAudio}
+
+
+def _comfy_file(ref: dict) -> Path:
+    """A ComfyUI output/input/temp file as /view addresses it ({filename, subfolder, type})."""
+    try:
+        filename, kind = str(ref["filename"]), str(ref.get("type") or "output")
+    except Exception:
+        raise ApiError(422, "comfy needs {filename, subfolder, type}") from None
+    if kind not in ("output", "input", "temp"):
+        raise ApiError(422, "comfy.type must be output, input or temp")
+    try:  # inside ComfyUI (studio_host) its own folders win, including --output-directory
+        import folder_paths
+        base = Path(folder_paths.get_directory_by_type(kind) or "")
+    except Exception:
+        base = settings.comfy_dir / kind
+    base = base.resolve()
+    src = (base / str(ref.get("subfolder") or "") / filename).resolve()
+    if not base.is_dir() or not src.is_relative_to(base) or not src.is_file():
+        raise ApiError(404, f"No such ComfyUI file: {filename}")
+    return src
+
+
+def add_asset(pid: str, filename: str, chunks: Iterable[bytes], source: dict | None = None,
+              add_layer: bool | str = False, name: str | None = None) -> dict[str, Any]:
+    """Store a video/image in the project's asset bin (never replaces media.video). add_layer: true/'under-text' puts a
+    media layer just under the behind-text marker (a new background), 'top' on top of the stack. Returns the Asset
+    (plus `layer` when one was added)."""
+    require_project(pid)
+    aid = "a_" + uuid.uuid4().hex[:10]
+    rel = f"media/{aid}_{safe_filename(filename or 'asset')}"
+    path = project_path(store, pid, rel)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    count = 0
+    try:
+        with path.open("wb") as target:
+            for chunk in chunks:
+                count += len(chunk)
+                if count > 4 * 1024**3:
+                    raise ApiError(413, "Uploads are limited to 4 GiB")
+                target.write(chunk)
+        asset = {"id": aid, **_probe_asset(path, rel), "name": name or Path(filename or rel).stem,
+                 "source": source or {"kind": "upload"}}
+        asset = {k: v for k, v in asset.items() if v is not None}
+        layer = None
+        if add_layer:
+            layer = {"id": "l_" + uuid.uuid4().hex[:10], "kind": "media", "assetId": aid, "name": asset["name"],
+                     "start": 0.0, "in": 0.0}
+
+        def update(p):
+            assets = list(getattr(p, "assets", None) or [])
+            assets.append(asset)
+            p.assets = assets
+            if layer is None:
+                return
+            layer["out"] = round(min(asset.get("duration") or p.duration or 10.0, p.duration or 1e9), 3)
+            layers = [dict(l) for l in (getattr(p, "layers", None) or DEFAULT_LAYERS)]
+            at = len(layers)
+            if add_layer != "top":
+                at = next((i for i, l in enumerate(layers) if l.get("kind") == "text" and l.get("which") == "behind"), at)
+            layers.insert(at, layer)
+            p.layers = layers
+        store.update(pid, update)
+        if asset["kind"] == "video":
+            _make_video_proxy(path, project_path(store, pid, proxy_rel(rel)))
+        return {**asset, "layer": layer} if layer else asset
+    except ApiError:
+        path.unlink(missing_ok=True)
+        raise
+    except Exception as exc:
+        path.unlink(missing_ok=True)
+        raise ApiError(400, f"Cannot read asset: {exc}") from exc
+
+
+def add_comfy_asset(pid: str, comfy: dict, add_layer: bool | str = False, source: dict | None = None,
+                    name: str | None = None) -> dict[str, Any]:
+    """POST /assets with JSON {comfy:{filename,subfolder,type}, addLayer?, source?, name?}: copy a ComfyUI file in."""
+    src = _comfy_file(comfy)
+    prov = {"kind": "comfy", "filename": src.name, "subfolder": comfy.get("subfolder") or "", "type": comfy.get("type") or "output",
+            **(source or {})}
+    with src.open("rb") as fh:
+        return add_asset(pid, src.name, iter(lambda: fh.read(1024 * 1024), b""), prov, add_layer, name)
+
+
+def assets_json(pid: str, data: dict) -> dict[str, Any]:
+    if not isinstance(data, dict) or not isinstance(data.get("comfy"), dict):
+        raise ApiError(422, "Expected multipart file or JSON {comfy:{filename,subfolder,type}}")
+    return add_comfy_asset(pid, data["comfy"], data.get("addLayer") or False,
+                           data.get("source") if isinstance(data.get("source"), dict) else None, data.get("name"))
+
+
 def analyze_words_job(pid: str, body: AnalyzeWordsBody) -> Job:
     project = require_project(pid)
     if not (project.media.audio or project.media.video):
@@ -160,10 +309,26 @@ def analyze_words_job(pid: str, body: AnalyzeWordsBody) -> Job:
 
 def analyze_matte_job(pid: str, body: AnalyzeMatteBody) -> Job:
     project = require_project(pid)
-    if not project.media.video:
-        raise ApiError(400, "Upload video first")
-    job = jobs.create("matte", pid)
-    return jobs.submit(job, lambda ctx: analyze_matte(store, pid, ctx))
+    try:
+        source = matte_source(project, body.layerId)
+        if not project_path(store, pid, source["path"]).is_file():
+            raise ValueError("The selected matte source file is missing")
+    except (ValueError, TypeError) as exc:
+        raise ApiError(400, str(exc)) from exc
+    job = jobs.create("matte", pid, "Preparing subject matte")
+    job.layerId = body.layerId
+    return jobs.submit(job, lambda ctx: analyze_matte(store, pid, ctx, source=source))
+
+
+def analyze_heads_job(pid: str) -> Job:
+    sources = head_sources(require_project(pid))
+    if not sources:
+        raise ApiError(400, 'Add footage to the timeline first')
+    for source in sources:
+        if not project_path(store, pid, source['path']).is_file():
+            raise ApiError(400, 'A head tracking source file is missing')
+    job = jobs.create('heads', pid, 'Tracking heads')
+    return jobs.submit(job, lambda ctx: analyze_heads(store, pid, ctx, sources))
 
 
 def inworld_job(pid: str, body: InworldBody) -> Job:
@@ -275,6 +440,40 @@ def get_job(job_id: str) -> Job:
 
 def list_jobs(project_id: str | None = None) -> list[Job]:
     return jobs.list(project_id)
+
+
+# ---- saved looks (named look recipes, shared by every project) --------------------
+# A recipe is a look ref only ({id, overrides}): never the song, placement or references.
+# Seeded with Dreamy (a hidden preset) and the featured angel recipe so they stay recoverable.
+_SEED_LOOKS = [
+    {"id": "dreamy", "name": "Dreamy", "ref": {"id": "dreamy", "overrides": {"verse": {"max": 0.09, "keepPosition": True}}}},
+]
+
+
+def _saved_looks_path():
+    return settings.data_dir / "looks" / "saved.json"
+
+
+def saved_looks() -> list[dict[str, Any]]:
+    path = _saved_looks_path()
+    if not path.exists():
+        seed = list(_SEED_LOOKS)
+        angel = settings.projects_dir / "b678f509-ca77-4423-a0a6-739869cb0030" / "project.json"
+        if angel.exists():
+            look = json.loads(angel.read_text()).get("look")
+            if look:
+                seed.append({"id": "angel", "name": "Angel", "ref": look})
+        return seed
+    return json.loads(path.read_text())
+
+
+def set_saved_looks(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not isinstance(items, list) or not all(isinstance(x, dict) and x.get("id") and x.get("name") and isinstance(x.get("ref"), dict) for x in items):
+        raise ApiError(422, "expected [{id, name, ref:{id, overrides}}]")
+    path = _saved_looks_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_json_atomic(path, items)
+    return items
 
 
 def shutdown() -> None:

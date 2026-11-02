@@ -101,7 +101,9 @@ class Media(Base):
 class Analysis(Base):
     words: Optional[str] = None
     matte: Optional[str] = None
+    matteSource: Optional[dict] = None  # layer/take + source-local time range; absent = legacy footage
     tracks: Optional[str] = None
+    headTracks: dict[str, str] = Field(default_factory=dict)  # media source path -> source-time head tracks JSON
     depth: Optional[str] = None
     occupancy: Optional[str] = None      # v2 §B: "analysis/occupancy.json"
     beats: Optional[str] = None          # "analysis/beats.json" (TypesetBeatGrid)
@@ -156,7 +158,7 @@ class Project(Base):
 
 # ---- §4 Job ----------------------------------------------------------------------
 
-JobKind = Literal["words", "matte", "inworld", "export", "surface", "reframe", "occupancy", "beats", "flow", "voice", "audio", "showcase"]
+JobKind = Literal["words", "matte", "heads", "inworld", "export", "surface", "reframe", "occupancy", "beats", "flow", "voice", "audio", "showcase", "workflow"]
 JobStatus = Literal["queued", "running", "done", "failed"]
 
 
@@ -184,7 +186,7 @@ class AnalyzeWordsBody(Base):
 
 
 class AnalyzeMatteBody(Base):
-    pass
+    layerId: Optional[str] = Field(default=None, min_length=1, max_length=100)
 
 
 class InworldBody(Base):
@@ -196,6 +198,7 @@ class InworldBody(Base):
     editModel: Literal["qwen", "klein", "none"] = "qwen"
     text: Optional[str] = None           # word(s) to write; default = selected words joined
     motionPrompt: Optional[str] = None   # remote-minimax: camera/subject motion for the i2v prompt
+    seed: Optional[int] = Field(default=None, ge=0, le=2147483647)
     # remote-minimax only. Generation size: long edge in px (default TYPESET_MINIMAX_LONG_EDGE = 736);
     # 1344 gives 1344×768 for 16:9, the size of the hero shots. The local edit stays ≤ 1024.
     longEdge: Optional[int] = Field(default=None, ge=256, le=1344)
@@ -251,3 +254,5 @@ class ExportBody(Base):
     formats: list[ExportFormat] = Field(default_factory=lambda: ["mp4", "mov", "webm"])
     # Frames the studio rendered itself (browser capture, no Playwright): a session from POST .../export/frames.
     frames: Optional[str] = Field(default=None, pattern=r"^[a-f0-9]{12}$")
+    # Render at n × the project size (2 = 2160×2560 for a 1080×1280 project): type stays sharp, footage upscales.
+    scale: float = Field(default=1.0, ge=1.0, le=4.0)

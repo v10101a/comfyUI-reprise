@@ -26,8 +26,10 @@ const P:Record<string,React.ReactNode>={
   unlink:<path d="M15.5 13.5 18.7 11a4 4 0 0 0-5.7-5.7l-1.6 1.6M8.5 10.5 5.3 13a4 4 0 0 0 5.7 5.7l1.6-1.6M4 4l16 16"/>,
   rail:<><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></>,
   pipeline:<><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="12" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8.5 6.5 15.5 11M8.5 17.5l7-4.5"/></>,
+  layers:<path d="m12 3 9 5-9 5-9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/>,
   media:<><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M8 5v4M16 5v4M10 12.5v4l3.5-2Z"/></>,
   wallNew:<><path d="M3 6.5 14 4.3v15.4L3 17.5Z"/><path d="M19 8v6M16 11h6"/></>,
+  key:<path d="M12 4 20 12 12 20 4 12Z"/>,keyPrev:<path d="M15 6l-6 6 6 6"/>,keyNext:<path d="M9 6l6 6-6 6"/>,
   redraw:<path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/>,track:<><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></>,
   trash:<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>,
   // missing inputs: person with a slash (no person track), a cut-out silhouette with a slash (no subject matte)

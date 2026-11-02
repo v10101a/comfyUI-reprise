@@ -2,27 +2,39 @@
 import {useEffect,useState} from 'react';
 import type {Project} from '../types';
 import {at} from '../base';
+import {layersOf} from '../layers';
 import {STEPS,stepStatus,type JobRecord,type StepDef,type StepId} from './pipeline';
 
 type Health = {comfyui?:boolean;comfyuiVersion?:string;comfyuiUrl?:string;proxy?:boolean;generationTarget?:string};
 const fmtS=(s?:number)=>s==null?'':s>=60?`${Math.floor(s/60)}m ${Math.round(s%60)}s`:s>=10?`${s.toFixed(0)} s`:`${s.toFixed(1)} s`;
 
-export function PipelinePanel({project,jobs,occKind,hasBeats,beatsNote,comparing,busy,onRun,onOpenWorkflow}:{
+export function PipelinePanel({project,jobs,occKind,hasBeats,beatsNote,comparing,busy,onRun,onOpenWorkflow,matteLayerId,onMatteLayer}:{
   project:Project;jobs:Map<string,JobRecord>;occKind?:string;hasBeats:boolean;beatsNote?:string;comparing:boolean;busy:boolean;
+  matteLayerId:string;onMatteLayer:(id:string)=>void;
   onRun:(id:StepId)=>void;onOpenWorkflow:(step:StepDef)=>void;
 }){
   const [health,setHealth]=useState<Health|null>(null);
   useEffect(()=>{let live=true;const get=()=>fetch('/api/health').then(r=>r.ok?r.json():null).then(h=>{if(live)setHealth(h);}).catch(()=>{if(live)setHealth(null);});get();const t=setInterval(get,15000);return()=>{live=false;clearInterval(t);};},[]);
-  const statuses=STEPS.map(s=>({def:s,st:stepStatus(s,project,jobs,{occKind,hasBeats,beatsNote,comparing})}));
+  const statuses=STEPS.map(s=>({def:s,st:stepStatus(s,project,jobs,{occKind,hasBeats,beatsNote,comparing,matteLayerId})}));
+  const sources=layersOf(project).filter(l=>l.kind==='media');
+  const hasSource=matteLayerId?sources.some(l=>l.id===matteLayerId):!!project.media.video;
+  const activeSource=project.analysis.matteSource?.layerId;
+  const activeName=activeSource?sources.find(l=>l.id===activeSource)?.name||'Visual layer':'Original footage';
   const comfyDone=statuses.filter(x=>x.def.engine==='comfy'&&x.st.state==='done').length;
   const comfySecs=statuses.filter(x=>x.def.engine==='comfy'&&x.st.state==='done').reduce((n,x)=>n+(x.st.seconds||0),0);
   const runnable:Partial<Record<StepId,string>>={words:'listen',matte:'cut out the subject',occupancy:'map the space',beats:'find the beat',audio:'feel the low end',voice:'follow the singer'};
   const meta=health?.comfyui?`${health.comfyuiVersion?`v${health.comfyuiVersion} · `:''}${(health.comfyuiUrl||'').replace(/^https?:\/\//,'')} · ${health.generationTarget==='remote'?'remote gen':'local'} · ${comfyDone} ran${comfySecs?` · ${fmtS(comfySecs)}`:''}`:health?'comfyui not reachable':'server offline · npm run dev';
   return <div className="pipeline">
     <div className={`comfy-head ${health?.comfyui?'up':'down'}`} title={meta}>
-      <div className="comfy-mark"><i/>ComfyUI<span className="comfy-count">{comfyDone}/{STEPS.length}</span></div>
+      <div className="comfy-mark"><i/>ComfyUI<span className="comfy-count" title="Optional tools: run only what your scene needs">{comfyDone} ready</span></div>
       {!health?.comfyui&&<div className="comfy-meta">{health?'Not reachable':'Offline'}</div>}
     </div>
+    <div className="pipeline-source"><label>Subject source<select aria-label="Matte source layer" value={matteLayerId} disabled={busy} onChange={e=>onMatteLayer(e.target.value)}>
+      <option value="">{project.media.video?'Original footage':'Choose a visual layer'}</option>
+      {sources.map(l=><option key={l.id} value={l.id}>{l.name||project.assets?.find(a=>a.id===(l.kind==='media'?l.assetId:''))?.name||'Visual layer'}</option>)}
+    </select></label><small>Extract this layer’s person for Behind text and subject masks.</small>
+    {project.analysis.matte&&(activeSource||'')!==matteLayerId&&<small>Current scene matte: {activeName}. Run Subject matte to replace it.</small>}
+    {project.analysis.matteSource&&!sources.some(l=>l.id===project.analysis.matteSource?.layerId)&&<small>The previous matte’s layer was removed. Choose a source and run again.</small>}</div>
     <ol className="steps">
       {statuses.map(({def,st})=><li key={def.id} className={`step st-${st.state} eng-${def.engine}`} title={[def.model,`${st.path}${st.engineNote?` · ${st.engineNote}`:''}`,def.nodes.join(' → ')].filter(Boolean).join('\n')}>
                 <div className="step-body">
@@ -30,10 +42,11 @@ export function PipelinePanel({project,jobs,occKind,hasBeats,beatsNote,comparing
             {st.seconds!=null&&st.state!=='running'&&<span className="step-time">{fmtS(st.seconds)}</span>}
             <span className="step-actions">
               {def.workflow&&<button className="link" onClick={()=>onOpenWorkflow(def)} title="workflow graph">Graph</button>}
-              {runnable[def.id]&&project.id!=='sample'&&<button className="link" disabled={busy} onClick={()=>onRun(def.id)} title={runnable[def.id]}>{st.state==='done'?'↺':'Run'}</button>}
+              {runnable[def.id]&&project.id!=='sample'&&<button className="link" aria-label={`Run ${def.title}`} disabled={busy||def.id==='matte'&&!hasSource} onClick={()=>onRun(def.id)} title={def.id==='matte'&&!hasSource?'Choose a visual layer first':runnable[def.id]}>{st.state==='done'?'↺':'Run'}</button>}
             </span></div>
           {st.state==='running'&&<div className="step-progress"><i style={{width:`${Math.round((st.progress||0)*100)}%`}}/></div>}
-          {st.state==='failed'&&st.message&&<div className="step-err" title={st.message}>failed</div>}
+          {st.state==='failed'&&st.message&&<div className="step-err" title={st.message}>{st.message}</div>}
+          {def.id==='matte'&&st.state==='idle'&&project.analysis.matte&&<div className="comfy-meta">{st.engineNote}</div>}
         </div>
       </li>)}
     </ol>

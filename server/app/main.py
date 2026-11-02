@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import service, showcase
+from . import service, showcase, workflows
 from .config import settings
 from .models import Project, CreateProjectBody, AnalyzeWordsBody, AnalyzeMatteBody, InworldBody, ExportBody, ReframeBody
 from .service import ApiError, store, jobs  # noqa: F401  (tests import store from here)
@@ -37,9 +37,24 @@ async def api_error(request, exc: ApiError):
     return JSONResponse(status_code=exc.status, content={"detail": exc.detail})
 
 
+@app.exception_handler(workflows.WorkflowApiError)
+async def workflow_error(request, exc: workflows.WorkflowApiError):
+    return JSONResponse(status_code=exc.status, content={"detail": exc.detail})
+
+
 @app.get("/api/health")
 def health():
     return service.health()
+
+
+@app.get("/api/looks/saved")
+def saved_looks():
+    return service.saved_looks()
+
+
+@app.put("/api/looks/saved")
+async def set_saved_looks(request: Request):
+    return service.set_saved_looks(await request.json())
 
 
 @app.post("/api/projects", response_model=Project)
@@ -70,6 +85,32 @@ def upload_media(pid: str, file: UploadFile = File(...), kind: Literal["video", 
         file.file.close()
 
 
+def _add_layer_flag(raw) -> bool | str:
+    v = (str(raw).strip().lower() if raw is not None else "")
+    return "top" if v == "top" else v in ("1", "true", "yes", "under-text")
+
+
+@app.post("/api/projects/{pid}/assets")
+async def add_asset(pid: str, request: Request):
+    """Asset bin: multipart (file, addLayer?, name?) or JSON {comfy:{filename,subfolder,type}, addLayer?, source?, name?}."""
+    from starlette.concurrency import run_in_threadpool
+    if request.headers.get("content-type", "").startswith("multipart/"):
+        form = await request.form()
+        file = form.get("file")
+        if file is None or not hasattr(file, "file"):
+            raise ApiError(422, "file is required")
+        try:
+            return await run_in_threadpool(service.add_asset, pid, file.filename or "asset", iter(lambda: file.file.read(1024 * 1024), b""),
+                                           None, _add_layer_flag(form.get("addLayer")), form.get("name") or None)
+        finally:
+            await file.close()
+    try:
+        data = await request.json()
+    except Exception:
+        raise ApiError(422, "Expected multipart file or JSON {comfy:{...}}") from None
+    return await run_in_threadpool(service.assets_json, pid, data)
+
+
 @app.post("/api/projects/{pid}/analyze/words")
 def words(pid: str, body: AnalyzeWordsBody):
     return service.analyze_words_job(pid, body)
@@ -78,6 +119,11 @@ def words(pid: str, body: AnalyzeWordsBody):
 @app.post("/api/projects/{pid}/analyze/matte")
 def matte(pid: str, body: AnalyzeMatteBody):
     return service.analyze_matte_job(pid, body)
+
+
+@app.post("/api/projects/{pid}/analyze/heads")
+def heads(pid: str):
+    return service.analyze_heads_job(pid)
 
 
 @app.post("/api/projects/{pid}/generate/inworld")
@@ -158,6 +204,49 @@ def get_job(job_id: str):
 @app.get("/api/jobs")
 def list_jobs(projectId: str | None = None):
     return service.list_jobs(projectId)
+
+
+# ---- bring-your-own Comfy workflows (workflows.py) + the project ComfyUI's "add to" targets ----
+
+@app.get("/api/workflows")
+def list_workflows():
+    return workflows.list_workflows()
+
+
+@app.post("/api/workflows")
+def import_workflow(body: dict):
+    return workflows.import_workflow(body)
+
+
+@app.get("/api/workflows/{wid}")
+def get_workflow(wid: str):
+    return workflows.get_workflow(wid)
+
+
+@app.put("/api/workflows/{wid}")
+def update_workflow(wid: str, body: dict):
+    return workflows.update_workflow(wid, body)
+
+
+@app.post("/api/workflows/{wid}/delete")
+def delete_workflow(wid: str):
+    return workflows.delete_workflow(wid)
+
+
+@app.post("/api/projects/{pid}/workflows/{wid}/run")
+def run_workflow(pid: str, wid: str, body: dict):
+    return workflows.run_job(service, pid, wid, body)
+
+
+@app.get("/api/session")
+def get_session():
+    return workflows.current_project()
+
+
+@app.put("/api/session")
+def set_session(data: dict):
+    project = service.require_project(str(data.get("projectId") or ""))
+    return workflows.set_current_project(project.id, project.name)
 
 
 app.mount("/files/projects", StaticFiles(directory=settings.projects_dir), name="project-files")

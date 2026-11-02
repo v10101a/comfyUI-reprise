@@ -1,4 +1,7 @@
-node_modules/
-dist/
-.smoke/
-*.tsbuildinfo
+# Vite output and local browser-verification artifacts.
+/dist/
+/.vite/
+/.verify/
+/.smoke/
+/playwright-report/
+/test-results/

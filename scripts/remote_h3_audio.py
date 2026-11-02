@@ -14,6 +14,7 @@ Waits until the shared remote queue is empty before submitting (one job at a tim
 face.png, clip.wav (what the model heard), the raw remote mp4, <name>_mux.mp4 (picture + original audio), workflow/history.
 """
 import argparse
+import hashlib
 import json
 import subprocess
 import time
@@ -34,7 +35,8 @@ def snap_length(n: int) -> int:
 
 
 def prep_image(src: Path, dest: Path, w: int, h: int, crop: list[int] | None) -> None:
-    im = Image.open(src).convert("RGB")
+    from PIL import ImageOps
+    im = ImageOps.exif_transpose(Image.open(src)).convert("RGB")  # phone photos: honour the EXIF rotation
     if crop:
         x, y, cw, ch = crop
         im = im.crop((x, y, x + cw, y + ch))
@@ -78,7 +80,9 @@ def wait_for_idle(base: str, poll: float = 3, max_wait: float = 7200) -> None:
 
 
 def build(mode: str, prompt: str, w: int, h: int, length: int, seed: int, face: str, audio: str, prefix: str,
-          ref_first_frame: bool, steps: int, turbo: bool = True, scheduler: str = "simple") -> dict:
+          ref_first_frame: bool, steps: int, turbo: bool = True, scheduler: str = "simple", ref: str | None = None) -> dict:
+    """ref: ref mode only — a separate identity reference (<Picture 1>, e.g. the real photo) while `face` only pins
+    frame 0 (the scene). Without it the one image plays both roles, as before."""
     g = json.loads(GRAPH.read_text())
     g["5"]["inputs"]["image"] = face
     g["16"]["inputs"]["audio"] = audio
@@ -93,10 +97,14 @@ def build(mode: str, prompt: str, w: int, h: int, length: int, seed: int, face: 
     if mode == "guide":
         g["6"]["inputs"].update({"prompt": prompt, "width": w, "height": h, "length": length})
     else:
+        ref_node = "5"
+        if ref:
+            g["18"] = {"class_type": "LoadImage", "inputs": {"image": ref}}
+            ref_node = "18"
         g["6"] = {"class_type": "MiniMaxH3ReferenceToVideo", "inputs": {
             "clip": ["3", 0], "vae": ["4", 0], "audio_vae": ["13", 0], "prompt": prompt, "width": w, "height": h,
-            "length": length, "ref_image_size": "match",
-            "ref_images.ref_image_1": ["5", 0], "ref_audios.ref_audio_1": ["16", 0]}}
+            "length": length, "ref_image_size": "max" if ref else "match",
+            "ref_images.ref_image_1": [ref_node, 0], "ref_audios.ref_audio_1": ["16", 0]}}
         if ref_first_frame:
             g["17"]["inputs"] = {"positive": ["6", 0], "latent": ["6", 1], "frame_idx": 0, "vae": ["4", 0], "image": ["5", 0]}
         else:
@@ -117,6 +125,7 @@ def main() -> None:
     p.add_argument("--mux-audio", type=Path, help="audio laid over the result (same window); default --audio")
     p.add_argument("--mode", choices=["guide", "ref"], default="guide")
     p.add_argument("--ref-first-frame", action="store_true", help="ref mode: also pin the image at frame 0")
+    p.add_argument("--ref", type=Path, help="ref mode: identity reference image (<Picture 1>, the real photo); --image then only pins frame 0")
     p.add_argument("--width", type=int, default=640)
     p.add_argument("--height", type=int, default=896)
     p.add_argument("--length", type=int, default=124)
@@ -137,10 +146,22 @@ def main() -> None:
     cut_audio(a.mux_audio or a.audio, a.start, dur, out / "mux.wav")
 
     wait_for_idle(a.base)
-    face = upload_image(a.base, out / "face.png", "typeset/h3_audio")
+    # Queued graphs load their image when they execute. A shared face.png can be
+    # overwritten by another worker before then, so address inputs by content.
+    face_bytes = (out / "face.png").read_bytes()
+    face_hash = hashlib.sha256(face_bytes).hexdigest()
+    upload_face = out / f"face_{face_hash}.png"
+    upload_face.write_bytes(face_bytes)
+    face = upload_image(a.base, upload_face, "typeset/h3_audio")
     aud = upload_audio(a.base, out / "clip.wav", f"typeset_h3a_{a.name}.wav")
+    ref = None
+    if a.ref:
+        ref_bytes = a.ref.read_bytes()
+        ref_local = out / f"ref_{hashlib.sha256(ref_bytes).hexdigest()}.png"
+        ref_local.write_bytes(ref_bytes)
+        ref = upload_image(a.base, ref_local, "typeset/h3_audio")
     g = build(a.mode, a.prompt, a.width, a.height, length, a.seed, face, aud, f"h3_audio/{a.name}",
-              a.ref_first_frame, a.steps, not a.no_turbo, a.scheduler)
+              a.ref_first_frame, a.steps, not a.no_turbo, a.scheduler, ref)
     res = run(a.base, g, out, a.timeout)
     raw = next(f for f in res["files"] if f.endswith(".mp4"))
     mux = out / f"{a.name}_mux.mp4"
@@ -148,7 +169,8 @@ def main() -> None:
                     "-c:v", "copy", "-c:a", "aac", "-b:a", "256k", "-shortest", str(mux)], check=True)
     meta = {**res, "mode": a.mode, "audio": str(a.audio), "start": a.start, "duration": dur, "length": length,
             "size": [a.width, a.height], "seed": a.seed, "steps": a.steps, "turbo": not a.no_turbo, "scheduler": a.scheduler, "prompt": a.prompt,
-            "remote_inputs": [face, aud], "mux": str(mux)}
+            "source_image": str(a.image), "source_crop": a.crop, "face_sha256": face_hash, "ref_image": str(a.ref) if a.ref else None,
+            "remote_inputs": [face, aud] + ([ref] if ref else []), "mux": str(mux)}
     (out / "run.json").write_text(json.dumps(meta, indent=2))
     print(f"[{a.name}] -> {mux}")
 

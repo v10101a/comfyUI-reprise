@@ -146,4 +146,4 @@ def refresh_job(store: ProjectStore, jobs: JobManager, pid: str) -> Job | None:
             raise
         ctx.progress(1, "showcase ready")
         return {**result, "passes": n}
-    return jobs.submit(job, run, lane="export")
+    return jobs.submit(job, run, lane="showcase")

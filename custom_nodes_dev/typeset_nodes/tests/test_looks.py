@@ -66,6 +66,17 @@ class LookTests(unittest.TestCase):
 
 
 class GradeTests(unittest.TestCase):
+    def test_settings_match_grade_without_touching_frames(self):
+        from unittest.mock import patch
+        for grade in looks.GRADE_IDS():
+            params = {"grade": grade, "amount": .7, "tint": "#ff77aa", "grain": .1, "halation": .4}
+            with patch.object(looks, "grade_frames", side_effect=AssertionError("settings must not process images")):
+                actual = json.loads(looks.TypesetGradeSettings().run(**params)[0])
+            self.assertEqual(actual, looks.TypesetGrade.ref(**params))
+        schema = looks.TypesetGradeSettings.INPUT_TYPES()["required"]
+        self.assertNotIn("images", schema)
+        self.assertNotIn("fps", schema)
+
     def frames(self):
         rng = np.random.default_rng(1)
         return rng.random((3, 32, 48, 3), dtype=np.float32)

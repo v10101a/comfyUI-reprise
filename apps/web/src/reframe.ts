@@ -13,7 +13,9 @@ export function reframeProject(src:Project,aspect:Aspect,tracks:Tracks|undefined
   const [W,H]=reframeSize(src.width,src.height,aspect);const frames=Math.round(src.duration*src.fps);
   const c=crop||cropFromTracks(tracks,frames,src.width,src.height,aspect,src.fps);
   const cw=c.frames[0]?.w||1,ch=c.frames[0]?.h||1;
-  src=surfacesToTitles(src,c);
+  const lineMeta={...src.lineMeta};
+  for(const id of new Set(src.words.map(w=>w.lineId)))lineMeta[id]={...lineMeta[id],subtitle:isSubtitleLine(src,id)};
+  src=surfacesToTitles({...src,lineMeta},c);
   const ctx=document.createElement('canvas').getContext('2d')!;
   // Width of each line in output pixels if font fractions were kept (font sizes are fractions of height).
   const scaleByLine=new Map<string,number>();

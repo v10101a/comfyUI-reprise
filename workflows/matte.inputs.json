@@ -1,6 +1,6 @@
 {
   "workflow": "matte.api.json",
-  "description": "BiRefNet (general) RGBA cutouts, enclosed holes filled (TypesetMatteRefine), and mask-derived subject anchor. Caller MUST normalize video to project dimensions and supplied fps before submission. Long clips: the server runs this once per chunk (frame_offset, raw=true, unload_model only on the last chunk) and merges tracks with core_vision.merge_track_chunks.",
+  "description": "BiRefNet (general) RGBA cutouts, enclosed holes filled (TypesetMatteRefine), and mask-derived subject anchor. Caller normalizes to supplied fps and extraction dimensions: project dimensions for legacy footage, native aspect for a selected layer (analysis.matteSource maps local pixels/time in the renderer). Long clips run once per chunk (frame_offset, raw=true, unload_model only on the last chunk), with tracks merged by core_vision.merge_track_chunks.",
   "inputs": {
     "video": {
       "node": "1",

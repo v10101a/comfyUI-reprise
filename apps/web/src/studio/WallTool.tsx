@@ -52,12 +52,21 @@ export function WallBar({corners,editing,busy,onRedraw,onDelete,onCancel,onPlace
   </div>;
 }
 
-/** Track status + re-track, redraw, delete for one wall (stage bar and line panel). */
-export function WallButtons({surface,running,busy,onTrack,onRedraw,onDelete,fallback}:{surface:Surface;running:boolean;busy:boolean;
-  onTrack:()=>void;onRedraw:()=>void;onDelete:()=>void;fallback:Placement}){
+/** Keyframe controls for one wall: at = a key on this frame; prev/next = jump targets. */
+export type WallKeyProps={at:boolean;keyed:boolean;onKey:()=>void;onPrev?:()=>void;onNext?:()=>void};
+/** Track status + re-track, keyframes, redraw, delete for one wall (stage bar and line panel). */
+export function WallButtons({surface,running,busy,onTrack,onRedraw,onDelete,fallback,keys}:{surface:Surface;running:boolean;busy:boolean;
+  onTrack:()=>void;onRedraw:()=>void;onDelete:()=>void;fallback:Placement;keys?:WallKeyProps}){
   const st=wallStatus(surface,running);
   return <>
-    <button className={`icon-sm wall-track st-${st}`} disabled={busy||st==='tracking'} onClick={onTrack} aria-label={`Wall ${st}: track`} title={WALL_STATUS_TITLE[st]}><Icon name="track" size={14}/><i className="wt-dot"/></button>
+    {keys&&<>
+      {keys.keyed&&<button className="icon-sm" disabled={!keys.onPrev} onClick={keys.onPrev} aria-label="Previous wall key" title="Previous key"><Icon name="keyPrev" size={14}/></button>}
+      <button className={`icon-sm wall-key ${keys.at?'on':''}`} onClick={keys.onKey} aria-pressed={keys.at}
+        aria-label={!keys.keyed?'Keyframe wall':keys.at?'Remove key':'Add key'}
+        title={!keys.keyed?'Keyframe the wall: smooths its track; then drag it on any frame to set a key':keys.at?'Remove this key':'Add a key here (or just drag the wall)'}><Icon name="key" size={14}/></button>
+      {keys.keyed&&<button className="icon-sm" disabled={!keys.onNext} onClick={keys.onNext} aria-label="Next wall key" title="Next key"><Icon name="keyNext" size={14}/></button>}
+    </>}
+    <button className={`icon-sm wall-track st-${st}`} disabled={busy||st==='tracking'} onClick={onTrack} aria-label={`Wall ${st}: track`} title={keys?.keyed?'Keyframed · re-track replaces the keys':WALL_STATUS_TITLE[st]}><Icon name="track" size={14}/><i className="wt-dot"/></button>
     <button className="icon-sm" onClick={onRedraw} aria-label="Edit wall" title="Edit corners or redraw (W)"><Icon name="redraw" size={14}/></button>
     <button className="icon-sm danger" onClick={onDelete} aria-label="Delete wall" title={`Delete wall · its lines move ${fallback==='behind'?'Behind':'on top (Caption)'} · undo ⌘Z`}><Icon name="trash" size={14}/></button>
   </>;

@@ -1,0 +1,152 @@
+/* Layout additions. Studio owns the tokens, typography, controls and surfaces. */
+.scene-workspace .study-label{font-size:12px;color:var(--mut)}
+.scene-workspace .study-back{font-size:12px;padding:0 8px}
+.scene-workspace .study-nav{display:flex;align-items:center;gap:8px;padding:12px;border-bottom:1px solid var(--ln);flex-shrink:0}
+.scene-workspace .study-nav>.seg{flex:1}
+.scene-workspace .study-chapters{overflow:auto;min-height:0}
+.scene-workspace .study-chapter{border-bottom:1px solid var(--ln)}
+.scene-workspace .study-chapter.selected{background:var(--p2);box-shadow:inset 2px 0 var(--acc)}
+.scene-workspace button.study-scene{width:100%;height:64px;padding:8px 12px;gap:12px;border:0;border-radius:0;background:transparent;text-align:left;justify-content:flex-start}
+.scene-workspace button.study-scene:hover{background:var(--well)}
+.scene-workspace .study-cover{width:64px;height:44px;border-radius:4px;overflow:hidden;background:var(--well);flex-shrink:0;display:grid;place-items:center}
+.scene-workspace .study-cover .as-thumb{width:100%;height:100%;object-fit:cover}
+.scene-workspace .study-scene-name{display:flex;flex-direction:column;gap:6px;font-size:13px}
+.scene-workspace .study-scene-name small{font:400 12px var(--sans);color:var(--mut)}
+.scene-workspace .study-index{font-size:11px;color:var(--dim);margin-left:auto}
+.scene-workspace .study-chapter-body{padding:0 12px 12px}
+.scene-workspace .study-takes{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.scene-workspace .study-chapter-body>.study-takes{max-height:196px;overflow:auto;padding:3px;margin:-3px}
+.scene-workspace button.study-take{display:flex;flex-direction:column;height:auto;min-width:0;padding:0;gap:0;background:transparent;border:0;border-radius:4px;overflow:visible}
+.scene-workspace .study-take-image{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;background:var(--well);border-radius:4px;outline:1px solid var(--ln2)}
+.scene-workspace .study-take-image>.as-thumb{display:block;width:100%;height:100%;object-fit:cover}
+.scene-workspace .study-take:hover .study-take-image{outline-color:var(--bd)}
+.scene-workspace .study-take.previewed .study-take-image{outline:2px solid var(--acc);outline-offset:1px}
+.scene-workspace .study-take.in-clip .study-take-meta{color:var(--acc)}
+.scene-workspace .study-take-meta{width:100%;display:flex;justify-content:space-between;align-items:center;height:28px;font-size:10px;color:var(--mut)}
+.scene-workspace .study-used,.scene-workspace .study-eye{position:absolute;right:4px;bottom:4px;width:18px;height:18px;display:grid;place-items:center;border-radius:4px;background:var(--acc);color:var(--on-acc)}
+.scene-workspace .study-eye{left:4px;right:auto}
+.scene-workspace .study-occurrences{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.scene-workspace .study-occurrences button{font-size:10px;height:28px;padding:0 6px}
+.scene-workspace .scene-preview-actions{display:flex;gap:4px;align-items:center;margin-left:auto}
+.scene-workspace .scene-preview-actions button{font-size:12px;padding:0 8px}
+.scene-workspace .scene-preview-box{outline:2px solid var(--acc);outline-offset:3px}
+.scene-workspace .study-source{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#111;border-radius:4px}
+.scene-workspace .study-inspector-head .sec-head{margin-bottom:12px}
+.scene-workspace .study-refs{display:flex;gap:8px;flex-wrap:wrap}
+.scene-workspace .study-refs button{height:auto;width:70px;flex-direction:column;padding:0;gap:0;overflow:hidden;font-size:11px}
+.scene-workspace .study-refs .as-thumb{width:100%;height:62px;object-fit:cover}
+.scene-workspace .study-refs button>span{height:26px;display:grid;place-items:center}
+.scene-workspace .study-ref-add{width:32px;height:62px;display:grid;place-items:center;background:var(--p2);border:1px solid var(--bd);border-radius:6px;cursor:pointer;font-size:18px}
+.scene-workspace .study-ref-add input{position:absolute;width:1px;height:1px;opacity:0}
+.scene-workspace .study-ref-add:focus-within{outline:2px solid var(--acc)}
+.scene-workspace .study-range{font-size:12px;color:var(--tx2)}
+.scene-workspace .study-timeline{min-height:0;display:flex;flex-direction:column}
+.scene-workspace .study-timeline>.tl{height:100%}
+.scene-workspace .ly-clip.scene-linked{box-shadow:inset 0 -2px var(--acc)}
+.scene-workspace .ly-clip.scene-linked.sel{box-shadow:inset 0 0 0 1px var(--acc),0 0 0 1px var(--acc)}
+.scene-workspace .ly-clip[data-layer-id="scene-preview"]{border:1px dashed var(--acc);background:var(--acc-soft);color:var(--acc);box-shadow:none}
+.scene-workspace .ly-clip[data-layer-id="scene-preview"] .ly-clip-actions,.scene-workspace .ly-clip[data-layer-id="scene-preview"] .tl-clip-edge{display:none}
+.scene-workspace .stage-bar>.icon-button:last-child{margin-left:auto}
+.scene-workspace .stage-bar .tool-group{flex-shrink:0;margin-left:0}
+@media(max-width:1180px){.scene-workspace .study-label{display:none}.scene-workspace .time-display{font-size:12px}.scene-workspace .stage-bar{gap:4px;padding:0 8px}.scene-workspace .scene-preview-actions{gap:2px}.scene-workspace .scene-preview-actions button{padding:0 5px}.scene-workspace .study-takes{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.scene-workspace .scene-preview-name{font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scene-workspace .study-canvas{position:relative;flex:1;min-height:0;overflow:hidden;background:var(--bg);touch-action:none;user-select:none;outline:none;cursor:default}
+.scene-workspace .study-canvas:focus-visible{box-shadow:inset 0 0 0 1px var(--acc-mid)}
+.scene-workspace .study-canvas.hand,.scene-workspace .study-canvas.hand *{cursor:grab!important}
+.scene-workspace .study-canvas.dragging,.scene-workspace .study-canvas.dragging *{cursor:grabbing!important}
+.scene-workspace .study-canvas-world{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0}
+.scene-workspace .study-board-card{position:absolute;width:270px;min-height:160px;padding:12px;background:var(--p1);border:1px solid var(--ln2);border-radius:4px}
+.scene-workspace .study-board-card.selected{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.scene-workspace .study-scene-name-input{min-width:0;background:transparent;border-color:transparent;box-shadow:none;padding:0 4px;cursor:text;text-overflow:ellipsis}
+.scene-workspace .study-scene-name-input:hover{border-color:var(--ln2)}
+.scene-workspace .study-scene-name-input:focus{background:var(--p3);border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-soft)}
+.scene-workspace .study-board-title{position:absolute;left:-4px;top:-32px;width:calc(100% + 8px);height:28px;font-size:13px;font-weight:600}
+.scene-workspace .study-inspector-name{flex:1;font:400 20px/1.1 var(--serif);height:32px}
+.scene-workspace .study-board-card:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.scene-workspace .study-chapters:focus{outline:none}
+.scene-workspace .study-board-card.selected>.study-board-title{color:var(--acc)}
+.scene-workspace .study-board-card>.study-takes{grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible;max-height:none}
+.scene-workspace .study-board-refs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.scene-workspace .study-board-refs button{height:52px;width:64px;padding:0;overflow:hidden}
+.scene-workspace .study-board-refs .as-thumb{width:100%;height:100%;object-fit:cover}
+.scene-workspace .study-canvas-tools{position:absolute;left:8px;bottom:12px;display:flex;gap:2px;padding:4px;background:var(--p1);border:1px solid var(--ln2);border-radius:6px;box-shadow:var(--shadow)}
+.scene-workspace .study-canvas-tools button{height:28px;min-width:28px;padding:0 6px;background:transparent;border-color:transparent}
+.scene-workspace .study-canvas-tools button:hover{background:var(--p3)}
+.scene-workspace .study-canvas-tools .mono{font-size:11px;min-width:40px}
+.scene-workspace .study-text-inspector>.sec-head{margin-bottom:8px}
+.scene-workspace .study-text-inspector .line-words{margin-bottom:8px;padding-bottom:8px}
+.scene-workspace .study-text-inspector .line-words button{font-size:16px}
+.scene-workspace .study-text-inspector .clip-heading,.scene-workspace .study-text-inspector .clip-hint{display:none}
+.scene-workspace .study-text-inspector .row2{margin-bottom:16px}
+.scene-workspace .study-style-head{padding-bottom:12px}
+.scene-workspace .study-style-head .sec-head{margin-bottom:8px}
+.scene-workspace .study-style-presets{padding-top:12px}
+.scene-workspace .study-style-presets .sec-head{margin-bottom:8px}
+.scene-workspace .study-style-presets .looks-grid{margin-bottom:0}
+.scene-workspace .study-style-presets .look-thumb{background:var(--well)}
+.scene-workspace .study-style-loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--mut)}
+.scene-workspace .study-style-settings .look-params{padding:0}
+.scene-workspace .study-style-settings .lp-details{margin-top:0;border-top:0}
+.scene-workspace .study-current-style{padding-top:12px;padding-bottom:12px}
+.scene-workspace .study-current-thumb{overflow:hidden;border:1px solid var(--ln2);border-radius:4px;background:var(--well)}
+.scene-workspace .study-current-thumb img{width:100%;height:100%;display:block;object-fit:contain}
+.scene-workspace .study-current-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+.scene-workspace .study-style-name{font:400 16px var(--serif)}
+.scene-workspace .study-current-meta button{font-size:12px}
+.scene-workspace .study-text-style .study-text-inspector>.sec-head>span{display:none}
+.scene-workspace .study-default-color{display:flex;align-items:center;gap:8px}
+.scene-workspace .study-style-modal-backdrop{position:fixed;inset:0;z-index:80;background:#0008;display:flex;align-items:center;justify-content:center;padding:32px}
+.scene-workspace .study-style-modal{position:relative;inset:auto;width:min(1100px,100%);height:min(760px,100%);border:1px solid var(--bd);border-radius:8px;box-shadow:var(--shadow-pop)}
+.scene-workspace .study-style-modal .look-thumb{background:var(--p2)}
+@media(max-height:800px){.scene-workspace .study-style-modal .looks-grid.big{grid-template-columns:repeat(5,minmax(0,1fr))}}
+
+/* Production shell: scenes, viewer and timeline share the same selection. */
+.scene-workspace #studio-left-panel{overflow:hidden}
+.scene-workspace .scene-browser{display:flex;flex:1;min-height:0;flex-direction:column}
+.scene-workspace .study-chapters{flex:1}
+.scene-workspace .scene-empty{margin:16px}
+.scene-workspace .scene-utilities{display:flex;gap:4px;padding:8px;border-top:1px solid var(--ln);margin-top:auto;flex-shrink:0;background:var(--p1)}
+.scene-workspace .scene-utilities>button:last-child{margin-left:auto}
+.scene-workspace .scene-inspector-tabs{margin:12px;flex-shrink:0}
+.scene-workspace .scene-heading{gap:8px;min-width:0}
+.scene-workspace .scene-heading input{width:0;min-width:0}
+.scene-workspace .scene-ref{position:relative;width:70px}
+.scene-workspace .scene-ref select{font-size:10px;width:70px;height:24px;padding:0 2px;border-radius:0 0 4px 4px}
+.scene-workspace .study-refs .scene-ref-remove{position:absolute;right:0;top:0;width:18px;height:18px;background:var(--p1);opacity:0;border-radius:0}
+.scene-workspace .scene-ref:hover .scene-ref-remove,.scene-workspace .scene-ref:focus-within .scene-ref-remove{opacity:1}
+.scene-workspace .scene-ref-add{align-self:flex-start;width:32px;height:62px}
+.scene-workspace .scene-reference-picker{padding-top:8px}
+.scene-workspace .scene-asset-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;max-height:240px;overflow:auto;margin-top:8px}
+.scene-workspace .scene-asset-grid button{height:64px;padding:0;overflow:hidden}
+.scene-workspace .scene-asset-grid .as-thumb{width:100%;height:100%;object-fit:cover}
+.scene-workspace .scene-notes{margin-top:12px;font-size:12px;color:var(--mut)}
+.scene-workspace .scene-notes textarea{width:100%;margin-top:8px}
+.scene-workspace .scene-target{font-size:11px;color:var(--mut);padding-top:8px}
+.scene-workspace .wf-reference{flex-wrap:wrap}
+.scene-workspace .scene-source-choices{display:flex;gap:4px;width:100%;overflow:auto;padding:4px 2px}
+.scene-workspace .scene-source-choices button{width:52px;height:40px;flex-shrink:0;padding:0;overflow:hidden}
+.scene-workspace .scene-source-choices img,.scene-workspace .scene-source-choices video{width:100%;height:100%;object-fit:cover}
+.scene-workspace .scene-source-choices button.active{outline:2px solid var(--acc);outline-offset:-1px}
+.scene-workspace .source-viewer{position:absolute;inset:0;z-index:6;padding:0;background:#111;border-radius:inherit}
+.scene-workspace .source-viewer>video,.scene-workspace .source-viewer>img{width:100%;height:100%;max-width:none;max-height:none;object-fit:contain;border:0;box-shadow:none}
+.scene-workspace .stage-bar{min-height:40px;height:auto;flex-wrap:wrap;padding-top:4px;padding-bottom:4px}
+.scene-workspace .take-preview-status{flex-wrap:wrap;font-size:11px;gap:4px}
+.scene-workspace .take-preview-status>span{max-width:160px}
+.scene-workspace .scene-candidate-box{position:absolute;inset:-2px;z-index:3;display:flex;align-items:center;border:1px dashed var(--acc);border-radius:4px;padding:0 4px;background:var(--p1);color:var(--acc);font-size:10px;overflow:hidden;white-space:nowrap;pointer-events:none}
+.scene-workspace .study-text-style .insp-crumb{display:none}
+.scene-workspace .s-left>.media-panel,.scene-workspace .s-left>.ly-panel,.scene-workspace .s-left>.pipeline-panel{overflow:auto;min-height:0}
+
+.scene-workspace .stage-bar>.scene-text-button{width:auto;min-width:76px;padding:0 8px;margin-right:auto;white-space:nowrap}
+.scene-workspace .study-refs>.scene-ref-add{width:32px;height:62px;flex-shrink:0}
+
+.scene-thumb{display:block;overflow:hidden;position:relative;background:var(--well)}
+.scene-thumb>img,.scene-thumb>video{display:block;width:100%;height:100%;object-fit:cover}
+.scene-workspace .scene-source-choices .scene-thumb,.scene-workspace .wf-reference-image .scene-thumb{width:100%;height:100%}
+
+.scene-workspace .scene-utility-content{flex:1;min-height:0;overflow:auto}
+
+.scene-workspace .scene-references>.study-refs{max-height:192px;overflow:auto;padding:1px}
+.scene-workspace .scene-all-refs,.scene-workspace .scene-all-takes{height:28px;padding:0 6px;margin-top:4px;font-size:11px;background:transparent;border-color:transparent;color:var(--mut)}
+.scene-workspace .study-board-refs{position:relative;flex-wrap:nowrap}
+.scene-workspace .scene-ref-count{position:absolute;right:-4px;bottom:-4px;padding:2px 4px;border-radius:4px;background:var(--p3);color:var(--mut);font:10px var(--mono);border:1px solid var(--ln2)}

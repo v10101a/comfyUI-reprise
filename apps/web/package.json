@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --port 5173 --strictPort",
     "build": "tsc -b && vite build",
+    "test": "node --experimental-strip-types --test scripts/test_*.mjs",
     "preview": "vite preview --port 5173",
     "typecheck": "tsc -b"
   },

@@ -1,0 +1,25 @@
+.generation-panel{display:flex;flex-direction:column;gap:10px;margin:16px 0;padding:14px 0;border-top:1px solid var(--ln);border-bottom:1px solid var(--ln)}
+.gen-fields{display:flex;flex-direction:column;gap:10px;min-width:0;margin:0;padding:0;border:0}
+.gen-heading{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px;font:600 13px var(--sans)}
+.gen-heading>span{font:400 11px var(--sans);color:var(--mut)}
+.gen-words{margin:0;padding:8px 10px;border-left:2px solid var(--acc);font:500 16px var(--serif);overflow-wrap:anywhere}
+.gen-field{display:flex;flex-direction:column;gap:5px;min-width:0;font:600 12px var(--sans);color:var(--mut)}
+.studio .gen-field textarea{width:100%;min-height:70px;resize:vertical;font:400 13px/1.5 var(--sans)}
+.gen-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gen-row select,.gen-row input{min-width:0;width:100%}
+.gen-starters{display:flex;gap:5px;flex-wrap:wrap}
+.studio .gen-starters button{height:25px;padding:0 9px;font-size:11px;background:transparent}
+.gen-more{border-top:1px solid var(--ln);padding-top:6px}
+.gen-more>summary{cursor:pointer;font:600 12px/28px var(--sans);color:var(--mut)}
+.gen-more[open]>summary{margin-bottom:8px}
+.gen-more .gen-field{margin-bottom:10px}
+.gen-reference{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:6px 0 12px;min-width:0}
+.gen-reference>img{width:40px;height:48px;object-fit:cover;border-radius:4px}
+.gen-reference>span{font:400 11px var(--sans);max-width:170px;overflow-wrap:anywhere}
+.gen-upload{display:block;position:relative;padding:7px 9px;border:1px solid var(--ln2);border-radius:6px;cursor:pointer;font:500 12px var(--sans)}
+.gen-upload:focus-within{outline:2px solid var(--acc)}
+.gen-upload input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}
+.gen-note{margin:0;font:400 11px/1.5 var(--sans);color:var(--mut)}
+.gen-error{color:var(--tx)}
+.gen-review{padding:9px;background:var(--bg);border:1px solid var(--ln);border-radius:6px;font:400 12px/1.5 var(--sans);overflow-wrap:anywhere}
+.gen-review p{margin:0 0 8px}.gen-review p:last-child{margin-bottom:0}

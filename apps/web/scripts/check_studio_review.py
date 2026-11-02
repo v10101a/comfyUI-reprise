@@ -5,6 +5,7 @@ Project saves are fulfilled in memory; this never modifies stored user projects.
 import argparse
 import base64
 import json
+import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -26,6 +27,17 @@ def main():
         page.set_default_timeout(30000)
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
+        # Instrument whichever Vite module URL Studio imports (HMR may add a timestamp query).
+        def instrument_renderer(route):
+            response = route.fetch()
+            route.fulfill(response=response, body=response.text() + '''
+                const auditRender=StageRenderer.prototype.render;
+                StageRenderer.prototype.render=function(...args){
+                    if(args[0].isConnected)(window.previewOptions??=[]).push(args[3]||{});
+                    return auditRender.apply(this,args);
+                };
+            ''')
+        page.route('**/src/renderer.ts*', instrument_renderer)
         page.goto(f'{args.base}/#/render?project={PROJECT}&layer=composite&look=flat-card&subs=0')
         page.wait_for_function('window.__typeset!==undefined')
         page.evaluate('()=>window.__typeset.ready')
@@ -117,16 +129,37 @@ def main():
         expect(page.locator('.tl-region')).to_have_count(3)
         page.locator('.word-chip').first.click()
         seek(2)
-        expect(page.get_by_role('button', name='Split text clips', exact=True)).to_be_enabled()
+        expect(page.get_by_role('button', name='Split selected clip', exact=True)).to_be_enabled()
         page.keyboard.press('Meta+b')
         expect(page.locator('.tl-region')).to_have_count(4)
         page.keyboard.press('Meta+z')
         expect(page.locator('.tl-region')).to_have_count(3)
-        page.wait_for_timeout(1500)
+        deadline = time.monotonic() + 30
+        while (not saved or len(saved[-1]['words']) != 3) and time.monotonic() < deadline:
+            page.wait_for_timeout(100)
         assert saved and len(saved[-1]['words']) == 3, saved
         assert sorted((w['start'], w['end']) for w in saved[-1]['words']) == [(1, 3), (4, 6), (5, 7)], saved[-1]['words']
+        # Inspector drags use the same light preview path as timeline/stage drags, then restore settled quality.
+        page.locator('.word-chip').first.click()
+        page.evaluate('window.previewOptions=[]')
+        slider = page.locator('.s-right .size-row input[type=range]').first
+        slider.scroll_into_view_if_needed()
+        slider.hover()
+        box = slider.bounding_box()
+        page.mouse.move(box['x'] + box['width'] * .5, box['y'] + box['height'] * .5)
+        page.mouse.down()
+        page.mouse.move(box['x'] + box['width'] * .6, box['y'] + box['height'] * .5, steps=4)
+        try:
+            page.wait_for_function('window.previewOptions.some(o=>o.proxy && o.heavyOptics===false && o.cacheMedia)')
+        except Exception:
+            page.screenshot(path=str(args.out / 'inspector-failure.png'))
+            print(json.dumps({'slider': box, 'renders': page.evaluate('window.previewOptions')}), flush=True)
+            raise
+        page.evaluate('window.previewOptions=[]')
+        page.mouse.up()
+        page.wait_for_function('window.previewOptions.some(o=>o.full && o.cacheMedia && o.heavyOptics!==false)')
         page.screenshot(path=str(args.out / 'studio.png'))
-        report['timeline'] = {'copyPaste': True, 'split': True, 'undoRedo': True, 'savedInMemory': len(saved)}
+        report['timeline'] = {'copyPaste': True, 'split': True, 'undoRedo': True, 'inspectorDraftThenFull': True, 'savedInMemory': len(saved)}
         assert not errors, errors
         report['passed'] = True
         (args.out / 'report.json').write_text(json.dumps(report, indent=2) + '\n')

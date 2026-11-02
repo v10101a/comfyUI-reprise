@@ -1,0 +1,73 @@
+/* Workflows panel: generate reusable footage, then arrange takes on the timeline. */
+.wf-panel{padding:8px 12px 16px;display:flex;flex-direction:column;gap:8px}
+.wf-head{display:flex;gap:4px;align-items:center}
+.wf-head select{flex:1;min-width:0}
+.wf-row{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:8px;align-items:center}
+.wf-row>.lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wf-row>input,.wf-row>select{min-width:0;grid-column:2/-1}
+.wf-row>select:has(+button){grid-column:2}
+.wf-panel textarea{width:100%;box-sizing:border-box;resize:vertical}
+.wf-run{display:flex;gap:8px;align-items:center}
+.wf-run>button,.wf-run>select{flex:1;min-width:0;height:32px}
+.wf-run>.seg{flex:none}
+.wf-err{font-size:12px;color:var(--err);cursor:default;overflow-wrap:anywhere}
+.wf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.studio .wf-grid>button{padding:0;height:auto;aspect-ratio:16/9;overflow:hidden;background:var(--well);border:1px solid var(--ln);border-radius:6px}
+.studio .wf-grid>button:hover{border-color:var(--bd)}
+.studio .wf-grid>button.on{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-mid)}
+.wf-grid img,.wf-grid video{width:100%;height:100%;object-fit:contain;display:block}
+.wf-map{display:flex;flex-direction:column;gap:8px}
+.wf-map fieldset{border:1px solid var(--ln);border-radius:6px;margin:0;padding:4px 8px}
+.wf-map legend{font:600 12px var(--sans);color:var(--mut);padding:0 4px}
+.wf-map .check{height:24px}
+.wf-map .check{justify-content:flex-start}
+.wf-map .check input{width:auto;height:auto;flex:none;margin:0}
+
+/* Selected-layer iteration: references and takes use the existing composition. */
+.wf-context{padding:4px 0 12px;border-bottom:1px solid var(--ln)}
+.wf-context>label{display:block;font-size:11px;color:var(--mut);margin-bottom:6px}
+.wf-context>select{width:100%;font-weight:600;height:34px}
+.wf-context p,.wf-empty p,.wf-note{font-size:12px;line-height:1.5;color:var(--mut);margin:8px 0 0}
+.wf-section-title{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-top:7px}
+.wf-section-title>span{font-size:10px;color:var(--mut)}
+.wf-empty{padding:4px 0 12px}
+.wf-empty button{margin:12px 0 8px;width:100%}
+.wf-empty small{display:block;color:var(--mut);line-height:1.5;font-size:11px}
+.wf-references{display:flex;flex-direction:column;gap:6px}
+.wf-reference{display:flex;gap:8px;align-items:center;padding:7px;background:var(--well);border:1px solid var(--ln);border-radius:7px}
+.wf-reference-image{width:48px;height:48px;flex:none;display:grid;place-items:center;color:var(--mut);overflow:hidden;border-radius:4px;background:var(--p1)}
+.wf-reference-image img,.wf-reference-image video{width:100%;height:100%;object-fit:cover}
+.wf-reference-field{flex:1;min-width:0}
+.wf-reference-field>label{font-size:11px;color:var(--mut);display:block;margin-bottom:4px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.wf-reference-field select{width:100%;min-width:0;font-size:11px}
+.wf-prompt{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.wf-prompt>span{font-size:12px;font-weight:600}
+.wf-prompt textarea{font-size:12px;line-height:1.6;min-height:90px}
+.wf-takes-title{padding-top:12px;border-top:1px solid var(--ln);margin-top:8px}
+.studio .wf-grid>button{aspect-ratio:auto;position:relative;display:flex;flex-direction:column;text-align:left}
+.wf-grid img,.wf-grid video{aspect-ratio:16/9;height:auto;background:var(--well)}
+.wf-take-caption{display:flex;justify-content:space-between;gap:4px;width:100%;box-sizing:border-box;padding:6px;font-size:10px}
+.wf-take-caption>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wf-take-caption>em{flex:none;font-style:normal;color:var(--mut)}
+.wf-grid .current .wf-take-caption>em{color:var(--acc)}
+.wf-take-actions{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.wf-take-actions small{font-size:11px;line-height:1.5;color:var(--mut)}
+.wf-take-actions>.primary{height:32px}
+.studio .wf-grid>button[draggable=true]{cursor:grab}
+.studio .wf-grid>button[draggable=true]:active{cursor:grabbing}
+.source-viewer{position:absolute;inset:0;z-index:12;background:#111;display:grid;place-items:center;border-radius:4px;overflow:hidden}
+.source-viewer>video,.source-viewer>img{display:block;width:100%;height:100%;min-height:0;object-fit:contain}
+.source-transport{height:48px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 16px;border-top:1px solid var(--ln);color:var(--mut);font-size:11px}
+.wf-more{font-size:11px}
+.wf-err{display:flex;align-items:center;gap:4px}
+.wf-err>.icon-sm{margin-left:auto;flex:none}
+.take-preview-status{margin-right:auto;display:flex;align-items:center;gap:8px;min-width:0;color:var(--acc);font-size:11px}
+.take-preview-status>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.take-preview-status>button{font-size:11px;flex:none}
+.studio .ly-explore{width:100%;display:flex;justify-content:space-between;align-items:center;padding:8px 10px;height:auto;margin:2px 0 14px;color:var(--acc);background:var(--well)}
+.studio .s-tabsrow{position:sticky;top:0;z-index:5;background:var(--p1)}
+.studio .s-tabsrow .s-tabs{min-width:0}
+.studio .s-tabsrow .s-tabs button{min-width:0;padding:0 4px}
+.wf-unavailable{font-size:11px;color:var(--mut);line-height:1.5}
+.wf-unavailable summary{cursor:pointer}
+.wf-unavailable p{overflow-wrap:anywhere;margin:6px 0}

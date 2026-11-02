@@ -134,18 +134,23 @@ def free_comfy_models() -> None:
         pass
 
 
-def analyze_matte(store: ProjectStore, pid: str, ctx: JobContext):
+def analyze_matte(store: ProjectStore, pid: str, ctx: JobContext, source: dict | None = None):
+    from .matte_source import matte_source, check_matte_source
     project = store.load(pid)
-    if project.media.video is None:
-        raise ValueError("Upload a video before extracting a foreground")
+    source = source or matte_source(project)
+    check_matte_source(project, source)
+    w, h = source["width"], source["height"]
+    is_image = source["kind"] == "image"
     pdir = store.project_dir(pid)
     ctx.progress(.03, "Preparing video for foreground extraction")
     prepared = pdir / "analysis" / f"matte_input_{ctx.id}.mp4"
-    ffmpeg(["-i", project_path(store, pid, project.media.video.path), "-an", "-vf",
-            f"scale={project.width}:{project.height}:force_original_aspect_ratio=decrease,pad={project.width}:{project.height}:(ow-iw)/2:(oh-ih)/2,fps={project.fps}",
-            "-t", str(project.duration), "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", prepared])
+    inputs = ["-loop", "1"] if is_image else ["-ss", str(source["in"])]
+    duration = 1 / project.fps if is_image else source["out"] - source["in"]
+    ffmpeg(inputs + ["-i", project_path(store, pid, source["path"]), "-an", "-vf",
+            f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,fps={project.fps}",
+            "-t", str(duration), "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", prepared])
     total = count_frames(prepared)
-    per = matte_chunk_frames(project.width, project.height)
+    per = matte_chunk_frames(w, h)
     work = pdir / "analysis" / ctx.id
     if total <= per:
         chunks = [prepared]  # short clip: one pass on the prepared file, exactly as before
@@ -174,8 +179,7 @@ def analyze_matte(store: ProjectStore, pid: str, ctx: JobContext):
                 raise ValueError(f"Matte workflow returned no foreground frames (chunk {k + 1})")
             for i, src in enumerate(frames, done + 1):
                 with Image.open(src) as im:
-                    # The browser and export must agree with project dimensions, even if a node resized its batch.
-                    im.convert("RGBA").resize((project.width, project.height)).save(matte / f"fg_{i:05d}.png")
+                    im.convert("RGBA").resize((w, h)).save(matte / f"fg_{i:05d}.png")
             part = read_json_output(result.outputs["tracks_json"])
             fs = [fr["f"] for t in part.get("tracks", []) for fr in t.get("frames", [])]
             if len(chunks) > 1 and done and fs and min(fs) < done:
@@ -211,17 +215,17 @@ def analyze_matte(store: ProjectStore, pid: str, ctx: JobContext):
     ctx.progress(.95, "Computing occupancy grid")
     from .analysis_v2 import write_occupancy
     probe = project.model_copy(update={"analysis": project.analysis.model_copy(update={"matte": f"analysis/{matte.name}/"})})
-    occ_rel = write_occupancy(store, probe)
+    occ_rel = write_occupancy(store, probe, relative=f"analysis/occupancy_{ctx.id}.json")
     def update(p):
-        if p.media.video is None or p.media.video.path != project.media.video.path:
-            raise ValueError("Video changed during foreground extraction; run analysis again")
+        check_matte_source(p, source)
         p.analysis.matte = f"analysis/{matte.name}/"
+        p.analysis.matteSource = source if source["layerId"] else None
         p.analysis.tracks = tracks_rel
         p.analysis.occupancy = occ_rel
     store.update(pid, update)
     ctx.progress(1, f"Foreground ready: {done} frames" + (f" in {len(chunks)} chunks" if len(chunks) > 1 else ""))
     return {"frames": done, "matte": f"analysis/{matte.name}/", "tracks": tracks_rel, "occupancy": occ_rel,
-            "chunks": len(chunks), "chunkFrames": per}
+            "chunks": len(chunks), "chunkFrames": per, "layerId": source["layerId"], "source": source}
 
 
 def generate_inworld(store: ProjectStore, pid: str, body: InworldBody, ctx: JobContext):
@@ -238,7 +242,7 @@ def generate_inworld(store: ProjectStore, pid: str, body: InworldBody, ctx: JobC
         ctx.progress(.01, "Checking remote LTX nodes and weights")
         video_runner.preflight("ltx_i2v")
     shot = GenShot(id=str(uuid.uuid4()), wordIds=body.wordIds, start=body.start, end=body.end,
-                   prompt=body.prompt, status="running", workflow="text_plate+ltx_i2v")
+                   prompt=body.prompt, status="running", workflow="text_plate+ltx_i2v", request=body.model_dump(mode="json"))
     store.update(pid, lambda p: p.shots.append(shot))
     pdir = store.project_dir(pid)
     dest = pdir / "gen" / shot.id
@@ -257,7 +261,7 @@ def generate_inworld(store: ProjectStore, pid: str, body: InworldBody, ctx: JobC
         length = max(9, int(math.ceil(((body.end - body.start) * project.fps - 1) / 8)) * 8 + 1)
         result = video_runner.run("ltx_i2v", {"image": video_runner.stage_image(dest / "plate.png", pid, shot.id, "plate.png"),
                             "prompt": body.prompt, "length": length, "width": 512, "height": 320,
-                            "seed": uuid.uuid4().int % (2**32), "fps": project.fps}, dest / "video_run",
+                            "seed": body.seed if body.seed is not None else uuid.uuid4().int % (2**32), "fps": project.fps}, dest / "video_run",
                             progress=progress(ctx, "Animating with LTX", .5))
         clip = result.first("video")
         if clip is None:
@@ -292,7 +296,7 @@ def generate_inworld_remote(store: ProjectStore, pid: str, body: InworldBody, se
         if not reference.is_file():
             raise ValueError(f"Reference image not found in the project: {body.referenceImage}")
     shot = GenShot(id=str(uuid.uuid4()), wordIds=body.wordIds, start=body.start, end=body.end,
-                   prompt=body.prompt, status="running", workflow="remote_edit+minimax")
+                   prompt=body.prompt, status="running", workflow="remote_edit+minimax", request=body.model_dump(mode="json"))
     store.update(pid, lambda p: p.shots.append(shot))
     dest = store.project_dir(pid) / "gen" / shot.id
     try:
@@ -305,7 +309,7 @@ def generate_inworld_remote(store: ProjectStore, pid: str, body: InworldBody, se
                               prompt=body.prompt, motion=body.motionPrompt, edit_model=body.editModel,
                               project_id=pid, shot_id=shot.id, dest=dest,
                               report=lambda frac, msg: ctx.progress(frac, msg), long_edge=body.longEdge,
-                              reference=reference, guide_first_frame=body.guideFirstFrame)
+                              reference=reference, guide_first_frame=body.guideFirstFrame, seed=body.seed)
         def finish(p):
             current = next(s for s in p.shots if s.id == shot.id)
             current.status, current.plate, current.video = "done", f"gen/{shot.id}/plate.png", f"gen/{shot.id}/clip.mp4"

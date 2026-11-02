@@ -2,10 +2,11 @@
 // Job records come from GET /api/jobs?projectId=… (kind, status, message, result.elapsedSeconds, createdAt).
 import type {Project,Job} from '../types';
 import {at} from '../base';
+import {matteLayer} from '../matte';
 
 export type Engine = 'comfy'|'cpu'|'remote'|'browser';
 export type StepId = 'words'|'matte'|'occupancy'|'surface'|'reframe'|'beats'|'flow'|'audio'|'voice'|'generate';
-export type JobRecord = Job & {createdAt?:string|null;updatedAt?:string|null};
+export type JobRecord = Job & {createdAt?:string|null;updatedAt?:string|null;layerId?:string|null};
 export type StepState = 'done'|'running'|'failed'|'fallback'|'idle'|'n/a';
 
 export type StepDef = {
@@ -47,16 +48,16 @@ const secs=(j?:JobRecord)=>{const r=j?.result as {elapsedSeconds?:number;timings
   if(j?.createdAt&&j.updatedAt&&j.status!=='running'&&j.status!=='queued')return (Date.parse(j.updatedAt)-Date.parse(j.createdAt))/1000;return undefined;};
 
 /** Latest job per kind (jobs list is newest first from the server, but sort anyway). */
-export function latestJobs(jobs:JobRecord[]){
+export function latestJobs(jobs:JobRecord[],matteLayerId?:string){
   const sorted=[...jobs].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
-  const out=new Map<string,JobRecord>();for(const j of sorted)if(!out.has(j.kind))out.set(j.kind,j);return out;
+  const out=new Map<string,JobRecord>();for(const j of sorted){if(j.kind==='matte'&&matteLayerId!==undefined&&(j.layerId||(j.result as {layerId?:string})?.layerId||'')!==matteLayerId)continue;if(!out.has(j.kind))out.set(j.kind,j);}return out;
 }
 
 /**
  * Derive each step's status from the project's analysis fields + job history. `occKind` comes from the renderer
  * (occupancy | tracks | none) and tells whether auto-placement uses the server grid or a fallback.
  */
-export function stepStatus(step:StepDef,p:Project,jobs:Map<string,JobRecord>,ctx:{occKind?:string;hasBeats:boolean;beatsNote?:string;comparing:boolean}):StepStatus{
+export function stepStatus(step:StepDef,p:Project,jobs:Map<string,JobRecord>,ctx:{occKind?:string;hasBeats:boolean;beatsNote?:string;comparing:boolean;matteLayerId?:string}):StepStatus{
   const job=step.jobKinds.map(k=>jobs.get(k)).find(Boolean);
   const live=job&&(job.status==='running'||job.status==='queued');
   const base={job,seconds:secs(job),message:job?.message||undefined,progress:job?.progress??undefined};
@@ -77,10 +78,13 @@ export function stepStatus(step:StepDef,p:Project,jobs:Map<string,JobRecord>,ctx
       if(job?.status==='failed')return {...base,state:'failed',path:'ComfyUI',engineNote:'failed'};
       return p.words.length?{...base,state:'fallback',path:'authored',engineNote:'words typed by hand',count:p.words.length}:{...base,state:'idle',path:'—',engineNote:'not run'};
     case 'matte':
+      if(ctx.matteLayerId!==undefined&&(p.analysis.matteSource?.layerId||'')!==ctx.matteLayerId)return {...base,state:job?.status==='failed'?'failed':'idle',path:'—',engineNote:'not run for this layer'};
+      if(p.analysis.matteSource&&!matteLayer(p))return {...base,state:'idle',path:'—',engineNote:'source take or range changed · run again'};
       if(p.analysis.matte)return {...base,state:'done',path:'ComfyUI',engineNote:p.analysis.tracks?'cutout + person tracks':'cutout'};
       if(job?.status==='failed')return {...base,state:'failed',path:'ComfyUI',engineNote:'failed'};
       return {...base,state:'idle',path:'—',engineNote:'not run · behind needs it'};
     case 'occupancy':
+      if(p.analysis.matteSource&&!matteLayer(p))return {...base,state:'idle',path:'—',engineNote:'run matte for the current take first'};
       if(p.analysis.occupancy)return via({...base,state:'done',path:'ComfyUI',engineNote:'from the matte'});
       if(ctx.occKind==='occupancy')return {...base,state:'fallback',path:'fixture',engineNote:'local fixture grid'};
       if(ctx.occKind==='tracks')return {...base,state:'fallback',path:'browser',engineNote:'coarse grid from track boxes'};

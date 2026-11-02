@@ -11,6 +11,7 @@ Pure numpy/Pillow helpers (resolve_look, look_param_patch, resolve_grade, grade_
 """
 import json
 import os
+import re
 from functools import lru_cache
 
 import numpy as np
@@ -37,6 +38,7 @@ FONT_FILES = {
     "Big Shoulders Display": {"normal": "BigShouldersDisplay-Variable.ttf"},
     "Bebas Neue": {"normal": "BebasNeue-Regular.ttf"},
     "Silkscreen": {"normal": "Silkscreen-Regular.ttf"},
+    "Pinyon Script": {"normal": "PinyonScript-Regular.ttf"},
     "Instrument Serif": {"normal": "InstrumentSerif-Regular.ttf", "italic": "InstrumentSerif-Italic.ttf"},
     "Newsreader": {"normal": "Newsreader-Variable.ttf", "italic": "Newsreader-Italic-Variable.ttf"},
     "IBM Plex Mono": {"normal": "IBMPlexMono-Regular.ttf"},
@@ -49,16 +51,24 @@ FAMILIES = list(FONT_FILES.keys())
 DEFAULT_WEIGHT = {"Inter": 800, "Archivo Narrow": 500, "Big Shoulders Display": 900, "Space Mono": 700}
 
 # ---------------------------------------------------------------- look params (mirror of looks.ts LOOK_PARAMS)
-PARAMS = ["ink", "accent", "card", "cards", "font", "body", "case", "layout", "scale", "motion", "glow",
-          "flicker", "drips", "light", "outline", "halo", "soft", "tubes", "scroll", "hooks", "fill", "cell", "backing"]
-_DEEP = ("palette", "font", "optics", "verse", "fill")
-FILL_DEFAULTS = {"cell": .014, "backing": .85, "gain": 1.4}
+PARAMS = ["boxes", "note", "noteGlow", "ink", "accent", "card", "cards", "font", "body", "case", "layout", "scale", "motion", "glow",
+          "flicker", "drips", "light", "outline", "halo", "soft", "tubes", "scroll", "hooks", "fill", "cell", "backing",
+          "dots", "dot", "gap", "pad", "cardGap"]
+_DEEP = ("palette", "font", "optics", "verse", "fill", "raster")
+FILL_DEFAULTS = {"cell": .012, "backing": .3, "gain": 1.4}
+RASTER_DEFAULTS = {"dot": .009, "gap": .2}
 
 
 def fill_of(look):
     """The look's glyph fill when it is on (looks.ts fillOf)."""
     f = (look or {}).get("fill")
     return f if f and f.get("region") else None
+
+
+def raster_of(look):
+    """The look's raster when it is on (looks.ts rasterOf)."""
+    r = (look or {}).get("raster")
+    return r if r and r.get("shape") else None
 
 
 def merge_overrides(cur, patch):
@@ -81,12 +91,16 @@ def resolve_look(ref):
         if (o.get("font") or {}).get(role) not in (None, base["font"][role]) and f"{role}Weight" not in (o.get("font") or {}):
             font.pop(f"{role}Weight", None)
     fill = None if ("fill" in o and o["fill"] is None) else {**(base.get("fill") or {}), **o["fill"]} if o.get("fill") else base.get("fill")
+    raster = None if ("raster" in o and o["raster"] is None) else {**(base.get("raster") or {}), **o["raster"]} if o.get("raster") else base.get("raster")
     return {**base, **o, "id": base["id"], "font": font, "palette": {**base["palette"], **(o.get("palette") or {})},
-            "optics": {**base.get("optics", {}), **(o.get("optics") or {})}, "fill": fill}
+            "optics": {**base.get("optics", {}), **(o.get("optics") or {})}, "fill": fill, "raster": raster}
 
 
 def look_param_patch(look, key, v):
     """Overrides patch for one param (looks.ts lookParamPatch)."""
+    if key == "boxes": return {"noteBlocks": bool(v)}
+    if key == "note": return {"palette": {"note": v}}
+    if key == "noteGlow": return {"noteGlow": float(v)}
     if key == "ink": return {"palette": {"text": v}}
     if key == "accent": return {"palette": {"accent": v}}
     if key == "card": return {"palette": {"card": v}} if fill_of(look) else {"palette": {"card": v}, "card": True}
@@ -111,6 +125,12 @@ def look_param_patch(look, key, v):
     if key == "fill": return {"fill": None} if v in (None, "", "off") else {"fill": {**(look.get("fill") or {}), "region": v}}
     if key == "cell": return {"fill": {"region": "subject", **(look.get("fill") or {}), "cell": float(v)}}
     if key == "backing": return {"fill": {"region": "subject", **(look.get("fill") or {}), "backing": float(v)}}
+    # v4.4 raster (any look)
+    if key == "dots": return {"raster": None} if v in (None, "", "off") else {"raster": {**(look.get("raster") or {}), "shape": v}}
+    if key == "dot": return {"raster": {"shape": "square", **(look.get("raster") or {}), "dot": float(v)}}
+    if key == "gap": return {"raster": {"shape": "square", **(look.get("raster") or {}), "gap": float(v)}}
+    if key == "pad": return {"cardPad": float(v)}
+    if key == "cardGap": return {"cardGap": float(v)}
     raise KeyError(key)
 
 
@@ -126,8 +146,9 @@ def build_look(preset, params):
 
 
 def _hex(c, default=(255, 255, 255)):
+    """#rrggbb or #rrggbbaa -> (r, g, b). The alpha byte is accepted and dropped: this draft draws opaque."""
     c = (c or "").lstrip("#")
-    if len(c) != 6:
+    if len(c) not in (6, 8):
         return default
     return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
 
@@ -146,6 +167,8 @@ def load_font(family, px, weight=None, italic=False):
 
 
 def apply_case(text, c):
+    if c == "title":
+        return re.sub(r"(^|[\s\-'\u2019])(\w)", lambda m: m.group(1) + m.group(2).upper(), text.lower())
     return text.upper() if c == "upper" else text.lower() if c == "lower" else text
 
 
@@ -318,7 +341,7 @@ class TypesetLook:
             "preset": (["default"] + LOOK_IDS(), {"default": "flat-card", "tooltip": "default = no look (look_json is empty; downstream nodes keep their own styling)"}),
             "ink": ("STRING", {"default": "", "tooltip": "Text colour #rrggbb; empty = preset"}),
             "accent": ("STRING", {"default": "", "tooltip": "Accent colour #rrggbb; empty = preset"}),
-            "card": ("STRING", {"default": "", "tooltip": "Card colour #rrggbb (turns cards on); empty = preset"}),
+            "card": ("STRING", {"default": "", "tooltip": "Card colour #rrggbb or #rrggbbaa (turns cards on); empty = preset"}),
             "font": (["preset"] + FAMILIES, {"default": "preset"}),
             "body": (["preset"] + FAMILIES, {"default": "preset"}),
             "case": (["preset", "upper", "lower", "as-is"], {"default": "preset"}),
@@ -339,7 +362,15 @@ class TypesetLook:
             "fill": (["preset", "off", "subject", "world", "frame"], {"default": "preset", "tooltip": "Glyph fill: filled lines become a letter grid lit by the footage (subject = inside the matte, world = around it, frame = everything; wall lines fill their wall)"}),
             "cell": f(-1.0, -1.0, .03, .001, "Glyph cell width, fraction of min(w,h); -1 = preset"),
             "backing": f(-1.0, -1.0, 1.0, .05, "Card opacity under the glyphs; -1 = preset"),
-        }, "optional": {"sample": ("STRING", {"default": "hold on"})}}
+            "dots": (["preset", "off", "square", "round"], {"default": "preset", "tooltip": "Raster: the type becomes a fixed grid of dots (square = stitched pixels, round = LEDs)"}),
+            "dot": f(-1.0, -1.0, .02, .001, "Dot cell size, fraction of min(w,h); -1 = preset"),
+            "gap": f(-1.0, -1.0, .6, .05, "Empty fraction of each cell between dots; -1 = preset"),
+        }, "optional": {"sample": ("STRING", {"default": "hold on"}),
+            "note": ("STRING", {"default": "", "tooltip": "Note box colour #rrggbb or #rrggbbaa (alpha = box opacity); empty = preset"}),
+            "noteGlow": f(-1.0, -1.0, 1.0, .05, "White note-box onset glow; 0 = off, -1 = preset"),
+            "pad": f(-1.0, -1.0, 3.0, .05, "Card padding around the text, x the look's own; -1 = preset"),
+            "cardGap": f(-1.0, -1.0, 1.0, .02, "Space between the cards of a wrapped line, x text size (0 = one block); -1 = preset"),
+            "boxes": (["preset", "on", "off"], {"default": "preset", "tooltip": "Note blocks behind noted words; off hides them (the pitch stagger stays)"})}}
 
     RETURN_TYPES = ("STRING", "IMAGE")
     RETURN_NAMES = ("look_json", "preview")
@@ -348,17 +379,19 @@ class TypesetLook:
 
     def run(self, preset, ink="", accent="", card="", font="preset", body="preset", case="preset", layout="preset",
             scale=1.0, motion=1.0, glow=-1.0, outline=-1.0, halo=-1.0, soft=-1.0, cards="preset", scroll="preset",
-            hooks="preset", sample="hold on", flicker=-1.0, tubes="preset", drips=-1.0, light=-1.0, fill="preset", cell=-1.0, backing=-1.0):
+            hooks="preset", sample="hold on", flicker=-1.0, tubes="preset", drips=-1.0, light=-1.0, fill="preset", cell=-1.0, backing=-1.0,
+            dots="preset", dot=-1.0, gap=-1.0, note="", noteGlow=-1.0, boxes="preset", pad=-1.0, cardGap=-1.0):
         import torch
         if preset == "default":
             return ("", torch.zeros(1, 432, 768, 3))
-        params = {"ink": ink or None, "accent": accent or None, "card": card or None,
+        params = {"boxes": _tri(boxes), "note": note or None, "noteGlow": _neg(noteGlow), "ink": ink or None, "accent": accent or None, "card": card or None,
                   "font": None if font == "preset" else font, "body": None if body == "preset" else body,
                   "case": None if case == "preset" else case, "layout": None if layout == "preset" else layout,
                   "scale": None if scale == 1.0 else scale, "motion": None if motion == 1.0 else motion,
                   "glow": _neg(glow), "flicker": _neg(flicker), "drips": _neg(drips), "light": _neg(light), "tubes": _tri(tubes), "outline": _neg(outline), "halo": _neg(halo), "soft": _neg(soft),
                   "cards": _tri(cards), "scroll": _tri(scroll), "hooks": _tri(hooks),
-                  "fill": None if fill == "preset" else fill, "cell": _neg(cell), "backing": _neg(backing)}
+                  "fill": None if fill == "preset" else fill, "cell": _neg(cell), "backing": _neg(backing),
+                  "dots": None if dots == "preset" else dots, "dot": _neg(dot), "gap": _neg(gap), "pad": _neg(pad), "cardGap": _neg(cardGap)}
         ref = build_look(preset, params)
         bg = Image.new("RGB", (768, 432), (38, 41, 35))
         img, _ = draw_look_text(bg, sample or "hold on", resolve_look(ref))
@@ -408,5 +441,22 @@ class TypesetGrade:
         return (torch.from_numpy(out), json.dumps(ref))
 
 
-NODE_CLASS_MAPPINGS = {"TypesetLook": TypesetLook, "TypesetGrade": TypesetGrade}
-NODE_DISPLAY_NAME_MAPPINGS = {"TypesetLook": "Look • text style (typeset)", "TypesetGrade": "Grade • footage (typeset)"}
+class TypesetGradeSettings:
+    """Grade configuration for a downstream renderer, without grading an unused IMAGE batch."""
+    @classmethod
+    def INPUT_TYPES(cls):
+        required = TypesetGrade.INPUT_TYPES()["required"]
+        return {"required": {k: v for k, v in required.items() if k not in ("images", "fps")}}
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("grade_json",)
+    FUNCTION = "run"
+    CATEGORY = "typeset/look"
+
+    def run(self, grade, amount=1.0, tint="", tint_amount=-1.0, grain=-1.0, halation=-1.0, contrast=-1.0, flash=-1.0):
+        return (json.dumps(TypesetGrade.ref(grade, amount, tint, tint_amount, grain, halation, contrast, flash)),)
+
+
+NODE_CLASS_MAPPINGS = {"TypesetLook": TypesetLook, "TypesetGrade": TypesetGrade, "TypesetGradeSettings": TypesetGradeSettings}
+NODE_DISPLAY_NAME_MAPPINGS = {"TypesetLook": "Look • text style (typeset)", "TypesetGrade": "Grade • footage (typeset)",
+                              "TypesetGradeSettings": "Grade settings • footage (typeset)"}

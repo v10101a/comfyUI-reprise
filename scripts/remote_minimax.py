@@ -9,6 +9,7 @@ Based on workflows/eval/minimax_remote_i2v.api.json (the verified graph). Usage:
 Outputs: outputs/concept-tests/<name>/ (mp4 + workflow.json + history.json). A timeout does not cancel the remote job.
 """
 import argparse
+import hashlib
 import json
 import sys
 import time
@@ -52,15 +53,62 @@ def upload_image(base: str, local: Path, subfolder: str = "typeset/concept") -> 
 
 def run(base: str, graph: dict, out_dir: Path, timeout: float) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(json.dumps(graph, sort_keys=True).encode()).hexdigest()
+    state_path = out_dir / "submission.json"
+    state = json.loads(state_path.read_text()) if state_path.exists() else None
+    if state and state["graph_sha256"] != digest:
+        raise SystemExit(f"[{out_dir.name}] graph changed for an existing submission; use a new output directory")
+
+    def save_state():
+        tmp = state_path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(state, indent=2))
+        tmp.replace(state_path)
+
+    t0 = time.monotonic()
+    deadline = t0 + timeout
+
+    def get(url: str, **kwargs):
+        """Reads are safe to retry; submissions are deliberately never retried."""
+        while True:
+            try:
+                response = httpx.get(url, **kwargs)
+                response.raise_for_status()
+                return response
+            except httpx.HTTPError as exc:
+                if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code not in (408, 429, 500, 502, 503, 504):
+                    raise
+                if time.monotonic() >= deadline:
+                    raise SystemExit(f"[{out_dir.name}] connection timed out; resume prompt {pid} from {state_path}") from exc
+                print(f"[{out_dir.name}] connection interrupted; retrying existing prompt {pid}", flush=True)
+                time.sleep(5)
+
     (out_dir / "workflow.json").write_text(json.dumps(graph, indent=2))
-    pid = str(uuid.uuid4())
-    r = httpx.post(f"{base}/prompt", json={"prompt": graph, "prompt_id": pid, "client_id": pid}, timeout=60)
-    if r.status_code != 200:
-        raise SystemExit(f"rejected ({r.status_code}): {r.text[:1500]}")
-    t0 = time.time()
-    print(f"[{out_dir.name}] submitted {pid}")
-    while time.time() - t0 < timeout:
-        h = httpx.get(f"{base}/history/{pid}", timeout=30).json()
+    if state:
+        pid = state["prompt_id"]
+        if state.get("status") == "rejected":
+            raise SystemExit(f"[{out_dir.name}] previous submission was rejected: {state.get('error')}")
+        print(f"[{out_dir.name}] resuming {pid}", flush=True)
+    else:
+        pid = str(uuid.uuid4())
+        state = {"prompt_id": pid, "graph_sha256": digest, "status": "submitting"}
+        save_state()  # persist before POST: a lost response must never cause a duplicate render
+        try:
+            r = httpx.post(f"{base}/prompt", json={"prompt": graph, "prompt_id": pid, "client_id": pid}, timeout=60)
+        except httpx.HTTPError as exc:
+            state.update(status="unknown", error=str(exc))
+            save_state()
+            raise SystemExit(f"[{out_dir.name}] submission response lost; inspect/resume prompt {pid}, do not resubmit blindly") from exc
+        if r.status_code != 200:
+            # A server error may arrive after acceptance. Only a definitive
+            # client error is a rejection; ambiguous responses retain the ID.
+            state.update(status="rejected" if 400 <= r.status_code < 500 else "unknown", error=r.text[:1500])
+            save_state()
+            raise SystemExit(f"submission response ({r.status_code}): {r.text[:1500]}; retained prompt {pid}")
+        state["status"] = "submitted"
+        save_state()
+        print(f"[{out_dir.name}] submitted {pid}", flush=True)
+    while time.monotonic() < deadline:
+        h = get(f"{base}/history/{pid}", timeout=30).json()
         if pid in h:
             break
         time.sleep(5)
@@ -69,8 +117,10 @@ def run(base: str, graph: dict, out_dir: Path, timeout: float) -> dict:
     entry = h[pid]
     (out_dir / "history.json").write_text(json.dumps(entry, indent=2))
     status = entry.get("status", {}).get("status_str")
-    print(f"[{out_dir.name}] {status} in {time.time() - t0:.0f}s")
+    print(f"[{out_dir.name}] {status} in {time.monotonic() - t0:.0f}s", flush=True)
     if status != "success":
+        state["status"] = "failed"
+        save_state()
         raise SystemExit(json.dumps(entry.get("status"), indent=2)[:2000])
     saved = []
     for node_out in entry.get("outputs", {}).values():
@@ -79,12 +129,17 @@ def run(base: str, graph: dict, out_dir: Path, timeout: float) -> dict:
                 if f.get("type") != "output":
                     continue
                 params = {"filename": f["filename"], "subfolder": f.get("subfolder", ""), "type": "output"}
-                data = httpx.get(f"{base}/view", params=params, timeout=600).content
+                data = get(f"{base}/view", params=params, timeout=600).content
                 dest = out_dir / f["filename"]
-                dest.write_bytes(data)
+                tmp = dest.with_name(dest.name + ".part")
+                tmp.write_bytes(data)
+                tmp.replace(dest)
                 saved.append(str(dest))
-    print(f"[{out_dir.name}] saved {saved}")
-    return {"prompt_id": pid, "seconds": round(time.time() - t0), "files": saved}
+    result = {"prompt_id": pid, "seconds": round(time.monotonic() - t0), "files": saved}
+    state.update(status="downloaded", files=saved)
+    save_state()
+    print(f"[{out_dir.name}] saved {saved}", flush=True)
+    return result
 
 
 def main() -> None:

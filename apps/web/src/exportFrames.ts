@@ -5,20 +5,20 @@ import {at} from './base';
 /** Browser capture: when the host asks for it (Typeset inside ComfyUI has no Playwright), the studio renders the
  *  export frames itself, through the same #/render route Playwright would load, and uploads them as PNG.
  *  Returns extra ExportBody fields ({frames: session}) or {} when the server captures. */
-export async function prepareExport(project:Project,layer:'text'|'composite',formats:string[],progress:(message:string)=>void):Promise<{frames?:string}>{
+export async function prepareExport(project:Project,layer:'text'|'composite',formats:string[],progress:(message:string)=>void,scale=1):Promise<{frames?:string}>{
   const health=await request<{capture?:string}>('/api/health').catch(()=>({capture:undefined}));
   if(health.capture!=='browser')return {};
   const layers=[...new Set([...(formats.includes('mp4')?[layer]:[]),...(formats.some(f=>f==='mov'||f==='webm')?['text' as const]:[])])];
   const {session}=await request<{session:string}>(`/api/projects/${encodeURIComponent(project.id)}/export/frames`,{method:'POST'});
-  for(const l of layers)await renderLayer(project,l,session,(i,n)=>progress(`rendering ${l} ${i}/${n}`));
+  for(const l of layers)await renderLayer(project,l,session,(i,n)=>progress(`rendering ${l} ${i}/${n}`),scale);
   return {frames:session};
 }
 
-async function renderLayer(project:Project,layer:string,session:string,tick:(i:number,n:number)=>void){
+async function renderLayer(project:Project,layer:string,session:string,tick:(i:number,n:number)=>void,scale=1){
   const frame=document.createElement('iframe');
-  // Off-screen, full size: the render page sizes its canvas from the project, not the viewport.
-  Object.assign(frame.style,{position:'fixed',left:'-20000px',top:'0',width:`${project.width}px`,height:`${project.height}px`,border:'0'});
-  frame.src=`${at('/')}#/render?project=${encodeURIComponent(project.id)}&layer=${layer}`;
+  // Off-screen, full size: the render page sizes its canvas from the project (× scale), not the viewport.
+  Object.assign(frame.style,{position:'fixed',left:'-20000px',top:'0',width:`${project.width*scale}px`,height:`${project.height*scale}px`,border:'0'});
+  frame.src=`${at('/')}#/render?project=${encodeURIComponent(project.id)}&layer=${layer}${scale!==1?`&scale=${scale}`:''}`;
   document.body.append(frame);
   try{
     const win=frame.contentWindow as (Window&{__typeset?:RendererAPI})|null;

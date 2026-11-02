@@ -47,7 +47,8 @@ def minimax_length(seconds: float, fps: float = 24) -> int:
 
 def edit_prompt(text: str, how: str) -> str:
     how = how.strip() or "painted in large letters on the wall behind the person, matching the scene's light"
-    return (f"Add the exact text \"{text}\" {how}. Spell it exactly \"{text}\". "
+    return (f"Add the exact visible text \"{text}\" to this frame.\nLettering and setting: {how}\n"
+            f"Spell it exactly \"{text}\". "
             "Keep the person, camera framing, lighting and everything else unchanged.")
 
 

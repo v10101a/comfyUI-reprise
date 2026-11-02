@@ -81,6 +81,7 @@ def register(server) -> bool:
         return False
     from typeset_server.config import settings
     from typeset_server import models
+    import typeset_server.workflows as workflows
 
     dist = settings.web_dist
     routes = web.RouteTableDef()
@@ -88,7 +89,7 @@ def register(server) -> bool:
     async def call(fn, *args):
         try:
             result = await asyncio.get_running_loop().run_in_executor(None, fn, *args)
-        except service.ApiError as exc:
+        except (service.ApiError, workflows.WorkflowApiError) as exc:
             return web.json_response({"detail": exc.detail}, status=exc.status)
         return web.json_response(_dump(result))
 
@@ -114,6 +115,14 @@ def register(server) -> bool:
     @routes.get(f"{PREFIX}/api/health")
     async def health(request):
         return await call(lambda: {**service.health(), "host": "comfyui", "capture": "browser"})
+
+    @routes.get(f"{PREFIX}/api/looks/saved")
+    async def saved_looks(request):
+        return await call(service.saved_looks)
+
+    @routes.put(f"{PREFIX}/api/looks/saved")
+    async def set_saved_looks(request):
+        return await call(service.set_saved_looks, await request.json())
 
     @routes.get(f"{PREFIX}/api/projects")
     async def list_projects(request):
@@ -155,8 +164,40 @@ def register(server) -> bool:
         finally:
             spool.close()
 
+    @routes.post(f"{PREFIX}/api/projects/{{pid}}/assets")
+    async def add_asset(request):
+        """Asset bin (same contract as server/app/main.py): multipart file or JSON {comfy:{...}}."""
+        pid = request.match_info["pid"]
+        if not request.content_type.startswith("multipart/"):
+            try:
+                data = await request.json()
+            except Exception:
+                return web.json_response({"detail": "Expected multipart file or JSON {comfy:{...}}"}, status=422)
+            return await call(service.assets_json, pid, data)
+        import tempfile
+        reader = await request.multipart()
+        fields, filename, spool, got = {}, "asset", tempfile.SpooledTemporaryFile(max_size=8 * 1024**2), False
+        try:
+            async for part in reader:
+                if part.name == "file":
+                    filename, got = part.filename or filename, True
+                    while chunk := await part.read_chunk(1024 * 1024):
+                        spool.write(chunk)
+                elif part.name:
+                    fields[part.name] = (await part.text()).strip()
+            if not got:
+                return web.json_response({"detail": "file is required"}, status=422)
+            spool.seek(0)
+            flag = fields.get("addLayer", "").lower()
+            add = "top" if flag == "top" else flag in ("1", "true", "yes", "under-text")
+            return await call(service.add_asset, pid, filename, iter(lambda: spool.read(1024 * 1024), b""), None, add,
+                              fields.get("name") or None)
+        finally:
+            spool.close()
+
     job_route("/analyze/words", service.analyze_words_job, models.AnalyzeWordsBody)
     job_route("/analyze/matte", service.analyze_matte_job, models.AnalyzeMatteBody)
+    job_route("/analyze/heads", service.analyze_heads_job)
     job_route("/generate/inworld", service.inworld_job, models.InworldBody)
     job_route("/analyze/occupancy", service.occupancy_job)
     job_route("/analyze/beats", service.beats_job)
@@ -203,6 +244,55 @@ def register(server) -> bool:
     @routes.get(f"{PREFIX}/api/jobs")
     async def list_jobs(request):
         return await call(service.list_jobs, request.query.get("projectId"))
+
+    # bring-your-own Comfy workflows + the project "add to <project>" targets (same as server/app/main.py)
+    async def json_body(request):
+        try:
+            return await request.json(), None
+        except Exception:
+            return None, web.json_response({"detail": "Expected a JSON body"}, status=422)
+
+    @routes.get(f"{PREFIX}/api/workflows")
+    async def list_workflows(request):
+        return await call(workflows.list_workflows)
+
+    @routes.post(f"{PREFIX}/api/workflows")
+    async def import_workflow(request):
+        data, err = await json_body(request)
+        return err or await call(workflows.import_workflow, data)
+
+    @routes.get(f"{PREFIX}/api/workflows/{{wid}}")
+    async def get_workflow(request):
+        return await call(workflows.get_workflow, request.match_info["wid"])
+
+    @routes.put(f"{PREFIX}/api/workflows/{{wid}}")
+    async def update_workflow(request):
+        data, err = await json_body(request)
+        return err or await call(workflows.update_workflow, request.match_info["wid"], data)
+
+    @routes.post(f"{PREFIX}/api/workflows/{{wid}}/delete")
+    async def delete_workflow(request):
+        return await call(workflows.delete_workflow, request.match_info["wid"])
+
+    @routes.post(f"{PREFIX}/api/projects/{{pid}}/workflows/{{wid}}/run")
+    async def run_workflow(request):
+        data, err = await json_body(request)
+        m = request.match_info
+        return err or await call(workflows.run_job, service, m["pid"], m["wid"], data)
+
+    @routes.get(f"{PREFIX}/api/session")
+    async def get_session(request):
+        return await call(workflows.current_project)
+
+    @routes.put(f"{PREFIX}/api/session")
+    async def set_session(request):
+        data, err = await json_body(request)
+        if err:
+            return err
+        def run():
+            project = service.require_project(str((data or {}).get("projectId") or ""))
+            return workflows.set_current_project(project.id, project.name)
+        return await call(run)
 
     def static(root: Path, rel: str, index: bool = False):
         root = root.resolve()

@@ -28,7 +28,7 @@
  *   font menu. All are bundled OFL/Apache faces in public/fonts with their license files.
  * ─────────────────────────────────────────────────────────────────────────────────────────────────
  */
-import type {Project,Word,Look,LookId,LookRef,LineMeta,Grade,GradeId,GradeRef} from './types';
+import type {Project,Word,Look,LookId,LookRef,LineMeta,Grade,GradeId,GradeRef,LookParamKey} from './types';
 import PRESET_FILE from './look-presets.json';
 
 export type LookInfo = {id:LookId;name:string;description:string;swatch:string[];fonts:string[]};
@@ -57,9 +57,22 @@ export const FONTS:{family:string;file:string;weight:string;style?:string;licens
   {family:'Newsreader',file:'Newsreader-Variable.ttf',weight:'200 800',license:'OFL-Newsreader.txt'},
   {family:'Newsreader',file:'Newsreader-Italic-Variable.ttf',weight:'200 800',style:'italic',license:'OFL-Newsreader.txt'},
   {family:'Sixtyfour',file:'Sixtyfour-Variable.ttf',weight:'400',license:'OFL-Sixtyfour.txt'},
+  {family:'Pinyon Script',file:'PinyonScript-Regular.ttf',weight:'400',license:'OFL-PinyonScript.txt'},
 ];
 /** One entry per family, for font menus. */
 export const FONT_FAMILIES=[...new Set(FONTS.map(f=>f.family))];
+
+// ---------- colours ----------
+/** Palette colours are CSS hex: #rrggbb, or #rrggbbaa when translucent (canvas fillStyle takes both). */
+export function colorParts(c:string|undefined|null):{rgb:string;alpha:number}{
+  const m=/^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(c||'');if(!m)return {rgb:c||'#000000',alpha:1};
+  return {rgb:`#${m[1]}`,alpha:m[2]?parseInt(m[2],16)/255:1};
+}
+/** `rgb` (#rrggbb, alpha dropped) with opacity `alpha` (0..1): #rrggbb when opaque, else #rrggbbaa. */
+export function colorWith(rgb:string,alpha:number):string{
+  const a=Math.max(0,Math.min(1,alpha));const base=colorParts(rgb).rgb;
+  return a>=1?base:base+Math.round(a*255).toString(16).padStart(2,'0');
+}
 
 /**
  * Presets live in look-presets.json (shared with the ComfyUI node pack's TypesetLook / TypesetGrade nodes; a node
@@ -84,13 +97,52 @@ export function lookOf(p:Pick<Project,'look'>):Look|undefined{
   const ref=p.look;if(!ref||ref.id==='default')return undefined;
   const base=PRESETS[ref.id as Exclude<LookId,'default'>];if(!base)return undefined;
   const o=ref.overrides||{};
+  return mergeLook(base,o);
+}
+function mergeLook(base:Look,o:NonNullable<LookRef['overrides']>):Look{
   const font={...base.font,...(o.font||{})};
   // A swapped face drops the preset's weight for it (the preset weight may not exist in the new face).
   if(o.font?.hero&&o.font.hero!==base.font.hero&&o.font.heroWeight===undefined)delete font.heroWeight;
   if(o.font?.body&&o.font.body!==base.font.body&&o.font.bodyWeight===undefined)delete font.bodyWeight;
   // fill merges one level deep too (a studio override of one fill field keeps the preset's region); null switches it off.
   const fill=o.fill===null?null:o.fill?{...(base.fill||{}),...o.fill}:base.fill;
-  return {...base,...o,id:base.id,font,palette:{...base.palette,...(o.palette||{})},optics:{...base.optics,...(o.optics||{})},fill};
+  const raster=o.raster===null?null:o.raster?{...(base.raster||{}),...o.raster}:base.raster;
+  return {...base,...o,id:base.id,font,palette:{...base.palette,...(o.palette||{})},optics:{...base.optics,...(o.optics||{})},fill,raster};
+}
+
+/** Resolve a clip without mutating the Look or copying inherited values into the saved project.
+ * Legacy line colour remains supported; a clip Font sets both roles, so verse and hero words agree. */
+export function lineLookOf(p:Pick<Project,'look'|'lineMeta'>,lineId:string):Look|undefined{
+  let look=lookOf(p);if(!look)return undefined;
+  // The ticker is a continuous, shared LED display rather than separately styled clips.
+  if(look.motion==='marquee')return look;
+  const m=p.lineMeta?.[lineId];
+  if(m?.fill)look=mergeLook(look,{palette:{text:m.fill,accent:m.fill}});
+  for(const param of LOOK_PARAMS){const k=param.key,v=m?.appearance?.[k];if(v===undefined)continue;
+    look=mergeLook(look,lookParamPatch(look,k,v));
+    if(k==='font')look=mergeLook(look,lookParamPatch(look,'body',v));
+  }
+  // Stored sizes survive toggling an effect off, but must not silently enable it again.
+  if(m?.appearance?.fill==='off')look={...look,fill:null};
+  if(m?.appearance?.dots==='off')look={...look,raster:null};
+  return look;
+}
+export function setLineParam(p:Project,lineIds:string[],key:LookParamKey,value:string|number|boolean|null):Project{
+  return lineIds.reduce((q,id)=>{const appearance={...q.lineMeta?.[id]?.appearance};
+    if(value===null)delete appearance[key];else appearance[key]=value;
+    return setLineMeta(q,id,{appearance:Object.keys(appearance).length?appearance:null});
+  },p);
+}
+export function clearLineAppearance(p:Project,lineIds:string[]):Project{
+  return lineIds.reduce((q,id)=>setLineMeta(q,id,{appearance:null,fill:null,karaoke:null,dim:null,boxes:null}),p);
+}
+/** Restore project timing without clearing the clip's typography, placement or other effects.
+ * Older clips may have timing in appearance as well as the dedicated animation fields. */
+export function clearLineAnimation(p:Project,lineIds:string[]):Project{
+  return lineIds.reduce((q,id)=>{
+    q=setLineMeta(q,id,{animIn:null,animOut:null});
+    return setLineParam(setLineParam(q,[id],'in',null),[id],'out',null);
+  },p);
 }
 
 // ---------- grade (footage) ----------
@@ -151,41 +203,62 @@ export function setGradeAmount(p:Project,amount:number):Project{
  * The shared, small parameter set a look exposes for editing. Each param reads from the resolved Look and writes
  * into project.look.overrides (deep-merged into palette / font / optics). Same keys as the TypesetLook node's widgets.
  */
-export type LookParamKey='ink'|'accent'|'card'|'cards'|'font'|'body'|'case'|'layout'|'scale'|'motion'|'glow'|'flicker'|'drips'|'light'|'outline'|'halo'|'soft'|'tubes'|'scroll'|'hooks'|'flow'|'voice'|'fill'|'cell'|'backing';
-export type LookParam={key:LookParamKey;label:string;kind:'color'|'font'|'select'|'range'|'toggle';options?:string[];min?:number;max?:number;step?:number};
+export type {LookParamKey} from './types';
+export type LookParam={key:LookParamKey;label:string;kind:'color'|'font'|'select'|'range'|'toggle';options?:string[];optionLabels?:Record<string,string>;min?:number;max?:number;step?:number;
+  /** Tooltip: what the control does, in a few words. */
+  hint?:string};
 export const LOOK_PARAMS:LookParam[]=[
-  {key:'ink',label:'Ink',kind:'color'},
-  {key:'accent',label:'Accent',kind:'color'},
-  {key:'card',label:'Card',kind:'color'},
-  {key:'font',label:'Font',kind:'font'},
-  {key:'body',label:'Body',kind:'font'},
-  {key:'case',label:'Case',kind:'select',options:['upper','lower','as-is']},
-  {key:'layout',label:'Layout',kind:'select',options:['line','hero','stack','constellation','hud']},
-  {key:'scale',label:'Size',kind:'range',min:.4,max:2,step:.05},
-  {key:'motion',label:'Motion',kind:'range',min:0,max:2,step:.05},
-  {key:'glow',label:'Glow',kind:'range',min:0,max:1,step:.05},
-  {key:'flicker',label:'Flicker',kind:'range',min:0,max:1,step:.05},
-  {key:'drips',label:'Drips',kind:'range',min:0,max:1,step:.05},
-  {key:'light',label:'Light',kind:'range',min:0,max:1,step:.05},
-  {key:'outline',label:'Outline',kind:'range',min:0,max:.15,step:.005},
-  {key:'halo',label:'Halo',kind:'range',min:0,max:1,step:.05},
-  {key:'soft',label:'Blur',kind:'range',min:0,max:1,step:.05},
+  {key:'boxes',label:'Boxes',kind:'toggle',hint:'Note blocks behind words that carry a note'},
+  {key:'note',label:'Box colour',kind:'color',hint:'Colour of the note blocks behind words'},
+  {key:'noteGlow',label:'Box glow',kind:'range',min:0,max:1,step:.05,hint:'White glow when a note block appears · 0 = off'},
+  {key:'ink',label:'Ink',kind:'color',hint:'Text colour'},
+  {key:'accent',label:'Accent',kind:'color',hint:'Hook / hero word colour'},
+  {key:'card',label:'Card',kind:'color',hint:'Colour of the block behind the text'},
+  {key:'cardGap',label:'Gap',kind:'range',min:0,max:1,step:.02,hint:'Space between stacked cards · 0 = one block'},
+  {key:'pad',label:'Padding',kind:'range',min:0,max:3,step:.05,hint:'Space between the text and its card edge'},
+  {key:'font',label:'Hook font',kind:'font',hint:'Face of hook and wall lines (and HUD, stack, marquee text)'},
+  {key:'body',label:'Verse font',kind:'font',hint:'Face of every other line'},
+  {key:'case',label:'Case',kind:'select',options:['upper','lower','title','as-is']},
+  {key:'layout',label:'Layout',kind:'select',options:['line','hero','stack','constellation','hud'],optionLabels:{line:'Lines',hero:'Big word',stack:'Stack',constellation:'Scatter',hud:'Labels'},hint:'How lines are arranged on screen'},
+  {key:'scale',label:'Size',kind:'range',min:.4,max:2,step:.05,hint:'Text size'},
+  {key:'motion',label:'Motion',kind:'range',min:0,max:2,step:.05,hint:'How far words pop in'},
+  {key:'glow',label:'Glow',kind:'range',min:0,max:1,step:.05,hint:'Light bloom around the text'},
+  {key:'flicker',label:'Flicker',kind:'range',min:0,max:1,step:.05,hint:'Words stutter as they appear'},
+  {key:'drips',label:'Drips',kind:'range',min:0,max:1,step:.05,hint:'Paint drips under the letters'},
+  {key:'light',label:'Light',kind:'range',min:0,max:1,step:.05,hint:'How much the signs light the scene'},
+  {key:'outline',label:'Outline',kind:'range',min:0,max:.15,step:.005,hint:'Stroke around letters'},
+  {key:'halo',label:'Halo',kind:'range',min:0,max:1,step:.05,hint:'Soft dark shadow behind letters'},
+  {key:'soft',label:'Blur',kind:'range',min:0,max:1,step:.05,hint:'Softens the text edges'},
   {key:'cards',label:'Cards',kind:'toggle'},
   {key:'tubes',label:'Tubes',kind:'toggle'},
   {key:'scroll',label:'Scroll',kind:'toggle'},
   {key:'hooks',label:'Hooks',kind:'toggle'},
-  {key:'flow',label:'Flow',kind:'range',min:0,max:1,step:.05},
-  {key:'voice',label:'Audio',kind:'range',min:0,max:1,step:.05},
+  {key:'flow',label:'Flow',kind:'range',min:0,max:1,step:.05,hint:'Text bends with movement in the shot'},
+  {key:'voice',label:'Audio',kind:'range',min:0,max:1,step:.05,hint:'Text pulses with the music'},
+  {key:'wall',label:'Wall size',kind:'range',min:.5,max:2,step:.05,hint:'Size of text on walls'},
+  {key:'blend',label:'Wall texture',kind:'range',min:0,max:1,step:.05,hint:'Wall text takes the wall\'s light and texture'},
+  {key:'in',label:'In',kind:'range',min:0,max:1.5,step:.02,hint:'Entrance length, s · 0 = cut in'},
+  {key:'out',label:'Out',kind:'range',min:0,max:1.5,step:.02,hint:'Exit length, s · 0 = cut out'},
   // v4.3 glyph fill (any look): filled lines become a letter grid lit by the footage (see Look.fill).
-  {key:'fill',label:'Fill',kind:'select',options:['off','subject','world','frame']},
-  {key:'cell',label:'Cell',kind:'range',min:.008,max:.03,step:.001},
-  {key:'backing',label:'Backing',kind:'range',min:0,max:1,step:.05},
+  {key:'fill',label:'Letter grid',kind:'select',options:['off','subject','world','frame'],optionLabels:{off:'Off',subject:'Person',world:'Background',frame:'Whole frame'},hint:'Fill an area with lyric letters lit by the video'},
+  {key:'cell',label:'Letter size',kind:'range',min:.008,max:.03,step:.001,hint:'Size of the grid letters'},
+  {key:'backing',label:'Backing',kind:'range',min:0,max:1,step:.05,hint:'Dark block behind the grid'},
+  // v4.4 raster (any look): the type becomes a fixed grid of dots (see Look.raster).
+  {key:'dots',label:'Dots',kind:'select',options:['off','square','round'],optionLabels:{off:'Off',square:'Pixels',round:'LEDs'},hint:'Draw the type as a grid of dots'},
+  {key:'dot',label:'Dot size',kind:'range',min:.004,max:.02,step:.001,hint:'Size of the dots'},
+  {key:'gap',label:'Dot gap',kind:'range',min:0,max:.6,step:.05,hint:'Space between dots'},
 ];
+/** Note blocks show unless switched off; card looks start without them (the card already boxes the line). */
+export function noteBlocksOn(look:Look){return look.noteBlocks??!look.card;}
+/** The look's raster when it is on (Look.raster with a shape). */
+export function rasterOf(look:Look|undefined|null):NonNullable<Look['raster']>|undefined{const r=look?.raster;return r&&r.shape?r:undefined;}
+export const RASTER_DEFAULTS={dot:.009,gap:.2};
 /** The look's glyph fill when it is on (Look.fill with a region). */
 export function fillOf(look:Look|undefined|null):NonNullable<Look['fill']>|undefined{const f=look?.fill;return f&&f.region?f:undefined;}
 export function lookParam(look:Look,key:LookParamKey):string|number|boolean{
   switch(key){
     case 'ink':return look.palette.text;case 'accent':return look.palette.accent;case 'card':return look.palette.card||'#2f6bff';
+    case 'boxes':return noteBlocksOn(look);case 'note':return look.palette.note||'#8d93f2';case 'noteGlow':return look.noteGlow??1;
     case 'cards':return !!look.card;case 'font':return look.font.hero;case 'body':return look.font.body;
     case 'case':return look.font.heroCase||'as-is';case 'layout':return look.layout;case 'scale':return look.scale??1;
     case 'motion':return look.intensity??1;case 'glow':return look.optics.glow||0;case 'outline':return look.outlineWidth??0;
@@ -194,6 +267,9 @@ export function lookParam(look:Look,key:LookParamKey):string|number|boolean{
     case 'hooks':return fillOf(look)?look.fill!.hooks!==false:look.quiet==='hooks-only';case 'flicker':return look.flicker??0;case 'drips':return look.drips??.5;case 'light':return look.light??.8;case 'tubes':return look.finish==='neon';
     case 'flow':return look.fields?.motion??0;case 'voice':return look.fields?.voice??0;
     case 'fill':return fillOf(look)?.region??'off';case 'cell':return look.fill?.cell??FILL_DEFAULTS.cell;case 'backing':return look.fill?.backing??FILL_DEFAULTS.backing;
+    case 'dots':return rasterOf(look)?.shape??'off';case 'dot':return look.raster?.dot??RASTER_DEFAULTS.dot;case 'gap':return look.raster?.gap??RASTER_DEFAULTS.gap;
+    case 'wall':return look.wallScale??1;case 'blend':return look.wallBlend??0;case 'pad':return look.cardPad??1;case 'cardGap':return look.cardGap??0;
+    case 'in':return animOf(look).in;case 'out':return animOf(look).out;
   }
 }
 type Overrides=NonNullable<LookRef['overrides']>;
@@ -203,6 +279,7 @@ export function lookParamPatch(look:Look,key:LookParamKey,v:string|number|boolea
     case 'ink':return {palette:{text:String(v)} as Look['palette']};case 'accent':return {palette:{accent:String(v)} as Look['palette']};
     // The card colour is also the glyph fill's backing: under a fill it does not switch cards on.
     case 'card':return fillOf(look)?{palette:{card:String(v)} as Look['palette']}:{palette:{card:String(v)} as Look['palette'],card:true};case 'cards':return v&&!look.palette.card?{card:true,palette:{card:'#2f6bff'} as Look['palette']}:{card:!!v};
+    case 'boxes':return {noteBlocks:!!v};case 'note':return {palette:{note:String(v)} as Look['palette']};case 'noteGlow':return {noteGlow:Number(v)};
     case 'font':return {font:{hero:String(v)} as Look['font']};case 'body':return {font:{body:String(v)} as Look['font']};
     case 'case':return {font:{heroCase:v,bodyCase:v} as Look['font']};case 'layout':return {layout:v as Look['layout']};
     case 'scale':return {scale:Number(v)};case 'motion':return {intensity:Number(v)};case 'glow':return {optics:{glow:Number(v)}};
@@ -210,15 +287,35 @@ export function lookParamPatch(look:Look,key:LookParamKey,v:string|number|boolea
     case 'scroll':return {motion:v?'marquee':'none'};case 'hooks':return fillOf(look)?{fill:{...look.fill!,hooks:!!v}}:{quiet:v?'hooks-only':'none'};
     case 'flicker':return {flicker:Number(v)};case 'drips':return {drips:Number(v)};case 'light':return {light:Number(v)};case 'tubes':return {finish:v?'neon':null};
     case 'flow':return {fields:{...look.fields,motion:Number(v)}};case 'voice':return {fields:{...look.fields,voice:Number(v)}};
+    case 'dots':return v==='off'||!v?{raster:null}:{raster:{...(look.raster||{}),shape:v as 'square'|'round'}};
+    case 'dot':return {raster:{shape:'square',...(look.raster||{}),dot:Number(v)}};case 'gap':return {raster:{shape:'square',...(look.raster||{}),gap:Number(v)}};
     case 'fill':return v==='off'||!v?{fill:null}:{fill:{...(look.fill||{}),region:v as NonNullable<Look['fill']>['region']}};
     case 'cell':return {fill:{region:'subject',...(look.fill||{}),cell:Number(v)}};
     case 'backing':return {fill:{region:'subject',...(look.fill||{}),backing:Number(v)}};
+    case 'wall':return {wallScale:Number(v)};case 'blend':return {wallBlend:Number(v)};case 'pad':return {cardPad:Number(v)};case 'cardGap':return {cardGap:Number(v)};
+    case 'in':return {animIn:Number(v)};case 'out':return {animOut:Number(v)};
   }
 }
+/** Entrance / exit lengths (s) a look's lines get without per-line In/Out: Look.animIn/animOut, else the entrance's
+ *  built-in timing (renderer: wipe .26, paste .22, fade .3, flicker .45, spray ≈.4, type ≈ text length / 28 cps, pop
+ *  ≈.45; exits .24 for wipe / fade / flicker, none otherwise). */
+export function animOf(look:Look|undefined|null):{in:number;out:number}{
+  const en=look?.enter;const base=en==='wipe'?.26:en==='paste'?.22:en==='fade'?.3:en==='flicker'?.45:en==='spray'?.4:en==='type'?.3:en==='cut'?0:.45;
+  const exit=en==='wipe'||en==='fade'||en==='flicker'?.24:0;
+  return {in:look?.animIn??base,out:look?.animOut??exit};
+}
 /** Glyph fill defaults (Look.fill fields left unset). */
-export const FILL_DEFAULTS={cell:.014,backing:.85,gain:1.4};
+export const FILL_DEFAULTS={cell:.012,backing:.3,gain:1.4};
 export function setLookParam(p:Project,key:LookParamKey,v:string|number|boolean):Project{
-  const look=lookOf(p);if(!look)return p;return setLookOverrides(p,lookParamPatch(look,key,v));
+  const look=lookOf(p);if(!look)return p;
+  if((key==='in'||key==='out')&&p.look){
+    // The displayed automatic duration can be an estimate (type uses characters/sec,
+    // spray follows word length). Returning to it must restore that behaviour too.
+    const overrides={...p.look.overrides};delete overrides[key==='in'?'animIn':'animOut'];
+    const inherited={...p,look:{...p.look,overrides:Object.keys(overrides).length?overrides:null}};
+    if(Math.abs(Number(v)-animOf(lookOf(inherited))[key])<.005)return inherited;
+  }
+  return setLookOverrides(p,lookParamPatch(look,key,v));
 }
 /** Hidden looks are frozen (kept only so older projects such as Fall For Me render byte-identically): renderer fixes
  *  that would move their pixels are switched off for them. */
@@ -230,8 +327,8 @@ export function lookIsFrozen(look:Pick<Look,'id'>){return !!FILE.looks[look.id]?
  */
 export function lineSizeMode(p:Project,lineId:string):'font'|'scale'|'none'{
   const ws=p.words.filter(w=>w.lineId===lineId);if(!ws.length)return 'none';const pl=ws[0].placement;
-  if(pl==='inworld')return 'none';
-  const look=lookOf(p);
+  if(pl==='inworld'||lineIsFilled(p,lineId))return 'none';
+  const look=lineLookOf(p,lineId);
   if(!look)return pl==='surface'?'scale':'font';
   if(isSubtitleLine(p,lineId))return 'font';
   if(look.layout==='hud')return 'scale';
@@ -251,9 +348,24 @@ export function lookParamApplies(p:Project,look:Look,key:LookParamKey):boolean{
   const screen=shown.some(w=>w.placement!=='surface'||look.layout==='hud');
   const marquee=look.motion==='marquee',neon=look.finish==='neon',spray=look.wall==='spray';
   switch(key){
+    // Card looks box the line already: no note-block controls there (Padding instead).
+    case 'boxes':return !look.card&&shown.some(w=>!!w.note);
+    case 'pad':case 'cardGap':return !!look.card&&!fillOf(look)&&shown.length>0;
+    // Faces: each shows only when a line uses it (hooks, HUD and marquee take the hook face; the rest the verse face).
+    case 'font':return look.layout==='hud'||look.layout==='stack'||look.motion==='marquee'||shown.some(w=>w.placement==='surface'||lineIsHook(p,w.lineId));
+    case 'body':return look.layout!=='hud'&&look.layout!=='stack'&&look.motion!=='marquee'&&shown.some(w=>w.placement!=='surface'&&!lineIsHook(p,w.lineId));
+    case 'note':case 'noteGlow':return !look.card&&noteBlocksOn(look)&&shown.some(w=>!!w.note);
     case 'card':return !!look.card||!!fillOf(look);
     case 'cell':case 'backing':return !!fillOf(look);
+    case 'dot':case 'gap':return !!rasterOf(look);
+    // The letter grid is the Glyph look's own feature; other looks show it only once it is on.
+    case 'fill':return look.id==='glyph'||!!fillOf(look);
     case 'drips':return spray;
+    // Wall text: size on its wall; blend = the wall's light/texture (spray already takes it, tubes emit).
+    case 'wall':return !marquee&&shown.some(w=>w.placement==='surface');
+    // Entrance/exit lengths: every look with on-screen lines (the LED ticker crawls on its own clock).
+    case 'in':case 'out':return !marquee&&shown.length>0;
+    case 'blend':return !marquee&&!spray&&!neon&&shown.some(w=>w.placement==='surface');
     case 'light':return neon;
     // Ticker: the LED display has its own size; walls take the wall's size.
     case 'scale':return !marquee&&screen;
@@ -279,7 +391,7 @@ export function setLook(p:Project,id:LookId|null,overrides?:LookRef['overrides']
 /** Merge into project.look.overrides (palette / font / optics / verse merge one level deep). */
 export function setLookOverrides(p:Project,partial:NonNullable<LookRef['overrides']>):Project{
   if(!p.look)return p;const cur=p.look.overrides||{};const out:Record<string,unknown>={...cur,...partial};
-  for(const k of ['palette','font','optics','verse','fill'] as const)if(partial[k]&&cur[k])out[k]={...cur[k],...partial[k]};
+  for(const k of ['palette','font','optics','verse','fill','raster'] as const)if(partial[k]&&cur[k])out[k]={...cur[k],...partial[k]};
   return {...p,look:{...p.look,overrides:out as NonNullable<LookRef['overrides']>}};
 }
 export function clearLookOverrides(p:Project):Project{return p.look?{...p,look:{...p.look,overrides:null}}:p;}
@@ -334,16 +446,17 @@ export function heroWordId(p:Project,lineId:string):string|undefined{
 export function isSubtitleLine(p:Project,lineId:string){
   const ws=p.words.filter(w=>w.lineId===lineId);if(!ws.length||ws.some(w=>w.placement!=='overlay'))return false;
   if(ws.every(w=>w.preset==='karaoke'))return true;
+  if(p.lineMeta?.[lineId]?.subtitle!=null)return p.lineMeta[lineId].subtitle!;
   return ws.every(w=>w.position&&w.autoPlace===false&&(w.style?.fontSize??p.style.fontSize)<=.045);
 }
 /** Glyph fill: a shown screen or wall line that the look's fill consumes (drawn as a letter grid, not as type).
  *  Subtitles and head-anchored labels never fill; with fill.hooks (default) only hook lines fill. */
 export function lineIsFilled(p:Project,lineId:string){
-  const f=fillOf(lookOf(p));if(!f)return false;
+  const f=fillOf(lineLookOf(p,lineId));if(!f)return false;
   const ws=p.words.filter(w=>w.lineId===lineId);if(!ws.length)return false;
   const pl=ws[0].placement;if(pl==='inworld'||pl==='anchor'||isSubtitleLine(p,lineId))return false;
   if(!ws.some(w=>wordIsShown(p,w)))return false;
-  return f.hooks===false||lineIsHook(p,lineId);
+  return p.lineMeta?.[lineId]?.appearance?.fill!==undefined||f.hooks===false||lineIsHook(p,lineId);
 }
 export function wordIsShown(p:Project,w:Word){
   if(w.hidden||p.lineMeta?.[w.lineId]?.hidden)return false;
@@ -351,4 +464,4 @@ export function wordIsShown(p:Project,w:Word){
   if(look?.quiet==='hooks-only'&&w.placement!=='surface'&&!lineIsHook(p,w.lineId)&&!isSubtitleLine(p,w.lineId))return false;
   return true;
 }
-export function applyCase(text:string,c?:'upper'|'lower'|'as-is'){return c==='upper'?text.toUpperCase():c==='lower'?text.toLowerCase():text;}
+export function applyCase(text:string,c?:'upper'|'lower'|'title'|'as-is'){return c==='upper'?text.toUpperCase():c==='lower'?text.toLowerCase():c==='title'?text.toLowerCase().replace(/(^|[\s\-'’])(\p{L})/gu,(_,a,b)=>a+b.toUpperCase()):text;}

@@ -126,7 +126,7 @@ def _run_json(name: str, inputs: dict, out_dir: Path, key: str, ctx, label: str,
 # ---- B. occupancy ----------------------------------------------------------------------
 
 def write_occupancy(store: ProjectStore, project: Project, ctx: JobContext | None = None,
-                    base: float = 0.0, span: float = 1.0) -> str:
+                    base: float = 0.0, span: float = 1.0, relative: str = "analysis/occupancy.json") -> str:
     """Compute analysis/occupancy.json from the matte PNGs; returns the relative path (engine info in
     write_occupancy.last)."""
     files = matte_files(store, project)
@@ -147,7 +147,7 @@ def write_occupancy(store: ProjectStore, project: Project, ctx: JobContext | Non
 
     doc, engine, note = run_analysis("occupancy", "Occupancy", ctx, comfy, local, base, span)
     doc["fps"] = project.fps
-    rel = "analysis/occupancy.json"
+    rel = relative
     write_json_atomic(_ppath(store, project.id, rel), doc)
     write_occupancy.last = (engine, note)
     return rel
@@ -160,9 +160,11 @@ def analyze_occupancy(store: ProjectStore, pid: str, ctx: JobContext):
     project = store.load(pid)
     t0 = time.monotonic()
     ctx.progress(.05, "Occupancy: staging matte frames")
-    rel = write_occupancy(store, project, ctx, .1)
+    rel = write_occupancy(store, project, ctx, .1, relative=f"analysis/occupancy_{ctx.id}.json")
     engine, note = write_occupancy.last
     def update(p):
+        if p.analysis.matte != project.analysis.matte or p.analysis.matteSource != project.analysis.matteSource:
+            raise ValueError("Subject source changed during occupancy analysis; run it again")
         p.analysis.occupancy = rel
     store.update(pid, update)
     data = json.loads(_ppath(store, pid, rel).read_text())
@@ -191,7 +193,8 @@ def track_surface(store: ProjectStore, pid: str, sid: str, ctx: JobContext):
         t0 = time.monotonic()
         n_expected = max(1, round(project.duration * project.fps))
         key = min(max(0, surface.keyFrame), n_expected - 1)
-        mattes = matte_files(store, project)
+        # This tool tracks the original footage. A layer's local pixels/time are not its exclusion mask.
+        mattes = [] if project.analysis.matteSource else matte_files(store, project)
         w, h = project.width, project.height
         corners = [[float(x), float(y)] for x, y in surface.corners]
         run_dir = store.project_dir(pid) / "analysis" / f"surface_run_{sid}_{ctx.id[:8]}"
@@ -264,6 +267,9 @@ def _is_subtitle_line(project: Project, line_id: str, base_fs: float) -> bool:
         return False
     if all(w.preset == "karaoke" for w in ws):
         return True
+    explicit = (getattr(project, "lineMeta", None) or {}).get(line_id, {}).get("subtitle")
+    if explicit is not None:
+        return bool(explicit)
     return all(w.position and getattr(w, "autoPlace", None) is False and (w.style or {}).get("fontSize", base_fs) <= .045 for w in ws)
 
 
@@ -543,9 +549,9 @@ def reframe_project(store: ProjectStore, pid: str, aspect: str, name: str | None
         raise ValueError("Upload a video first")
     t0 = time.monotonic()
     n = max(1, round(src.duration * src.fps))
-    tracks = json.loads(_ppath(store, pid, src.analysis.tracks).read_text()) if src.analysis.tracks else None
+    tracks = json.loads(_ppath(store, pid, src.analysis.tracks).read_text()) if src.analysis.tracks and not src.analysis.matteSource else None
     if tracks is None:
-        ctx.progress(.05, "No person track: the crop will stay centered (run matte first to follow the subject)")
+        ctx.progress(.05, "No original-footage person track: the crop will stay centered (run matte on Original footage to follow its subject)")
     surfaces = {}
     for s in src.surfaces or []:
         if s.track:
@@ -565,6 +571,11 @@ def reframe_project(store: ProjectStore, pid: str, aspect: str, name: str | None
                           run_dir, "crop_json", ctx, "Reframe", .1),
         lambda: vision.compute_crop(src.width, src.height, src.fps, tracks, surfaces, aspect, n, focus=focus))
     new_w, new_h = vision.output_size(src.width, src.height, aspect)
+    # Preserve the text register before shrinking/repositioning; a small title
+    # must not accidentally become a subtitle and lose its look controls.
+    line_meta = {k: dict(v) for k, v in (getattr(src, "lineMeta", None) or {}).items()}
+    for lid in {w.lineId for w in src.words}:
+        line_meta[lid] = {**line_meta.get(lid, {}), "subtitle": _is_subtitle_line(src, lid, src.style.fontSize)}
     words, style = relayout_words(src, new_w, new_h, crop, tracks)
     dst = store.create(name or f"{src.name} · {aspect}")
     sdir, ddir = store.project_dir(pid), store.project_dir(dst.id)
@@ -585,7 +596,7 @@ def reframe_project(store: ProjectStore, pid: str, aspect: str, name: str | None
                 _link_or_copy(sdir / rel, ddir / rel)
     write_json_atomic(ddir / "analysis" / "crop.json", crop)
     data = src.model_dump(mode="json")
-    data.update(id=dst.id, name=dst.name, width=new_w, height=new_h, words=words, style=style,
+    data.update(id=dst.id, name=dst.name, width=new_w, height=new_h, words=words, style=style, lineMeta=line_meta,
                 frame={"aspect": aspect, "source": {"projectId": pid}, "crop": "analysis/crop.json"})
     store.save(Project.model_validate(data))
     msg = f"Reframed to {aspect} ({new_w}×{new_h}) in {time.monotonic() - t0:.1f}s — {note}"

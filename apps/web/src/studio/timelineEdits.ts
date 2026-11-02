@@ -1,10 +1,34 @@
 import type {Project,Word,LineMeta} from '../types';
 
+/** Nudge whole lines and/or single words by n frames (Premiere ⌥←/→), rigidly, clamped to the project. */
+export function nudgeText(p:Project,lineIds:string[],wordIds:string[],frames:number):TextEdit|null{
+  const lines=new Set(lineIds),ids=new Set(wordIds);const hit=p.words.filter(w=>lines.has(w.lineId)||ids.has(w.id));if(!hit.length||!frames)return null;
+  const start=Math.min(...hit.map(w=>w.start));const moved=new Map(dragTextTiming(hit,'move',start+frames/p.fps,p.duration,p.fps).map(w=>[w.id,w]));
+  return {project:{...p,words:p.words.map(w=>moved.get(w.id)??w)},lineIds:[...lines],wordId:wordIds[0]??''};
+}
 /** A copied text selection is a snapshot, independent of subsequent edits. */
 export type TextClipboard={projectId:string;words:Word[];meta:Record<string,LineMeta>;start:number;end:number};
 export type TextEdit={project:Project;lineIds:string[];wordId:string};
 const clone=<T,>(value:T):T=>structuredClone(value);
 const stamp=(t:number)=>+t.toFixed(6);
+
+/** Move a text clip rigidly, or trim one boundary. Trimming keeps every word and at least one frame per word
+ * (already shorter words keep their minimum span); it never stretches the other boundary or retimes the interior. */
+export function dragTextTiming(words:Word[],kind:'move'|'start'|'end',at:number,duration:number,fps:number):Word[]{
+  if(!words.length||!Number.isFinite(at))return words;
+  const start=Math.min(...words.map(w=>w.start)),end=Math.max(...words.map(w=>w.end));
+  const minSpan=(w:Word)=>Math.min(1/fps,w.end-w.start);
+  if(kind==='move'){
+    const delta=Math.max(-start,Math.min(duration-end,at-start));
+    return words.map(w=>({...w,start:stamp(w.start+delta),end:stamp(w.end+delta)}));
+  }
+  if(kind==='start'){
+    const next=Math.max(0,Math.min(at,...words.map(w=>w.end-minSpan(w))));
+    return words.map(w=>({...w,start:stamp(w.start===start||w.start<next?next:w.start)}));
+  }
+  const next=Math.min(duration,Math.max(at,...words.map(w=>w.start+minSpan(w))));
+  return words.map(w=>({...w,end:stamp(w.end===end||w.end>next?next:w.end)}));
+}
 
 export function copyText(p:Project,lineIds:string[]):TextClipboard|null{
   const ids=new Set(lineIds);const words=p.words.filter(w=>ids.has(w.lineId));if(!words.length)return null;

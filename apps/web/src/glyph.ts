@@ -4,6 +4,9 @@
 // Deterministic per frame and free of state: a cell keeps its letter for the whole line (the body moving over the
 // grid reveals a stable page of text instead of reshuffling letters), sung words light up over RAMP frames, the word
 // being sung takes the accent, brightness is continuous (no quantised glyph ramp, so nothing flickers at level edges).
+// True-ASCII grid: terminal cells (2:1), the face sized so one advance is one cell, whole letters only (a cell is in or
+// out of the region, never cut by the matte), and no hard silhouette: the backing follows the subject through the
+// cell-resolution matte scaled up smooth, so the region's edge is a staircase of letters, not a card.
 import type {Look,Point,Word} from './types';
 import {drawWarped,squareToQuad,applyH,quadSize} from './geometry';
 import {applyCase,FILL_DEFAULTS} from './looks';
@@ -25,12 +28,12 @@ export type FillDraw={
 };
 
 /** Cell height / width (terminal cells). */
-const ASPECT=1.9;
+const ASPECT=2;
 /** Brightness steps in the atlas (per colour). */
 const LEVELS=16;
 /** Brightness of words not yet sung. */
 const DIM=.22;
-/** The darkest cell inside the region still shows its letter at this brightness. */
+/** With a full backing the darkest cell inside the region still shows its letter at this brightness (× backing). */
 const FLOOR=.14;
 /** Frames for a sung word to light up. */
 const RAMP=3;
@@ -38,7 +41,7 @@ const RAMP=3;
 const FADE_IN=.15,FADE_OUT=.25;
 /** Luminance is read from the footage at 1/SAMPLE resolution. */
 const SAMPLE=4;
-const DEFAULT_WEIGHT:Record<string,number>={Inter:800,'Archivo Narrow':500,'Big Shoulders Display':900,'Space Mono':700};
+const DEFAULT_WEIGHT:Record<string,number>={Inter:800,'Archivo Narrow':500,'Big Shoulders Display':900,'Space Mono':700,'IBM Plex Mono':500};
 
 type Atlas={canvas:HTMLCanvasElement;index:Map<string,number>;cw:number;ch:number};
 type Program={chars:string[];word:number[];len:number;words:Word[]};
@@ -79,15 +82,16 @@ export class GlyphFill{
 
   /** Glyph atlas for one look + cell size: every character of the line at LEVELS brightness steps, ink rows then accent rows. */
   private atlas(look:Look,chars:Iterable<string>,cw:number,ch:number):Atlas{
-    const family=look.font.hero,weight=look.font.heroWeight??DEFAULT_WEIGHT[family]??700;
+    const family=look.font.hero,weight=look.font.heroWeight??DEFAULT_WEIGHT[family]??500;
     const list=[...new Set(chars)].filter(c=>c.trim()).sort();
     const key=`${family}|${weight}|${cw}|${ch}|${look.palette.text}|${look.palette.accent}|${list.join('')}`;
     const hit=this.atlases.get(key);if(hit)return hit;
     if(this.atlases.size>16)this.atlases.clear();
     const c=document.createElement('canvas');c.width=Math.max(1,list.length*cw);c.height=2*LEVELS*ch;const g=c.getContext('2d')!;
-    // Type size: the em in 78% of the cell height, shrunk until the widest glyph fits 92% of the cell width.
-    let px=ch*.78;g.font=`${weight} ${px}px "${family}"`;const widest=Math.max(1,...list.map(x=>g.measureText(x).width));
-    if(widest>cw*.92)px*=cw*.92/widest;
+    // Terminal fit: the em sized so the widest advance is exactly one cell (every advance, for a monospace face),
+    // capped by the cell height.
+    g.font=`${weight} 100px "${family}"`;const adv=Math.max(1,...list.map(x=>g.measureText(x).width))/100;
+    const px=Math.min(ch*.92,cw/adv);
     g.font=`${weight} ${px}px "${family}"`;g.textAlign='center';g.textBaseline='middle';
     const index=new Map<string,number>();
     list.forEach((x,i)=>{index.set(x,i);for(let k=0;k<2;k++){g.fillStyle=k?look.palette.accent:look.palette.text;
@@ -113,29 +117,33 @@ export class GlyphFill{
       const a=g.getImageData(0,0,cols,rows).data;cover=new Float32Array(cols*rows);for(let i=0;i<cover.length;i++)cover[i]=a[i*4+3]/255;}
     return {lum,cover};
   }
-  /** Brightness level (0..LEVELS-1) of a cell from its luminance and its word's reveal. */
-  private level(lum:number,gain:number,on:number){
-    const v=Math.min(1,Math.max(0,(lum*gain-.02)/.9));const bright=(FLOOR+(1-FLOOR)*v)*(DIM+(1-DIM)*on);
+  /** Brightness level (0..LEVELS-1) of a cell from its luminance and its word's reveal; floor = darkest shown letter. */
+  private level(lum:number,gain:number,on:number,floor:number){
+    const v=Math.min(1,Math.max(0,(lum*gain-.02)/.9));const bright=(floor+(1-floor)*v)*(DIM+(1-DIM)*on);
     return Math.round(bright*(LEVELS-1));
   }
   private drawScreen(ctx:CanvasRenderingContext2D,d:FillDraw,line:FillLine,region:'subject'|'world'|'frame',a:number,cw:number,ch:number){
     const cols=Math.ceil(d.W/cw),rows=Math.ceil(d.H/ch);
-    const {lum,cover}=this.sample(d,cols,rows,region==='subject');
+    const {lum,cover}=this.sample(d,cols,rows,region!=='frame');
     const prog=program(line,d.look);const atlas=this.atlas(d.look,prog.chars,cw,ch);
     const G=this.grid;if(G.width!==d.W||G.height!==d.H){G.width=d.W;G.height=d.H;}const g=G.getContext('2d')!;g.setTransform(1,0,0,1,0,0);g.globalAlpha=1;g.globalCompositeOperation='source-over';g.clearRect(0,0,d.W,d.H);
     const backing=d.fill.backing??FILL_DEFAULTS.backing;
-    if(backing>0){g.globalAlpha=backing;g.fillStyle=d.look.palette.card||'#000000';g.fillRect(0,0,d.W,d.H);g.globalAlpha=1;}
-    const cur=currentWord(prog.words,d.t);const gain=d.fill.gain??FILL_DEFAULTS.gain;
+    if(backing>0){g.globalAlpha=backing;g.fillStyle=d.look.palette.card||'#000000';g.fillRect(0,0,d.W,d.H);g.globalAlpha=1;
+      // Borderless: the backing follows the region through the cell-resolution matte scaled up smooth (a cell of feather).
+      if(cover){g.globalCompositeOperation=region==='subject'?'destination-in':'destination-out';g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';
+        g.drawImage(this.smallMatte,0,0,cols,rows,0,0,cols*cw,rows*ch);g.globalCompositeOperation='source-over';}}
+    const cur=currentWord(prog.words,d.t);const gain=d.fill.gain??FILL_DEFAULTS.gain;const floor=FLOOR*backing;
     for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
-      const i=r*cols+c;if(cover&&cover[i]<.04)continue;
+      const i=r*cols+c;
+      // Whole letters: a cell belongs to the subject when the matte covers at least half of it.
+      if(cover&&(region==='subject'?cover[i]<.5:cover[i]>=.5))continue;
       const idx=(r*(cols+4)+c)%prog.len;const gi=atlas.index.get(prog.chars[idx]);if(gi===undefined)continue;
       const wi=prog.word[idx];const on=Math.min(1,Math.max(0,(d.t-prog.words[wi].start)*d.fps/RAMP));
-      const level=this.level(lum[i],gain,on);if(level<1)continue;
+      const level=this.level(lum[i],gain,on,floor);if(level<1)continue;
       g.drawImage(atlas.canvas,gi*cw,((wi===cur?LEVELS:0)+level)*ch,cw,ch,c*cw,r*ch,cw,ch);
     }
-    if(d.matte&&region==='subject'){g.globalCompositeOperation='destination-in';d.matte(g,d.W,d.H);g.globalCompositeOperation='source-over';}
-    // Text-only renders of everything: the world fill keeps a hole where the subject is (the composite paints the cutout over it).
-    else if(d.matte&&region==='world'&&d.subset==='all'){g.globalCompositeOperation='destination-out';d.matte(g,d.W,d.H);g.globalCompositeOperation='source-over';}
+    // The subject occludes the world fill: text-only renders of everything keep the cutout's exact hole (the composite paints it over).
+    if(cover&&region==='world'&&d.subset==='all'){g.globalCompositeOperation='destination-out';d.matte!(g,d.W,d.H);g.globalCompositeOperation='source-over';}
     ctx.save();ctx.globalAlpha*=a;ctx.drawImage(G,0,0);ctx.restore();
   }
   /** A wall line: the grid lives in the wall's plane (perspective-correct cells), lit by the footage under each cell. */
@@ -149,13 +157,13 @@ export class GlyphFill{
     const P=this.plane;const pw=pcols*cw,ph=prows*ch;if(P.width!==pw||P.height!==ph){P.width=pw;P.height=ph;}const g=P.getContext('2d')!;g.setTransform(1,0,0,1,0,0);g.globalAlpha=1;g.globalCompositeOperation='source-over';g.clearRect(0,0,pw,ph);
     const backing=d.fill.backing??FILL_DEFAULTS.backing;
     if(backing>0){g.globalAlpha=backing;g.fillStyle=d.look.palette.card||'#000000';g.fillRect(0,0,pw,ph);g.globalAlpha=1;}
-    const cur=currentWord(prog.words,d.t);const gain=d.fill.gain??FILL_DEFAULTS.gain;
+    const cur=currentWord(prog.words,d.t);const gain=d.fill.gain??FILL_DEFAULTS.gain;const floor=FLOOR*backing;
     for(let r=0;r<prows;r++)for(let c=0;c<pcols;c++){
       const [x,y]=applyH(Hm,(c+.5)/pcols,(r+.5)/prows);const mx=Math.min(mw-1,Math.max(0,Math.round(x/SAMPLE))),my=Math.min(mh-1,Math.max(0,Math.round(y/SAMPLE)));
       const k=(my*mw+mx)*4;const lum=(.2126*px[k]+.7152*px[k+1]+.0722*px[k+2])/255;
       const idx=(r*(pcols+4)+c)%prog.len;const gi=atlas.index.get(prog.chars[idx]);if(gi===undefined)continue;
       const wi=prog.word[idx];const on=Math.min(1,Math.max(0,(d.t-prog.words[wi].start)*d.fps/RAMP));
-      const level=this.level(lum,gain,on);if(level<1)continue;
+      const level=this.level(lum,gain,on,floor);if(level<1)continue;
       g.drawImage(atlas.canvas,gi*cw,((wi===cur?LEVELS:0)+level)*ch,cw,ch,c*cw,r*ch,cw,ch);
     }
     if(d.matte&&d.subset==='all'){

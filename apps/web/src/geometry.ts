@@ -16,6 +16,26 @@ export function applyH(m:Homography,u:number,v:number):Point{
   const w=m[6]*u+m[7]*v+m[8];
   return [(m[0]*u+m[1]*v+m[2])/w,(m[3]*u+m[4]*v+m[5])/w];
 }
+/** Monotone cubic (Fritsch–Carlson) through (xs, ys) at x, held outside the ends: smooth, and never swings past a key
+ *  however unevenly the keys are spaced. */
+export function monotone(xs:number[],ys:number[],x:number):number{
+  const n=xs.length;if(n===1||x<=xs[0])return ys[0];if(x>=xs[n-1])return ys[n-1];
+  let i=0;while(xs[i+1]<x)i++;
+  const d=(j:number)=>(ys[j+1]-ys[j])/(xs[j+1]-xs[j]);
+  const m=(j:number)=>{if(j===0)return d(0);if(j===n-1)return d(n-2);const a=d(j-1),b=d(j);return a*b<=0?0:2/(1/a+1/b);};
+  const h=xs[i+1]-xs[i],s=(x-xs[i])/h;
+  return (2*s**3-3*s**2+1)*ys[i]+(s**3-2*s**2+s)*h*m(i)+(-2*s**3+3*s**2)*ys[i+1]+(s**3-s**2)*h*m(i+1);
+}
+/** Corner offsets at `frame` from per-key offsets (monotone per coordinate). */
+export function keyedOffset(fs:number[],offs:Point[][],frame:number):Point[]{
+  return offs[0].map((_,c)=>[0,1].map(d=>monotone(fs,offs.map(o=>o[c][d]),frame)) as Point);
+}
+/** Inverse projective map (quad → unit square). */
+export function invertH(m:Homography):Homography{
+  const [a,b,c,d,e,f,g,h,i]=m;
+  const A=e*i-f*h,B=c*h-b*i,C=b*f-c*e,D=f*g-d*i,E=a*i-c*g,F=c*d-a*f,G=d*h-e*g,Hh=b*g-a*h,I=a*e-b*d;
+  const k=I||1e-12;return [A/k,B/k,C/k,D/k,E/k,F/k,G/k,Hh/k,1];
+}
 /** A quad is drawable when it is convex and non-degenerate (otherwise the warp folds). */
 export function quadIsConvex(q:Point[]){
   let sign=0;

@@ -19,6 +19,7 @@ Nodes (all V1 node API):
   TextToMask        text + bundled OFL font -> MASK + IMAGE (white text on black)
   TypesetLook       look preset + params -> look_json (= project.look) + type preview
   TypesetGrade      IMAGE batch + grade preset/params (+ beats) -> graded IMAGE + grade_json (= project.grade)
+  TypesetGradeSettings grade preset/params -> grade_json (no image processing, for TypesetRender)
 
 Each node lives in its own module; this file aggregates the mappings and mounts the studio at /typeset.
 """

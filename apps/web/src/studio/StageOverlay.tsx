@@ -3,9 +3,10 @@
 // Everything is in project pixels (SVG viewBox). Wall lines get their box in the wall's plane (perspective quad).
 import {useEffect,useMemo,useRef} from 'react';
 import type {Project,Point,Word} from '../types';
-import {StageRenderer,lines,headAt,surfaceCornersAt,withLead,type HeadState} from '../renderer';
+import {StageRenderer,lines,surfaceCornersAt,withLead,type HeadState} from '../renderer';
 import {cropAt,toOut,quadIsConvex,squareToQuad,applyH,quadSize,type Homography} from '../geometry';
 import {wordIsShown,lookOf} from '../looks';
+import {hudPointer} from '../hud';
 
 /** walls: always show wall quads (otherwise only while a wall or a wall line is selected). */
 export type Guides = {occupancy:boolean;regions:boolean;anchor:boolean;walls?:boolean};
@@ -75,10 +76,10 @@ export function lineBoxes(r:StageRenderer|undefined,p:Project,frame:number):Line
       const auto=plan.get(l.key);const align=l.metrics[0]?.style.align||'center';let anchorPt:Point|undefined;let head:HeadState|undefined;
       if(auto){fit*=auto.scale;const half=l.total*fit/2/W;origin={x:auto.cx+(align==='left'?-half:align==='right'?half:0),y:auto.cy};}
       if(l.placement==='anchor'){
-        const a=first.anchor||{trackId:'person0',dx:0,dy:-.1};const tf=t*(r.tracks?.fps||p.fps);const hd=headAt(r.tracks,a.trackId,tf,Math.round(tf));head=hd.state;const pt=hd.point;
-        const [cx,cy]=toOut(cropAt(r.crop,frame),pt.cx,pt.cy);anchorPt=hd.state==='none'?undefined:[cx*W,cy*H];origin={x:cx+a.dx,y:cy+a.dy};
-        const hw=l.total*fit/2/W+.012,top=(l.height/2+l.size*(first.preset==='hud'?.85:.2))*fit/H,bot=(l.height/2+l.size*.2)*fit/H;
-        origin={x:Math.min(1-hw-.02,Math.max(hw+.02,origin.x)),y:Math.min(1-bot-.03,Math.max(top+.03,origin.y))};
+        const a=first.anchor||{trackId:'person0',dx:0,dy:-.1};const hd=r.head(t,a.trackId);head=hd.state;const pt=hd.point;
+        const target=r.head(t,a.trackId,p,hudPointer(p,lineId).point).point;
+        const [cx,cy]=[pt.cx,pt.cy];anchorPt=hd.state==='none'?undefined:[target.cx*W,target.cy*H];origin={x:cx+a.dx,y:cy+a.dy};
+        origin=r.anchorOrigin(l,fit,origin,frame,a.trackId);
       }
       const w=l.total*fit,h=l.height*fit;const x=origin.x*W-(align==='center'?w/2:align==='right'?w:0),y=origin.y*H-h/2;
       out.push({lineId,role:l.role,key:l.key,placement:l.placement,x,y,w,h,auto:!!auto,coverage:auto?.coverage,front:auto?.front,
@@ -92,10 +93,11 @@ export function lineBoxes(r:StageRenderer|undefined,p:Project,frame:number):Line
 const cornersOf=(b:LineBox):Point[]=>b.quad||[[b.x,b.y],[b.x+b.w,b.y],[b.x+b.w,b.y+b.h],[b.x,b.y+b.h]];
 const CURSORS=['nwse-resize','nesw-resize','nwse-resize','nesw-resize'];
 
-export function StageGuides({renderer,project:p,frame,guides,selectedLine,onSelectLine,onDragLine,onResizeLine,box,selectedWall,onSelectWall,onWallEdit}:{
+export function StageGuides({renderer,project:p,frame,guides,selectedLine,onSelectLine,onDragLine,onResizeLine,onDragAnchor,box,selectedWall,onSelectWall,onWallEdit}:{
   renderer?:StageRenderer;project:Project;frame:number;guides:Guides;selectedLine?:string;
   onSelectLine:(lineId:string)=>void;onDragLine:(lineId:string,placement:Word['placement'],dx:number,dy:number,phase:'start'|'move'|'end')=>void;
   onResizeLine?:(r:Resize)=>void;
+  onDragAnchor?:(lineId:string,point:Point,phase:'start'|'move'|'end'|'cancel')=>void;
   /** Walls: the selected wall (handles + body drag), click to select, drag to re-place (quad in project px at this frame). */
   selectedWall?:string;onSelectWall?:(id:string)=>void;onWallEdit?:(id:string,quad:Point[],phase:'start'|'move'|'end')=>void;
   box:{width:number;height:number};
@@ -129,11 +131,21 @@ export function StageGuides({renderer,project:p,frame,guides,selectedLine,onSele
   const wallUp=(e:React.PointerEvent)=>{const d=wd.current;wd.current=null;(e.currentTarget as Element).releasePointerCapture?.(e.pointerId);if(d?.moved)onWallEdit?.(d.id,d.q0,'end');};
 
   const drag=useRef<{lineId:string;placement:Word['placement'];x0:number;y0:number}|null>(null);
+  const anchorDrag=useRef<{id:string;start:Point;target:Point;moved:boolean}|null>(null);
   // Resize: k = base + (projection − ref) × gain; ⇧ re-bases with a quarter gain so fine control never jumps.
   const rs=useRef<{b:LineBox;fixed:Point;c0:Point;plane?:PlaneBox;inv?:Homography;base:number;ref:number;fine:boolean;k:number}|null>(null);
   const svg=useRef<SVGSVGElement>(null);
   const toPx=(e:React.PointerEvent)=>{const r=svg.current!.getBoundingClientRect();return [(e.clientX-r.left)/r.width*W,(e.clientY-r.top)/r.height*H];};
   const s=W/Math.max(1,box.width);// one screen pixel in project px
+  const anchorDown=(e:React.PointerEvent,b:LineBox)=>{if(e.button!==0||!b.anchorPt||!onDragAnchor)return;
+    e.preventDefault();e.stopPropagation();onSelectLine(b.lineId);(e.currentTarget as Element).setPointerCapture(e.pointerId);
+    anchorDrag.current={id:b.lineId,start:toPx(e) as Point,target:b.anchorPt,moved:false};onDragAnchor(b.lineId,[b.anchorPt[0]/W,b.anchorPt[1]/H],'start');};
+  const anchorMove=(e:React.PointerEvent)=>{const d=anchorDrag.current;if(!d)return;e.preventDefault();e.stopPropagation();const [x,y]=toPx(e);
+    if(!d.moved&&Math.hypot(x-d.start[0],y-d.start[1])<s*2)return;d.moved=true;
+    onDragAnchor?.(d.id,[(d.target[0]+x-d.start[0])/W,(d.target[1]+y-d.start[1])/H],'move');};
+  const anchorUp=(e:React.PointerEvent)=>{const d=anchorDrag.current;if(!d)return;e.preventDefault();e.stopPropagation();anchorDrag.current=null;
+    if((e.currentTarget as Element).hasPointerCapture(e.pointerId))(e.currentTarget as Element).releasePointerCapture(e.pointerId);
+    onDragAnchor?.(d.id,[d.target[0]/W,d.target[1]/H],e.type==='pointercancel'?'cancel':'end');};
   const project=(st:NonNullable<typeof rs.current>,P:Point)=>{
     if(st.plane&&st.inv){const [u,v]=applyH(st.inv,P[0],P[1]);const {aw,ah,uv}=st.plane;const f=[(uv[0]+uv[2])/2*aw,(uv[1]+uv[3])/2*ah],c=[st.c0[0]*aw,st.c0[1]*ah],q=[u*aw,v*ah];
       const dx=c[0]-f[0],dy=c[1]-f[1];return ((q[0]-f[0])*dx+(q[1]-f[1])*dy)/Math.max(1e-6,dx*dx+dy*dy);}
@@ -160,7 +172,7 @@ export function StageGuides({renderer,project:p,frame,guides,selectedLine,onSele
         <polygon points={q.quad.map(p=>p.join(',')).join(' ')} style={{strokeWidth:s*1.2}} onPointerDown={e=>wallDown(e,q.id,q.quad,-1)} onPointerMove={wallMove} onPointerUp={wallUp} onPointerCancel={wallUp}><title>{q.label}{q.sel?' · drag to move · ⌫ deletes':''}</title></polygon>
         {q.sel&&onWallEdit&&q.quad.map(([x,y],i)=><circle key={i} className="g-wall-handle" cx={x} cy={y} r={s*6} style={{strokeWidth:s*1.5}} onPointerDown={e=>wallDown(e,q.id,q.quad,i)} onPointerMove={wallMove} onPointerUp={wallUp} onPointerCancel={wallUp}/>)}
       </g>)}
-      {(guides.regions||guides.anchor)&&boxes.map(b=>{const sel=b.lineId===selectedLine;const c=cornersOf(b);const movable=b.placement!=='surface';
+      {(guides.regions||guides.anchor||selectedLine)&&boxes.map(b=>{const sel=b.lineId===selectedLine;const c=cornersOf(b);const movable=b.placement!=='surface';
         const down=(e:React.PointerEvent)=>{e.stopPropagation();onSelectLine(b.lineId);if(!movable)return;const [x,y]=toPx(e);drag.current={lineId:b.lineId,placement:b.placement,x0:x,y0:y};(e.currentTarget as Element).setPointerCapture(e.pointerId);onDragLine(b.lineId,b.placement,0,0,'start');};
         const mv=(e:React.PointerEvent)=>{const d=drag.current;if(!d)return;const [x,y]=toPx(e);onDragLine(d.lineId,d.placement,(x-d.x0)/W,(y-d.y0)/H,'move');};
         const up=(e:React.PointerEvent)=>{const d=drag.current;drag.current=null;(e.currentTarget as Element).releasePointerCapture?.(e.pointerId);if(d){const [x,y]=toPx(e);onDragLine(d.lineId,d.placement,(x-d.x0)/W,(y-d.y0)/H,'end');}};
@@ -172,8 +184,14 @@ export function StageGuides({renderer,project:p,frame,guides,selectedLine,onSele
           onPointerDown={e=>startResize(e,b,i)} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={endResize}/>)}
         <title>{b.role&&!['line','hud'].includes(b.role)?`${b.role==='sat'?'SATELLITE':b.role.toUpperCase()} · `:''}{b.placement==='anchor'?'HUD':b.placement==='surface'?'WALL':b.placement.toUpperCase()}{b.auto?` · AUTO${b.coverage!=null?` · ${Math.round(b.coverage*100)}% covered`:''}`:''}{b.front?' · PROMOTED TO FRONT':''}{b.quiet?' · QUIET':''}</title>
         {b.head&&b.head!=='tracked'&&<g className={`g-nohead ${b.head}`} transform={`translate(${b.x+b.w+s*4},${b.y-s*4}) scale(${s*.6})`}><circle cx="0" cy="0" r="10"/><path d="M-4 -3a4 4 0 1 0 8 0a4 4 0 1 0-8 0M-6 7c1-3 3-4.5 6-4.5s5 1.5 6 4.5M-8 8 8-8"/>
-          <title>{b.head==='none'?'No person track: HUD is a screen label · run Subject matte to follow the head':'No person here: HUD holds the head position'}</title></g>}
-        {b.anchorPt&&guides.anchor&&<g className={`g-anchor ${b.head==='held'?'held':''}`}><line x1={b.anchorPt[0]-s*10} y1={b.anchorPt[1]} x2={b.anchorPt[0]+s*10} y2={b.anchorPt[1]} style={{strokeWidth:s}}/><line x1={b.anchorPt[0]} y1={b.anchorPt[1]-s*10} x2={b.anchorPt[0]} y2={b.anchorPt[1]+s*10} style={{strokeWidth:s}}/><circle cx={b.anchorPt[0]} cy={b.anchorPt[1]} r={s*6} style={{strokeWidth:s}}/><title>head · {p.words.find(w=>w.lineId===b.lineId)?.anchor?.trackId||'person0'}</title></g>}
+          <title>{b.head==='none'?'No head detected here · use Track head to analyze this footage':'No person here: HUD holds the head position'}</title></g>}
+        {b.anchorPt&&(guides.anchor||sel)&&<g className={`g-anchor ${sel?'editable':''} ${b.head==='held'?'held':''}`}>
+          <line x1={b.anchorPt[0]-s*10} y1={b.anchorPt[1]} x2={b.anchorPt[0]+s*10} y2={b.anchorPt[1]} style={{strokeWidth:s}}/><line x1={b.anchorPt[0]} y1={b.anchorPt[1]-s*10} x2={b.anchorPt[0]} y2={b.anchorPt[1]+s*10} style={{strokeWidth:s}}/><circle cx={b.anchorPt[0]} cy={b.anchorPt[1]} r={s*6} style={{strokeWidth:s}}/>
+          {sel&&onDragAnchor&&<circle className="g-anchor-hit" role="button" tabIndex={0} aria-label="Move HUD tracking point" cx={b.anchorPt[0]} cy={b.anchorPt[1]} r={s*13}
+            onPointerDown={e=>anchorDown(e,b)} onPointerMove={anchorMove} onPointerUp={anchorUp} onPointerCancel={anchorUp}
+            onKeyDown={e=>{const dirs:Record<string,Point>={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};const d=dirs[e.key];if(!d||!b.anchorPt)return;e.stopPropagation();e.preventDefault();const n=s*(e.shiftKey?10:1);
+              const point:Point=[(b.anchorPt[0]+d[0]*n)/W,(b.anchorPt[1]+d[1]*n)/H];onDragAnchor(b.lineId,point,'start');onDragAnchor(b.lineId,point,'move');onDragAnchor(b.lineId,point,'end');}}/>}
+          <title>{sel?'Drag to attach to a different spot on the head · arrow keys nudge · editor guide only':'Head attachment · select its text clip to move'}</title></g>}
       </g>;})}
     </svg>
   </>;

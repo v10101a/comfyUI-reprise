@@ -12,6 +12,23 @@ from app.models import InworldBody
 
 
 class RemoteGenTests(unittest.TestCase):
+    def test_direction_keeps_exact_text_and_motion_in_their_model_prompts(self):
+        text = "Stay again!"
+        appearance = "Copper letters on concrete. Keep the existing light."
+        motion = "The camera holds still. Hair moves in a light breeze. Lips closed."
+        edit = rg.edit_prompt(text, appearance)
+        self.assertIn(f'"{text}"', edit)
+        self.assertIn("Lettering and setting: " + appearance, edit)
+        self.assertNotIn(motion, edit)
+        for prompt in (rg.motion_prompt(text, appearance, motion), rg.ref_prompt(text, appearance, motion)):
+            self.assertIn(f'"{text}"', prompt)
+            self.assertIn(motion, prompt)
+            self.assertIn("<Picture 1>", prompt)
+        self.assertEqual(InworldBody(start=0, end=2, seed=0).seed, 0)
+        for seed in (-1, 2147483648, 1.2):
+            with self.assertRaises(ValidationError):
+                InworldBody(start=0, end=2, seed=seed)
+
     def test_sizes(self):
         self.assertEqual(rg.gen_size(1344, 768, 1344), (1344, 768))
         self.assertEqual(rg.gen_size(1344, 768, 1024), (1024, 576))

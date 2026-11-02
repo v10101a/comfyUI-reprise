@@ -268,29 +268,28 @@
     },
     "glyph": {
       "name": "Glyph",
-      "description": "The lyric drawn with the footage's own light: hook lines become a fixed letter grid on the subject (or the world, the frame, or the wall they sit on) that lights up as the words are sung; verses stay small mono type.",
+      "description": "The lyric as true ASCII: hook lines become a terminal grid of the line's own letters on the subject (or the world, the frame, or the wall they sit on), lit by the footage and lighting up as the words are sung; verses stay small mono type.",
       "swatch": [
         "#06080a",
-        "#e8f1ff",
-        "#7cf7c4"
+        "#a6e9c7",
+        "#eefbff"
       ],
       "fonts": [
-        "Space Mono",
         "IBM Plex Mono"
       ],
       "look": {
         "id": "glyph",
         "font": {
-          "hero": "Space Mono",
+          "hero": "IBM Plex Mono",
           "body": "IBM Plex Mono",
-          "heroWeight": 700,
+          "heroWeight": 500,
           "bodyWeight": 500,
           "heroCase": "upper",
           "bodyCase": "lower"
         },
         "palette": {
-          "text": "#e8f1ff",
-          "accent": "#7cf7c4",
+          "text": "#a6e9c7",
+          "accent": "#eefbff",
           "shadow": "#06080a",
           "card": "#06080a"
         },
@@ -304,10 +303,52 @@
         "enter": "fade",
         "fill": {
           "region": "subject",
-          "cell": 0.014,
-          "backing": 0.85,
+          "cell": 0.012,
+          "backing": 0.3,
           "gain": 1.4,
           "hooks": true
+        }
+      }
+    },
+    "stitch": {
+      "name": "Stitch",
+      "description": "Script type stitched out of pixels: every line is rasterised to a fixed dot grid in pale yellow, title-case swashes, hooks large and verses small.",
+      "swatch": [
+        "#f6f28a",
+        "#ffffff",
+        "#2a2640"
+      ],
+      "fonts": [
+        "Pinyon Script"
+      ],
+      "look": {
+        "id": "stitch",
+        "font": {
+          "hero": "Pinyon Script",
+          "body": "Pinyon Script",
+          "heroCase": "title",
+          "bodyCase": "title"
+        },
+        "palette": {
+          "text": "#f6f28a",
+          "accent": "#ffffff",
+          "shadow": "#2a2640"
+        },
+        "halo": 0,
+        "texture": "none",
+        "optics": {},
+        "layout": "line",
+        "quiet": "none",
+        "heroFill": "text",
+        "enter": "fade",
+        "scale": 0.8,
+        "verse": {
+          "max": 0.09
+        },
+        "raster": {
+          "shape": "square",
+          "dot": 0.009,
+          "gap": 0.2
         }
       }
     },

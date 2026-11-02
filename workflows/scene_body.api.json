@@ -1,0 +1,200 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "lora_name": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+      "strength_model": 1
+    }
+  },
+  "3": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    }
+  },
+  "4": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    }
+  },
+  "5": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "typeset/pb_lookbook/ref_face.png"
+    },
+    "_meta": {
+      "title": "Face reference"
+    }
+  },
+  "6": {
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "inputs": {
+      "clip": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ],
+      "audio_vae": [
+        "13",
+        0
+      ],
+      "prompt": "The person from <Picture 1>, exactly as they look in the photo: the same face, eye shape, nose, lips, skin texture with natural pores, no beauty filter, no smoothing, no idol makeup, not stylised. Hair exactly like <Picture 2>: dry, matte, airy, fluffy platinum blonde, evenly blonde all over from root to tip, no dark roots, no dark streaks, no dark underlayer; a short choppy textured shag with piecey, uneven, feathered ends and choppy bangs. Not wet, not oily, not shiny, not slicked. Only the hair comes from <Picture 2>; the face, piercings and earring come from <Picture 1>. Piercings exactly as in the photo, both always visible: a small silver septum clicker ring in the nose, and a small silver hoop lip ring through the lower lip, slightly off-centre. The same pearl hoop earring. Natural matte rose-nude lips, no lipstick, no gloss. Body: androgynous slim build with a small, flat chest; never enlarge the chest. Outfit: an oversized pale-blue and white striped button-up shirt worn as a shirt-dress, sleeves pushed up, a thin black necktie loosened, big silver over-ear headphones around the neck, white knee-high socks, chunky black shoes. Medium close-up inside an old photo booth with a red velvet curtain, sitting square to the camera, deadpan stare straight into the lens, chin slightly down. Direct on-camera flash snapshot, harsh flash with soft shadow on the curtain, slightly blown highlights, 35mm film grain, real photograph like a cult music video still. Almost still: one slow blink, the camera does not move.",
+      "width": 1344,
+      "height": 768,
+      "length": 97,
+      "ref_image_size": "max",
+      "ref_images.ref_image_1": [
+        "5",
+        0
+      ],
+      "ref_images.ref_image_2": [
+        "50",
+        0
+      ],
+      "ref_images.ref_image_3": [
+        "51",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Direction"
+    }
+  },
+  "7": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 4101
+    },
+    "_meta": {
+      "title": "Variation seed"
+    }
+  },
+  "8": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "2",
+        0
+      ],
+      "conditioning": [
+        "6",
+        0
+      ]
+    }
+  },
+  "9": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "res_multistep"
+    }
+  },
+  "10": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "model": [
+        "2",
+        0
+      ],
+      "scheduler": "simple",
+      "steps": 8,
+      "denoise": 1
+    }
+  },
+  "11": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "7",
+        0
+      ],
+      "guider": [
+        "8",
+        0
+      ],
+      "sampler": [
+        "9",
+        0
+      ],
+      "sigmas": [
+        "10",
+        0
+      ],
+      "latent_image": [
+        "6",
+        1
+      ]
+    }
+  },
+  "12": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "11",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ]
+    }
+  },
+  "13": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    }
+  },
+  "50": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "typeset/pb_lookbook/ref_hair2.png"
+    },
+    "_meta": {
+      "title": "Hair reference"
+    }
+  },
+  "600": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": [
+        "12",
+        0
+      ],
+      "frame_rate": 24.0,
+      "loop_count": 0,
+      "filename_prefix": "typeset/pool_action",
+      "format": "video/h264-mp4",
+      "pingpong": false,
+      "save_output": true
+    },
+    "_meta": {
+      "title": "Silent scene take"
+    }
+  },
+  "51": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "BODY_REFERENCE"
+    },
+    "_meta": {
+      "title": "Body proportions"
+    }
+  }
+}

@@ -25,7 +25,9 @@ function RenderPage(){
       if(query.get('subs')==='0'){const pp=p;const ids=[...new Set(pp.words.map(w=>w.lineId))].filter(id=>isSubtitleLine(pp,id));p={...pp,lineMeta:{...(pp.lineMeta||{}),...Object.fromEntries(ids.map(id=>[id,{...(pp.lineMeta?.[id]||{}),hidden:true}]))}};}
       let crop:CropData|undefined;
       if(aspect){await loadFonts();const tracks=p.analysis.tracks?await fetch(assetUrl(p,p.analysis.tracks,server)).then(r=>r.json()):undefined;({project:p,crop}=reframeProject(p,aspect,tracks));}
-      renderer=new StageRenderer(p,server);renderer.crop=crop;renderer.autoPlace=query.get('autoplace')!=='0';
+      // scale=<n> renders at n × the project size (the export's 2×): type stays vector-sharp, footage and matte upscale.
+      const scale=Math.max(1,Math.min(4,Number(query.get('scale'))||1));if(scale!==1)p={...p,width:Math.round(p.width*scale),height:Math.round(p.height*scale)};
+      renderer=new StageRenderer(p,server);renderer.crop=crop;renderer.renderScale=scale;renderer.autoPlace=query.get('autoplace')!=='0';
       // Validated against every Hero/FFM frame. Unknown/different source FPS keeps seeking; decode=seek opts out.
       renderer.sequential=query.get('decode')!=='seek'&&!!p.media.video?.fps&&Math.abs(p.media.video.fps-p.fps)<1e-3;
       if(query.get('seqrate'))seqConfig.rate=Number(query.get('seqrate'))||1;(window as unknown as {__seqStats?:object}).__seqStats=seqStats;

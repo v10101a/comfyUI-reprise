@@ -36,6 +36,92 @@ class ApiTests(unittest.TestCase):
         project["words"][0]["end"] = .05
         self.assertEqual(self.client.put(f"/api/projects/{project['id']}", json=project).status_code, 422)
 
+    def test_hud_pointer_settings_roundtrip(self):
+        p = store.create('HUD pointer')
+        pointer = {'point': {'u': .72, 'v': -.1}, 'dot': False, 'connector': True,
+                   'dotColor': '#ff000080', 'connectorColor': '#0000ff'}
+        body = p.model_dump(mode='json')
+        body['lineMeta'] = {'line': {'hud': pointer, 'fill': '#ffffff'}}
+        response = self.client.put(f'/api/projects/{p.id}', json=body)
+        self.assertEqual(response.status_code, 200, response.text)
+        saved = self.client.get(f'/api/projects/{p.id}').json()
+        self.assertEqual(saved['lineMeta']['line']['hud'], pointer)
+        self.assertEqual(saved['lineMeta']['line']['fill'], '#ffffff')
+
+    def test_stale_save_preserves_completed_analysis_for_same_video(self):
+        from app.models import MediaRef
+        p = store.create("stale editor")
+        p.media.video = MediaRef(path="media/original.mp4", duration=1)
+        store.save(p)
+        stale = p.model_copy(deep=True)
+        p.analysis.matte, p.analysis.tracks = "analysis/matte/", "analysis/tracks.json"
+        p.analysis.headTracks = {"media/clip.mp4": "analysis/heads_clip.json"}
+        store.save(p)
+        stale.name = "new lyrics edit"
+        r = self.client.put(f"/api/projects/{p.id}", json=stale.model_dump(mode="json"))
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["analysis"]["matte"], "analysis/matte/")
+        self.assertEqual(r.json()["analysis"]["headTracks"], p.analysis.headTracks)
+        self.assertEqual(r.json()["name"], "new lyrics edit")
+        stale.media.video.path = "media/replacement.mp4"
+        r = self.client.put(f"/api/projects/{p.id}", json=stale.model_dump(mode="json"))
+        self.assertIsNone(r.json()["analysis"]["matte"])
+
+    def test_generation_direction_roundtrips_and_request_reaches_runner(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from app.models import InworldBody, MediaRef, Word
+        from app.pipeline import generate_inworld
+        p = store.create("shot direction")
+        p.duration = 5
+        p.media.video = MediaRef(path="media/source.mp4", duration=5)
+        p.words = [Word(id="w", lineId="line", text="Stay!", start=1, end=3)]
+        p.lineMeta = {"line": {"scale": 1.4, "generation": {"lettering": "Copper on concrete", "camera": "locked", "seed": 0}}}
+        saved = self.client.put(f"/api/projects/{p.id}", json=p.model_dump(mode="json"))
+        self.assertEqual(saved.json()["lineMeta"], p.lineMeta)
+        body = InworldBody(wordIds=["w"], start=1, end=3, engine="remote-minimax", prompt="Copper on concrete",
+                           motionPrompt="Static shot. Lips closed.", longEdge=1344, seed=0)
+        result = {"timings": {"video": 1}, "size": [1344, 768], "length": 48}
+        with patch("app.remote_gen.run_remote_shot", return_value=result) as run:
+            generate_inworld(store, p.id, body, SimpleNamespace(progress=lambda *a: None))
+        self.assertEqual(run.call_args.kwargs["seed"], 0)
+        self.assertEqual(run.call_args.kwargs["motion"], body.motionPrompt)
+        self.assertEqual(run.call_args.kwargs["long_edge"], 1344)
+        final = store.load(p.id)
+        self.assertEqual(final.shots[-1].request, body.model_dump(mode="json"))
+        self.assertEqual(final.words[0].placement, "inworld")
+
+    def test_export_snapshot_allows_concurrent_save(self):
+        import json
+        import threading
+        from types import SimpleNamespace
+        from urllib.parse import parse_qs, urlparse
+        from unittest.mock import patch
+        from app.exporter import export_project
+        from app.models import ExportBody
+        p = store.create("before edit")
+        p.duration = 1
+        store.save(p)
+        saved = threading.Event()
+        workers = []
+        def capture(url, width, height, frames, dest, *args):
+            source = parse_qs(urlparse(url).fragment.split("?", 1)[1])["src"][0]
+            self.assertTrue(source.endswith("/export/snapshot-test/project.json"))
+            def edit():
+                store.update(p.id, lambda q: setattr(q, "name", "edited during render"))
+                saved.set()
+            t = threading.Thread(target=edit);workers.append(t);t.start()
+            self.assertTrue(saved.wait(1), "Export blocked the save lock")
+            snapshot = json.loads((store.project_dir(p.id)/"export/snapshot-test/project.json").read_text())
+            self.assertEqual(snapshot["name"], "before edit")
+            return dest/"frame_%05d.png"
+        try:
+            with patch("app.exporter.capture", side_effect=capture), patch("app.exporter.ffmpeg"):
+                export_project(store, p.id, ExportBody(formats=["mp4"]), SimpleNamespace(id="snapshot-test", progress=lambda *a: None))
+        finally:
+            for t in workers:t.join(2)
+        self.assertEqual(store.load(p.id).name, "edited during render")
+
     def test_upload_probe_and_path_validation(self):
         project = self.create()
         url = f"/api/projects/{project['id']}"
@@ -131,7 +217,42 @@ class ApiTests(unittest.TestCase):
         self.assertIsNone(caption["position"])
         self.assertTrue(caption["autoPlace"])
         self.assertLess(caption["style"]["fontSize"], 0.08)
+        self.assertFalse(new["lineMeta"]["m"]["subtitle"])
         self.assertEqual(self.client.get(f"/files/projects/{new['id']}/{new['media']['video']['path']}").status_code, 200)
+
+    def test_assets_are_additive_and_add_layers(self):
+        import io, json
+        from PIL import Image
+        from app.config import settings
+        pid = self.create()["id"]
+        with self.video.open("rb") as fh:
+            self.client.post(f"/api/projects/{pid}/media", data={"kind": "video"}, files={"file": ("plate.mp4", fh, "video/mp4")})
+        plate = self.client.get(f"/api/projects/{pid}").json()["media"]["video"]
+        with self.video.open("rb") as fh:
+            sky = self.client.post(f"/api/projects/{pid}/assets", data={"addLayer": "true"}, files={"file": ("sky.mp4", fh, "video/mp4")}).json()
+        self.assertEqual((sky["kind"], sky["source"]["kind"], sky["layer"]["assetId"]), ("video", "upload", sky["id"]))
+        png = io.BytesIO(); Image.new("RGB", (32, 16), "red").save(png, "PNG")
+        tex = self.client.post(f"/api/projects/{pid}/assets", data={"addLayer": "top"}, files={"file": ("tex.png", png.getvalue(), "image/png")}).json()
+        self.assertEqual((tex["kind"], tex["width"], tex["height"]), ("image", 32, 16))
+        p = self.client.get(f"/api/projects/{pid}").json()
+        self.assertEqual(p["media"]["video"], plate)  # the plate is untouched
+        stale = dict(p); stale.pop("assets"); stale.pop("layers")  # an editor opened before the imports saves
+        self.assertEqual(self.client.put(f"/api/projects/{pid}", json=stale).status_code, 200)
+        self.assertEqual(self.client.get(f"/api/projects/{pid}").json()["layers"], p["layers"])
+        self.assertEqual([a["id"] for a in p["assets"]], [sky["id"], tex["id"]])
+        self.assertEqual([l.get("assetId") or l["kind"] + l.get("which", "") for l in p["layers"]],
+                         ["plate", sky["id"], "textbehind", "subject", "textfront", tex["id"]])
+        out = settings.comfy_dir / "output"
+        if out.is_dir():  # Comfy output ref (only where a ComfyUI install exists)
+            name = f"typeset_test_{pid[:8]}.png"; (out / name).write_bytes(png.getvalue())
+            try:
+                got = self.client.post(f"/api/projects/{pid}/assets", json={"comfy": {"filename": name, "subfolder": "", "type": "output"},
+                                       "source": {"kind": "workflow", "workflowId": "wf"}})
+                self.assertEqual(got.status_code, 200, got.text)
+                self.assertEqual((got.json()["source"]["kind"], got.json()["source"]["filename"]), ("workflow", name))
+            finally:
+                (out / name).unlink(missing_ok=True)
+        self.assertEqual(self.client.post(f"/api/projects/{pid}/assets", json={"comfy": {"filename": "../../etc/passwd"}}).status_code, 404)
 
 
 if __name__ == "__main__":
