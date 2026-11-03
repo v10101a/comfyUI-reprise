@@ -77,7 +77,7 @@ ln -s "$PWD/custom_nodes_dev/typeset_nodes" ~/ComfyUI/custom_nodes/typeset_nodes
 
 ```bash
 scripts/comfy.sh start  # ComfyUI + comfy-api-proxy
-scripts/dev.sh          # API on :8787; prints the web URL
+scripts/dev.sh          # API on :8787; prints the web URL (the studio alone is at /studio/)
 ```
 
 Open the printed web URL for the demos, or `/#/studio` for the editor. The offline sample needs no model download; analysis and project exports need the backend. Use one host at a time for a shared project store.

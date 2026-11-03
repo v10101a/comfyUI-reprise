@@ -21,5 +21,7 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
     target: 'es2022',
+    // Two pages, one app: / is the showcase, /studio/ opens the studio directly.
+    rollupOptions: { input: { main: 'index.html', studio: 'studio/index.html' } },  // relative to this folder (the Vite root)
   },
 });

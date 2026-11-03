@@ -280,30 +280,35 @@ class ComfyRunner:
     def health(self) -> dict[str, Any]:
         out: dict[str, Any] = {"proxy": False, "comfyui": False, "proxyUrl": self.base_url, "comfyuiUrl": self.comfyui_url,
                                "transport": "direct" if self.direct else "sdk", "host": "cloud" if self.cloud else "comfyui"}
+        if self.cloud:
+            # Cloud has no /api/v2/health route. Its authenticated queue endpoint
+            # checks account access without submitting a job or spending credits.
+            try:
+                r = httpx.get(f"{self.comfyui_url}/queue", headers=self.api_headers, timeout=8)
+                r.raise_for_status()
+                q = r.json()
+                out.update(proxy=True, comfyui=True, comfyuiVersion="cloud",
+                           queue={"running": len(q.get("queue_running") or []),
+                                  "pending": len(q.get("queue_pending") or [])})
+            except httpx.HTTPStatusError as exc:
+                out["comfyuiError"] = f"Comfy Cloud account check failed (HTTP {exc.response.status_code})"
+            except Exception as exc:
+                out["comfyuiError"] = str(exc)
+            return out
         try:
             if self.direct:
                 raise _SkipProxy
-            r = httpx.get(f"{self.base_url}/api/v2/health", headers=self.api_headers, timeout=8 if self.cloud else 3)
+            r = httpx.get(f"{self.base_url}/api/v2/health", timeout=3)
             out["proxy"] = r.status_code == 200
-            if self.cloud and r.status_code in (401, 403):
-                out["proxyError"] = f"Comfy Cloud rejected the API key (HTTP {r.status_code})"
         except _SkipProxy:
             pass
         except Exception as exc:
             out["proxyError"] = str(exc)
         try:
-            if self.cloud:
-                r = httpx.get(f"{self.comfyui_url}/queue", headers=self.api_headers, timeout=8)
-                out["comfyui"] = r.status_code == 200
-                if out["comfyui"]:
-                    out["comfyuiVersion"] = "cloud"
-                    q = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
-                    out["queue"] = {"running": len(q.get("queue_running") or []), "pending": len(q.get("queue_pending") or [])}
-            else:
-                r = httpx.get(f"{self.comfyui_url}/system_stats", timeout=3)
-                out["comfyui"] = r.status_code == 200
-                if out["comfyui"]:
-                    out["comfyuiVersion"] = r.json().get("system", {}).get("comfyui_version")
+            r = httpx.get(f"{self.comfyui_url}/system_stats", timeout=3)
+            out["comfyui"] = r.status_code == 200
+            if out["comfyui"]:
+                out["comfyuiVersion"] = r.json().get("system", {}).get("comfyui_version")
         except Exception as exc:
             out["comfyuiError"] = str(exc)
         return out

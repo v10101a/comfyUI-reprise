@@ -42,4 +42,6 @@ function RenderPage(){
   return <>{error&&<pre className="render-error">{error}</pre>}<canvas id="stage" ref={canvas}/></>;
 }
 
-export default function App(){const [hash,setHash]=useState(location.hash);useEffect(()=>{const update=()=>setHash(location.hash);window.addEventListener('hashchange',update);return()=>window.removeEventListener('hashchange',update);},[]);if(hash.startsWith('#/render'))return <RenderPage key={hash}/>;if(hash.startsWith('#/studio')){const id=new URLSearchParams(hash.split('?')[1]).get('project')||'sample';return <Suspense fallback={<div className="boot"><p>Opening the studio…</p></div>}><Studio key={id} initialProjectId={id}/></Suspense>;}return <Showcase/>;}
+// studio/index.html (<html data-entry="studio">) opens straight into the studio; the root page opens the showcase.
+const ENTRY=document.documentElement.dataset.entry;
+export default function App(){const [hash,setHash]=useState(location.hash);useEffect(()=>{const update=()=>setHash(location.hash);window.addEventListener('hashchange',update);return()=>window.removeEventListener('hashchange',update);},[]);if(hash.startsWith('#/render'))return <RenderPage key={hash}/>;if(hash.startsWith('#/studio')||(ENTRY==='studio'&&!hash.startsWith('#/'))){const id=new URLSearchParams(hash.split('?')[1])?.get('project')||'sample';return <Suspense fallback={<div className="boot"><p>Opening the studio…</p></div>}><Studio key={id} initialProjectId={id}/></Suspense>;}return <Showcase/>;}

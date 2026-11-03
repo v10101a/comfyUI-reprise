@@ -92,8 +92,16 @@ class CloudRunnerTests(unittest.TestCase):
         self.assertEqual(out["host"], "cloud")
         self.assertTrue(out["proxy"] and out["comfyui"])
         self.assertEqual(out["queue"], {"running": 1, "pending": 0})
-        self.assertEqual([u for u, _ in calls], ["https://cloud.comfy.org/api/v2/health", "https://cloud.comfy.org/api/queue"])
+        self.assertEqual([u for u, _ in calls], ["https://cloud.comfy.org/api/queue"])
         self.assertTrue(all(h == {"X-API-Key": "comfyui-test"} for _, h in calls))
+
+    def test_cloud_health_reports_account_errors_without_claiming_ready(self):
+        for status in (401, 403, 429):
+            with self.subTest(status=status), patch("app.comfy.httpx.get", return_value=response({}, status)):
+                out = self.cloud().health()
+            self.assertFalse(out["proxy"])
+            self.assertFalse(out["comfyui"])
+            self.assertIn(f"HTTP {status}", out["comfyuiError"])
 
     def test_history_fallback_is_skipped_on_cloud(self):
         with patch("app.comfy.httpx.get", side_effect=AssertionError("no /history on Cloud")):

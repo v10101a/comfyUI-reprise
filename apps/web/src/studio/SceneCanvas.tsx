@@ -10,28 +10,34 @@ type Point={x:number;y:number};
 type Props={scenes:Scene[];active:string;selection:string[];onSelection:(ids:string[])=>void;view:BoardView|null;onView:(v:BoardView)=>void;
   onSelect:(s:Scene)=>void;onMove:(positions:{id:string;x:number;y:number}[])=>void;onBlank:()=>void;onKeyDown:(e:React.KeyboardEvent)=>void;
   onRename:(id:string,name:string)=>void;onCombine:(target:string,ids:string[],name:string)=>void;
-  onCollapse:(s:Scene)=>void;dropTarget:string;dropProps:(s:Scene)=>React.HTMLAttributes<HTMLElement>;
+  onCollapse:(s:Scene)=>void;dropTarget:string;dropProps:(s:Scene)=>React.HTMLAttributes<HTMLElement>;expanded?:boolean;onEscape?:()=>void;
   onTakeMove:(id:string,target:string,point?:Point)=>void;references:(s:Scene)=>ReactNode;takes:(s:Scene)=>ReactNode};
 type Gesture={kind:'pan'|'move'|'box';px:number;py:number;view:BoardView;dx:number;dy:number;moved:boolean;
-  before:{id:string;x:number;y:number}[];selected:string[];start:Point;point:Point;merge?:string};
+  before:{id:string;x:number;y:number}[];selected:string[];start:Point;point:Point;merge?:string;clearOnClick:boolean};
 const W=270,TAKE_MIME='application/x-typeset-scene-take';
 const zoomAt=(v:BoardView,x:number,y:number,factor:number)=>{
   const zoom=Math.max(.1,Math.min(4,v.zoom*factor)),pt=boardPoint({x,y},v);return {zoom,x:x-pt.x*zoom,y:y-pt.y*zoom};
 };
 
-/** Scene frames are directly selectable, movable and combinable; blank drags marquee-select. */
+/** Drag the background to pan; Shift-drag to select frames. */
 export function SceneCanvas(props:Props){
   const port=useRef<HTMLDivElement>(null),gesture=useRef<Gesture|null>(null),space=useRef(false),nativeDragging=useRef(false);
   const [drag,setDrag]=useState<Gesture|null>(null),[hand,setHand]=useState(false),[editing,setEditing]=useState(''),[newAt,setNewAt]=useState<Point|null>(null);
   const live=useRef(props);live.current=props;
   const view=props.view||{x:16,y:32,zoom:.8},viewRef=useRef(view);viewRef.current=view;
   const fit=(all:boolean)=>{
-    const el=port.current;if(!el)return;const ss=all?live.current.scenes:live.current.scenes.filter(s=>s.id===live.current.active);if(!ss.length)return;
+    const el=port.current;if(!el?.clientWidth||!el.clientHeight)return;const ss=all?live.current.scenes:live.current.scenes.filter(s=>s.id===live.current.active);if(!ss.length)return;
     const x=Math.min(...ss.map(s=>s.x)),y=Math.min(...ss.map(s=>s.y))-32,w=Math.max(...ss.map(s=>s.x+W))-x,h=Math.max(...ss.map(s=>s.y+height(s)))-y;
     const zoom=Math.max(.1,Math.min(all?1:1.2,(el.clientWidth-40)/w,(el.clientHeight-72)/h));live.current.onView({x:(el.clientWidth-w*zoom)/2-x*zoom,y:24-y*zoom,zoom});
   };
-  useLayoutEffect(()=>{if(!props.view)fit(false);},[]);
-  useEffect(()=>{if(gesture.current||nativeDragging.current)return;const s=props.scenes.find(s=>s.id===props.active),el=port.current;if(!s||!el)return;const v=viewRef.current;
+  useLayoutEffect(()=>{const el=port.current;if(!el||props.view)return;
+    // A modal board is measured after showModal makes it visible.
+    const initial=()=>{if(!el.clientWidth||!el.clientHeight)return;fit(!!props.expanded);observer.disconnect();};
+    const observer=new ResizeObserver(initial);observer.observe(el);initial();return()=>observer.disconnect();
+  },[]);
+  const lastActive=useRef(props.active);
+  useEffect(()=>{if(lastActive.current===props.active)return;lastActive.current=props.active;
+    if(gesture.current||nativeDragging.current)return;const s=props.scenes.find(s=>s.id===props.active),el=port.current;if(!s||!el)return;const v=viewRef.current;
     if(s.x*v.zoom+v.x<0||(s.x+W)*v.zoom+v.x>el.clientWidth||s.y*v.zoom+v.y<24||s.y*v.zoom+v.y>el.clientHeight-80)fit(false);
   },[props.active]);
   useEffect(()=>{const el=port.current;if(!el)return;
@@ -46,14 +52,14 @@ export function SceneCanvas(props:Props){
   const point=(x:number,y:number,v=viewRef.current)=>{const r=port.current!.getBoundingClientRect();return boardPoint({x:x-r.left,y:y-r.top},v);};
   const begin=(e:React.PointerEvent,s?:Scene)=>{
     if(e.button!==0&&e.button!==1)return;e.preventDefault();e.stopPropagation();port.current?.focus({preventScroll:true});
-    const pan=space.current||e.button===1,v=viewRef.current,start=point(e.clientX,e.clientY,v);
+    const pan=space.current||e.button===1||(!s&&!e.shiftKey),v=viewRef.current,start=point(e.clientX,e.clientY,v);
     let selected=props.selection;
     if(!pan&&s){
       if(e.shiftKey||e.metaKey||e.ctrlKey){props.onSelection(selected.includes(s.id)?selected.filter(id=>id!==s.id):[...selected,s.id]);props.onBlank();return;}
       if(!selected.includes(s.id))selected=[s.id];props.onSelection(selected);props.onSelect(s);
     }
     const g:Gesture={kind:pan?'pan':s?'move':'box',px:e.clientX,py:e.clientY,view:v,dx:0,dy:0,moved:false,start,point:start,
-      selected:e.shiftKey?selected:[],before:props.scenes.filter(s=>selected.includes(s.id)).map(s=>({id:s.id,x:s.x,y:s.y}))};
+      selected,clearOnClick:!s&&!space.current&&e.button===0&&!e.shiftKey,before:props.scenes.filter(s=>selected.includes(s.id)).map(s=>({id:s.id,x:s.x,y:s.y}))};
     gesture.current=g;setDrag(g);e.currentTarget.setPointerCapture(e.pointerId);
   };
   const move=(e:React.PointerEvent)=>{const g=gesture.current;if(!g)return;
@@ -72,12 +78,12 @@ export function SceneCanvas(props:Props){
     if(g.kind==='move'&&g.moved){const target=props.scenes.find(s=>s.id===g.merge);
       if(target){props.onCombine(target.id,g.before.map(s=>s.id),target.name);props.onSelection([target.id]);}
       else props.onMove(g.before.map(s=>({...s,x:s.x+g.dx,y:s.y+g.dy})));
-    }else if(g.kind==='box'&&!g.moved){props.onSelection([]);props.onBlank();}
+    }else if(g.clearOnClick&&!g.moved){props.onSelection([]);props.onBlank();}
   };
   const zoom=(factor:number)=>{const r=port.current!.getBoundingClientRect();props.onView(zoomAt(viewRef.current,r.width/2,r.height/2,factor));};
   const finishName=()=>{setEditing('');port.current?.focus({preventScroll:true});};
-  return <div ref={port} className={`study-canvas ${hand?'hand':''} ${drag?'dragging':''}`} role="region" aria-label="Scene board canvas" tabIndex={0}
-    data-x={view.x} data-y={view.y} data-zoom={view.zoom} title="Drag to select · Shift-click to add · Space-drag to pan · drop a scene onto another to combine"
+  return <div ref={port} className={`study-canvas ${hand?'hand':''} ${drag?drag.kind==='box'?'selecting':'dragging':''}`} role="region" aria-label="Scene board canvas" tabIndex={0}
+    data-x={view.x} data-y={view.y} data-zoom={view.zoom} title="Drag background to pan · Shift-drag to select · Space-drag anywhere to pan · drop a scene onto another to combine"
     onPointerDownCapture={e=>{if(e.button===1||space.current)begin(e);}}
     onPointerDown={e=>{if(!(e.target as Element).closest('.study-board-card,.study-canvas-tools'))begin(e);}}
     onPointerMove={move} onPointerUp={()=>end()} onPointerCancel={()=>end(true)}
@@ -91,7 +97,7 @@ export function SceneCanvas(props:Props){
       if(e.code==='Space'){e.preventDefault();e.stopPropagation();space.current=true;setHand(true);}
       else if(['=','+','-','0','1','2'].includes(e.key)){e.preventDefault();e.stopPropagation();if(e.key==='1')fit(true);else if(e.key==='2')fit(false);else zoom(e.key==='0'?1/view.zoom:e.key==='-'?.8:1.25);}
       else if(e.key==='Enter'&&props.selection.length===1){e.preventDefault();e.stopPropagation();setEditing(props.selection[0]);}
-      else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();end(true);props.onSelection([]);props.onBlank();}
+      else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();if(gesture.current)end(true);else if(props.onEscape)props.onEscape();else{props.onSelection([]);props.onBlank();}}
     }} onKeyUp={e=>{if(e.code==='Space'){space.current=false;setHand(false);e.stopPropagation();}}}>
     <div className="study-canvas-world" style={{transform:`translate(${view.x}px,${view.y}px) scale(${view.zoom})`}}>
       {props.scenes.map(s=>{const moved=drag?.kind==='move'&&drag.before.some(b=>b.id===s.id),merge=drag?.merge===s.id;return <section key={s.id} data-scene-id={s.id} role="group" aria-label={`Scene ${s.name}`} tabIndex={0}

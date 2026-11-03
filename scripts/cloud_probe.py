@@ -1,6 +1,6 @@
 """Comfy Cloud readiness probe for Typeset's generation workflows.
 
-  export TYPESET_CLOUD_API_KEY=comfyui-...        # platform.comfy.org -> API Keys -> New
+  # Save TYPESET_CLOUD_API_KEY in the ignored .env.comfy, or export it in your shell.
   server/.venv/bin/python scripts/cloud_probe.py             # health + which workflows Cloud can run
   server/.venv/bin/python scripts/cloud_probe.py --smoke     # also run a 64x64 invert round trip (spends a few credits)
   server/.venv/bin/python scripts/cloud_probe.py --find minimax wan2.2 ltx   # list hosted model files matching words
@@ -30,6 +30,8 @@ def main() -> int:
     p.add_argument("--studio", action="store_true", help="also check the Studio's saved workflows (data/workflows)")
     args = p.parse_args()
 
+    from dotenv import load_dotenv
+    load_dotenv(ROOT / ".env.comfy", override=False)
     key = os.environ.get("TYPESET_CLOUD_API_KEY") or os.environ.get("COMFY_CLOUD_API_KEY") or ""
     if not key.strip():
         print("Set TYPESET_CLOUD_API_KEY first (platform.comfy.org -> API Keys -> + New).", file=sys.stderr)
@@ -76,12 +78,11 @@ def main() -> int:
 
     if args.studio:
         print("== Studio workflows (data/workflows)")
-        from app.workflows import api_graph
         for wf in sorted((ROOT / "data" / "workflows").glob("*/workflow.json")):
             data = json.loads(wf.read_text())
-            graph = api_graph(data.get("graph") or data)
-            if graph:
-                report(run, f"{wf.parent.name} {data.get('name', '')}", graph)
+            graph_path = wf.parent / "graph.api.json"
+            if graph_path.is_file():
+                report(run, f"{wf.parent.name} {data.get('name', '')}", json.loads(graph_path.read_text()))
 
     if args.smoke:
         print("== smoke: upload -> invert -> download")
@@ -106,6 +107,7 @@ def main() -> int:
 
 
 def report(run, label: str, graph: dict) -> None:
+    from app.comfy import WorkflowRunError
     try:
         run.preflight_graph(graph)
         print(f"  ok  {label}")
