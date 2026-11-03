@@ -44,6 +44,7 @@ export type LayerTransform = {x?:number;y?:number;scale?:number;rotate?:number};
 export type LayerKey = LayerTransform&{t:number;opacity?:number};
 /** A layer keeps each workflow's prompt/reference choices when switching workflows or reopening a project. */
 export type WorkflowDraft = {inputs?:Record<string,unknown>;sources?:Record<string,string>;variants?:number;
+  sourceWindows?:Record<string,{time?:number;start?:number;end?:number}>;
   mediaFiles?:Record<string,{path:string;name:string;duration:number}>;
   postprocess?:{timeScale:number;trimStart:number;fps:number;audio?:string}};
 export type LayerGeneration = {workflowId?:string;workflows?:Record<string,WorkflowDraft>};

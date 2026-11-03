@@ -1,5 +1,6 @@
 // Studio icons: 24-unit strokes, currentColor. Every icon-only button that uses one carries an aria-label and a title.
 const P:Record<string,React.ReactNode>={
+  sliders:<><path d="M4 7h6m4 0h6M4 17h10m4 0h2"/><circle cx="12" cy="7" r="2"/><circle cx="16" cy="17" r="2"/></>,
   play:<path d="m8 5 11 7-11 7Z"/>,pause:<path d="M8 5v14M16 5v14"/>,upload:<path d="M12 16V3m-5 5 5-5 5 5M4 15v6h16v-6"/>,download:<path d="M12 3v13m-5-5 5 5 5-5M4 17v4h16v-4"/>,
   sound:<path d="M4 10v4h4l5 4V6l-5 4Zm13-3a8 8 0 0 1 0 10"/>,mute:<path d="M4 10v4h4l5 4V6l-5 4Zm13-1 5 6m0-6-5 6"/>,
   loop:<path d="M17 2l3 3-3 3M4 11V9a4 4 0 0 1 4-4h12M7 22l-3-3 3-3m13-3v2a4 4 0 0 1-4 4H4"/>,prev:<path d="M6 5v14M18 5 9 12l9 7Z"/>,next:<path d="M18 5v14M6 5l9 7-9 7Z"/>,

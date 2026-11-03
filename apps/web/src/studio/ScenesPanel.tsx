@@ -1,4 +1,5 @@
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
+import type {ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import type {Project} from '../types';
 import {assetUrl} from '../api';
@@ -13,7 +14,7 @@ import type {BoardView} from './board';
 
 type Props={project:Project;scenes:Scene[];active:string;selected:string;preview:string;mode:'scenes'|'board';view:BoardView|null;
   onView:(v:BoardView)=>void;onMode:(m:'scenes'|'board')=>void;onNew:()=>void;onSelect:(s:Scene)=>void;
-  onClip:(id:string)=>void;onPreview:(s:Scene,id:string)=>void;onBlank:()=>void;onExpand:()=>void;onUndo:(redo?:boolean)=>void;
+  onClip:(id:string)=>void;onPreview:(s:Scene,id:string)=>void;onTakeSelect:(s:Scene,id:string)=>void;onBlank:()=>void;onExpand:()=>void;onUndo:(redo?:boolean)=>void;
   onMove:(positions:{id:string;x:number;y:number}[])=>void;onRename:(id:string,name:string)=>void;onDelete:(ids:string[])=>void;
   onCombine:(target:string,ids:string[],name:string)=>void;onReorder:(id:string,target:string,after:boolean)=>void;
   onTakeMove:(id:string,target:string,point?:{x:number;y:number})=>void;onTakeDelete:(scene:string,id:string)=>void;onCollapse:(id:string)=>void};
@@ -74,7 +75,7 @@ export function ScenesPanel(p:Props){
     const a=assetOf(p.project,id),used=sceneClips(p.project,s).some(l=>l.assetId===id),previewed=(expanded?fullPreview:p.preview)===id;
     return <button key={id} data-take-id={id} data-take-scene={s.id} className={`study-take ${previewed?'previewed':''}`} aria-label={`Preview ${s.name} take ${i+1}`} aria-pressed={previewed}
       draggable onDragStart={e=>{e.stopPropagation();e.dataTransfer.setData(ASSET_MIME,id);e.dataTransfer.setData(TAKE_MIME,id);e.dataTransfer.effectAllowed='copyMove';setSelection([s.id]);p.onSelect(s);blank();}} onDragEnd={()=>setDrop(null)}
-      title={`${a?.name||'Take'}${used?' · Used on timeline':''} · Drag to a scene or timeline`} onClick={()=>{setSelection([s.id]);preview(s,id);}}>
+      title={`${a?.name||'Take'}${used?' · Used on timeline':''} · Drag to a scene or timeline`} onClick={()=>{setSelection([s.id]);p.onTakeSelect(s,id);preview(s,id);}}>
       <span className="study-take-image">{thumb(id)}{used&&<span className="study-used" title="Used on timeline">✓</span>}{previewed&&<span className="study-eye"><Icon name="eye" size={14}/></span>}</span>
       <span className="study-take-meta"><span className="mono">{String(i+1).padStart(2,'0')}</span><span>{a?.duration?`${a.duration.toFixed(1)}s`:'Image'}</span></span>
     </button>;
@@ -112,6 +113,6 @@ export function ScenesPanel(p:Props){
   return <>{!expanded&&browser}{fullscreenRoot&&createPortal(<dialog ref={dialog} className="board-fullscreen" aria-label="Fullscreen scene board" onKeyDownCapture={trapFocus} onCancel={e=>{e.preventDefault();escapeExpanded();}}>{expanded&&browser}</dialog>,fullscreenRoot)}</>;
 }
 
-export function SceneHeading({scene,onRename,onDelete}:{scene:Scene;onRename:(name:string)=>void;onDelete:()=>void}){
-  return <div className="sec-head scene-heading"><SceneName name={scene.name} label="Scene name" className="study-inspector-name" onRename={onRename}/><button className="icon-sm" aria-label="Delete scene" title="Delete scene grouping; keep footage and timeline clips" onClick={onDelete}><Icon name="trash" size={14}/></button></div>;
+export function SceneHeading({scene,onRename,onDelete,children}:{scene:Scene;onRename:(name:string)=>void;onDelete:()=>void;children?:ReactNode}){
+  return <div className="sec-head scene-heading"><SceneName name={scene.name} label="Scene name" className="study-inspector-name" onRename={onRename}/>{children}<button className="icon-sm" aria-label="Delete scene" title="Delete scene grouping; keep footage and timeline clips" onClick={onDelete}><Icon name="trash" size={14}/></button></div>;
 }

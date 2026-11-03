@@ -6,7 +6,9 @@ import {cardsOf,groupMembers,type BoardRole} from './board';
 export type Scene={id:string;name:string;x:number;y:number;clips:string[];takes:string[];refs:string[];
   roles?:Record<string,BoardRole>;notes?:string;generation?:LayerGeneration;collapsed?:boolean;
   /** Retired IDs still receive in-flight generation results after a merge. */
-  mergedIds?:string[];recipes?:SceneRecipe[];recipeId?:string;excludedTakes?:string[]};
+  mergedIds?:string[];recipes?:SceneRecipe[];recipeId?:string;excludedTakes?:string[];
+  /** Edited generation drafts belong to the selected take, independently of the scene recipe. */
+  takeGenerations?:Record<string,LayerGeneration>};
 export type SceneRecipe={id:string;name:string;generation:LayerGeneration};
 const unique=(ids:(string|undefined)[])=>[...new Set(ids.filter((id):id is string=>!!id))];
 export const sceneHeight=(s:Scene)=>s.collapsed?64:Math.max(160,24+(s.refs.length?64:0)+Math.ceil(Math.min(s.takes.length,6)/2)*102+(s.takes.length>6?32:0));
@@ -81,6 +83,7 @@ export function combineScenes(p:Project,targetId:string,ids:string[],name:string
     clips:unique(all.flatMap(s=>s.clips)),takes:unique(all.flatMap(s=>s.takes)),refs:unique(all.flatMap(s=>s.refs)),
     excludedTakes:unique(all.flatMap(s=>s.excludedTakes||[])).filter(id=>!all.some(s=>s.takes.includes(id))),
     roles:Object.assign({},...all.slice().reverse().map(s=>s.roles)),
+    takeGenerations:Object.assign({},...all.slice().reverse().map(s=>s.takeGenerations)),
     notes:[target.notes,...sources.filter(s=>s.notes).map(s=>`${s.name}\n${s.notes}`)].filter(Boolean).join('\n\n'),
     recipes,recipeId:target.recipeId||target.id,generation:target.generation||{}};
   const q=setScenes(p,scenes.filter(s=>!removed.has(s.id)).map(s=>s.id===targetId?merged:s));
@@ -96,9 +99,12 @@ export function selectSceneRecipe(p:Project,id:string,recipeId:string):Project{
 /** Move a take and its existing clip associations, never the clips themselves or a shared reference. */
 export function moveSceneTake(p:Project,assetId:string,targetId:string):Project{
   const scenes=scenesOf(p),target=scenes.find(s=>s.id===targetId);if(!target||!assetOf(p,assetId))return p;
+  const generation=scenes.find(s=>s.takes.includes(assetId)&&s.takeGenerations?.[assetId])?.takeGenerations?.[assetId];
   const clips=layersOf(p).filter((l):l is MediaLayer=>l.kind==='media'&&l.assetId===assetId).map(l=>l.id);
-  const q=setScenes(p,scenes.map(s=>s.id===targetId?{...s,takes:unique([...s.takes,assetId]),clips:unique([...s.clips,...clips]),excludedTakes:s.excludedTakes?.filter(id=>id!==assetId)}:
-    {...s,takes:s.takes.filter(id=>id!==assetId),clips:s.clips.filter(id=>!clips.includes(id))}));
+  const q=setScenes(p,scenes.map(s=>s.id===targetId?{...s,takes:unique([...s.takes,assetId]),clips:unique([...s.clips,...clips]),excludedTakes:s.excludedTakes?.filter(id=>id!==assetId),
+      ...(generation?{takeGenerations:{...s.takeGenerations,[assetId]:generation}}:{})}:
+    {...s,takes:s.takes.filter(id=>id!==assetId),clips:s.clips.filter(id=>!clips.includes(id)),
+      ...(s.takeGenerations?.[assetId]?{takeGenerations:Object.fromEntries(Object.entries(s.takeGenerations).filter(([id])=>id!==assetId))}:{})}));
   q.board!.takeAssignments={...p.board?.takeAssignments,[assetId]:targetId};return q;
 }
 

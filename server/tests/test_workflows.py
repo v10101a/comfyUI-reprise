@@ -2,6 +2,7 @@
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch, Mock
 
@@ -9,7 +10,8 @@ TMP = tempfile.TemporaryDirectory()
 os.environ.setdefault("TYPESET_DATA_DIR", TMP.name)
 
 from fastapi.testclient import TestClient  # noqa: E402
-from app import workflows  # noqa: E402
+from app import workflows, service  # noqa: E402
+from app.store import ProjectStore  # noqa: E402
 from app.main import app  # noqa: E402
 
 REGISTRY = {
@@ -29,6 +31,18 @@ GRAPH = {
 
 class WorkflowImport(unittest.TestCase):
     def setUp(self):
+        # Config/service may already have been imported by another test. Patch the actual
+        # stores rather than relying on import order or a caller's TYPESET_DATA_DIR.
+        self.data = tempfile.TemporaryDirectory()
+        self.addCleanup(self.data.cleanup)
+        for target, name, value in (
+            (workflows, 'root', lambda: Path(self.data.name) / 'workflows'),
+            (workflows, '_session_file', lambda: Path(self.data.name) / 'session.json'),
+            (service, 'store', ProjectStore(Path(self.data.name) / 'projects')),
+        ):
+            isolated = patch.object(target, name, value)
+            isolated.start()
+            self.addCleanup(isolated.stop)
         self.registry = patch.object(workflows, "object_info", side_effect=lambda force=False, remote=False: REGISTRY)
         self.registry.start()
         self.addCleanup(self.registry.stop)

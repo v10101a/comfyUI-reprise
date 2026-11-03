@@ -259,6 +259,7 @@ with sync_playwright() as pw:
     expect(take('Late singing take')).to_be_visible(timeout=15000)
     save()
     check('In-flight result joins the combined scene', len(saved['board']['scenes']) == 2 and any(a['id'] == 'late' and a['source']['sceneId'] == 'b-scene' for a in saved['assets']))
+    page.get_by_role('button', name='Scene references and recipes', exact=True).click()
     recipe = page.get_by_label('Scene recipe', exact=True)
     recipe.select_option('b-scene')
     expect(page.get_by_label('Direction', exact=True)).to_have_value('Held myself')

@@ -1,34 +1,42 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import type {Asset,WorkflowDraft,Job,LayerGeneration,MediaLayer,Project} from '../types';
-import {request} from '../api';
+import {request,assetUrl} from '../api';
 import {assetOf,layersOf} from '../layers';
 import {Icon} from './icons';
 import {type Workflow,type WfInput,type WfSource,deleteWorkflow,importWorkflow,inputKey,listWorkflows,updateWorkflow} from './workflows';
 import {type Audition,layerTakes,mergeAssets,setGeneration,useTake,visualLayer} from './takes';
 import {ASSET_MIME} from './duration';
-import {sceneForId,setSceneGeneration,patchScene,type Scene} from './scenes';
+import {sceneForId,scenesOf,setSceneGeneration,patchScene,type Scene} from './scenes';
 import {SceneThumb} from './SceneThumb';
+import {assetGeneration,takeGeneration,relatedReferences,inheritedReference,setTakeGeneration} from './generationContext';
+import {ReferencePicker,WorkflowPicker,type SourceChoice} from './GenerationPickers';
+import {ReferenceAudio} from './ReferenceAudio';
 import './workflows.css';
 
 const FOOT='@frame',RANGE='@range',LAYER='@layer',SONG='@song',PREPARED='@prepared';
-type Props={scene?:Scene;project:Project;edit:(f:(p:Project)=>Project)=>void;checkpoint:()=>void;time:number;range:{a:number;b:number}|null;
+type Props={scene?:Scene;selectedTake?:string;project:Project;edit:(f:(p:Project)=>Project)=>void;checkpoint:()=>void;time:number;range:{a:number;b:number}|null;
   selected:string;onSelect:(id:string)=>void;audition:Audition|null;onAudition:(a:Audition|null)=>void;onSeek:(t:number)=>void;
   sourcePreview:string;onPreview:(assetId:string)=>void;
   onPlace:(assetId:string,time:number,generation?:LayerGeneration)=>void;prepare:()=>Promise<void>};
 
 /** Clips can supply a generation recipe; every result is reusable footage in the project bin. */
-export function WorkflowsPanel({scene,project,edit,checkpoint,time,range,selected,onSelect,audition,onAudition,onSeek,sourcePreview,onPreview,onPlace,prepare}:Props){
+export function WorkflowsPanel({scene,selectedTake='',project,edit,checkpoint,time,range,selected,onSelect,audition,onAudition,onSeek,sourcePreview,onPreview,onPlace,prepare}:Props){
   const [list,setList]=useState<Workflow[]>([]),[loading,setLoading]=useState(true),[mapping,setMapping]=useState(false);
   const [loose,setLoose]=useState<LayerGeneration>({}),[jobs,setJobs]=useState<Job[]>([]),[preparing,setPreparing]=useState(false),[error,setError]=useState('');
   const [pick,setPick]=useState(''),[more,setMore]=useState(false);
   const [scope,setScope]=useState<'all'|'clip'>('all');
+  const [referencePicker,setReferencePicker]=useState(''),[workflowPicker,setWorkflowPicker]=useState(false);
   const file=useRef<HTMLInputElement>(null),ref=useRef<HTMLInputElement>(null);
-  const refTarget=useRef({key:'',wid:'',layerId:'',sceneId:'',recipeId:''}),mounted=useRef(true),starting=useRef(false);
+  const refTarget=useRef({key:'',wid:'',layerId:'',sceneId:'',recipeId:'',takeId:''}),mounted=useRef(true),starting=useRef(false);
   const knownAssets=useRef(new Set<string>());knownAssets.current=new Set((project.assets||[]).map(a=>a.id));
   const mediaLayers=layersOf(project).filter((l):l is MediaLayer=>l.kind==='media');
-  const layer=visualLayer(project,selected),generation=scene?.generation||layer?.generation||(!layer?loose:{});
+  const take=assetOf(project,selectedTake),fromTake=takeGeneration(project,scene,selectedTake),original=assetGeneration(take);
+  const originalDraft=original?.workflows?.[original.workflowId||''];
+  const related=relatedReferences(project,selectedTake);
+  const layer=visualLayer(project,selected),generation=fromTake||scene?.generation||layer?.generation||(!layer?loose:{});
   const wid=generation.workflowId||list[0]?.id||'',wf=list.find(w=>w.id===wid);
   const draft=generation.workflows?.[wid]||{},vals=draft.inputs||{},sources=draft.sources||{};
+  const mediaFiles={...originalDraft?.mediaFiles,...draft.mediaFiles};
   const hasSeed=!!wf&&Object.values(wf.inputs).some(i=>i.role==='seed'),variants=hasSeed?draft.variants||1:1;
   const activeJobs=jobs.filter(j=>j.status==='queued'||j.status==='running'),running=preparing||activeJobs.length>0;
   const results=useMemo(()=>scope==='clip'&&layer?layerTakes(project,layer.id):
@@ -37,7 +45,12 @@ export function WorkflowsPanel({scene,project,edit,checkpoint,time,range,selecte
   const fail=(e:unknown)=>{if(mounted.current)setError(e instanceof Error?e.message:String(e));};
   const refresh=async()=>{try{const next=await listWorkflows();if(mounted.current)setList(next);}catch(e){fail(e);}finally{if(mounted.current)setLoading(false);}};
   const patch=(changes:WorkflowDraft={},workflowId=wid)=>{
-    if(scene)edit(p=>setSceneGeneration(p,scene.id,workflowId,changes));
+    if(scene&&take)edit(p=>{
+      // A loose still inherits the scene's prompt/vocal, but supplies its own image.
+      const initialized=!fromTake&&wf?setTakeGeneration(p,scene.id,take.id,wid,{...draft,sources:Object.fromEntries(Object.entries(wf.inputs).filter(([,i])=>i.role==='media').map(([k,i])=>[k,sourceId(k,i)])),sourceWindows:Object.fromEntries(Object.entries(draft.sourceWindows||{}).filter(([k])=>wf.inputs[k]?.media==='audio'))}):p;
+      return setTakeGeneration(initialized,scene.id,take.id,workflowId,changes);
+    });
+    else if(scene)edit(p=>setSceneGeneration(p,scene.id,workflowId,changes));
     else if(layer)edit(p=>setGeneration(p,layer.id,workflowId,changes));
     else setLoose(g=>({...g,workflowId,workflows:{...g.workflows,[workflowId]:{...g.workflows?.[workflowId],...changes}}}));
   };
@@ -65,36 +78,42 @@ export function WorkflowsPanel({scene,project,edit,checkpoint,time,range,selecte
   },[]);
   useEffect(()=>{const focus=()=>void refresh();window.addEventListener('focus',focus);
     return()=>window.removeEventListener('focus',focus);},[]);
-  useEffect(()=>{setPick('');setMapping(false);setMore(false);onAudition(null);},[selected,scene?.id,wid]);
+  useEffect(()=>{setPick('');setMapping(false);setMore(false);setReferencePicker('');setWorkflowPicker(false);onAudition(null);},[selected,selectedTake,scene?.id,wid]);
   // Finish the default recipe before the next keyboard edit (including immediate scene deletion).
-  useLayoutEffect(()=>{if(scene&&wf&&!scene.generation?.workflowId)edit(p=>setSceneGeneration(p,scene.id,wf.id));
-    else if(!scene&&layer&&wf&&!layer.generation?.workflowId)edit(p=>setGeneration(p,layer.id,wf.id));},[scene?.id,layer?.id,wf?.id]);
+  useLayoutEffect(()=>{if(scene&&wf&&!generation.workflowId)patch({},wf.id);
+    else if(!scene&&layer&&wf&&!layer.generation?.workflowId)edit(p=>setGeneration(p,layer.id,wf.id));},[scene?.id,selectedTake,layer?.id,wf?.id]);
 
   async function importFile(f:File){
     setError('');try{const w=await importWorkflow(JSON.parse(await f.text()),f.name.replace(/\.(api\.)?json$/i,''));
       if(!mounted.current)return;setList(ls=>[w,...ls]);patch({},w.id);setMapping(!w.output);
     }catch(e){fail(e);}
   }
-  const sourceId=(k:string,inp:WfInput)=>sources[k]||
-    (inp.media==='audio'?(draft.mediaFiles?.[k]?PREPARED:project.media.audio||project.media.video?SONG:''):
-    (scene?scene.refs.find(id=>inp.media!=='video'||assetOf(project,id)?.kind==='video')||'':layer&&(inp.media!=='video'||assetOf(project,layer.assetId)?.kind==='video')?LAYER:project.media.video?(inp.media==='video'?RANGE:FOOT):''));
+  const compatible=(id:string,inp:WfInput)=>{const a=assetOf(project,id);return !!a&&(inp.media==='audio'?!!a.hasAudio:inp.media!=='video'||a.kind==='video');};
+  const sourceId=(k:string,inp:WfInput)=>{
+    if(sources[k]&&(!take||fromTake||inp.media==='audio'))return sources[k];
+    if(inp.media==='audio')return mediaFiles[k]?PREPARED:project.media.audio||project.media.video?SONG:'';
+    const inherited=inheritedReference(project,selectedTake,k);if(inherited&&compatible(inherited,inp))return inherited;
+    if(take&&inp.media==='video'&&take.kind==='video')return take.id;
+    if(take&&inp.media!=='video')return (take.kind==='image'?take.id:related.find(id=>assetOf(project,id)?.kind==='image'))||take.id;
+    return scene?scene.refs.find(id=>compatible(id,inp))||'':layer&&compatible(layer.assetId,inp)?LAYER:project.media.video?(inp.media==='video'?RANGE:FOOT):'';
+  };
   function source(k:string,inp:WfInput):WfSource{
-    const s=sourceId(k,inp);
-    if(s===PREPARED){const f=draft.mediaFiles![k];return {path:f.path,start:0,end:f.duration};}
-    if(s===SONG)return range?{start:range.a,end:range.b}:layer?{start:Math.max(0,layer.start),end:layer.start+layer.out-layer.in}:{start:time,end:time+3};
-    if(inp.media==='audio'&&s!==LAYER){const a=assetOf(project,s);return {assetId:s,start:0,end:a?.duration||5};}
+    const s=sourceId(k,inp),window=(!take||fromTake||inp.media==='audio')?(draft.sourceWindows?.[k]||(!sources[k]?originalDraft?.sourceWindows?.[k]:undefined)):undefined;
+    if(s===PREPARED){const f=mediaFiles[k];return {path:f.path,start:0,end:f.duration,...window};}
+    if(s===SONG)return {...(range?{start:range.a,end:range.b}:layer?{start:Math.max(0,layer.start),end:layer.start+layer.out-layer.in}:{start:time,end:time+3}),...window};
+    if(inp.media==='audio'&&s!==LAYER){const a=assetOf(project,s);return {assetId:s,start:0,end:a?.duration||5,...window};}
     if(s===LAYER&&layer){const at=Math.max(layer.in,Math.min(layer.out-1/project.fps,layer.in+time-layer.start));
       return inp.media==='video'||inp.media==='audio'?{assetId:layer.assetId,start:layer.in,end:layer.out}:{assetId:layer.assetId,time:at};}
-    if(s===FOOT)return {time};if(s===RANGE)return range?{start:range.a,end:range.b}:{start:time,end:time+3};
-    return {assetId:s,time:0};
+    if(s===FOOT)return {time,...window};if(s===RANGE)return {...(range?{start:range.a,end:range.b}:{start:time,end:time+3}),...window};
+    return {assetId:s,...(inp.media==='video'?{start:0,end:assetOf(project,s)?.duration}: {time:0}),...window};
   }
   const missingReference=!!wf&&Object.entries(wf.inputs).some(([k,i])=>i.role==='media'&&(!sourceId(k,i)||
-    (sourceId(k,i)===PREPARED&&!draft.mediaFiles?.[k])||
+    (sourceId(k,i)===PREPARED&&!mediaFiles[k])||
     (i.media==='audio'&&!sourceId(k,i).startsWith('@')&&!assetOf(project,sourceId(k,i))?.hasAudio)||
     (i.media==='audio'&&sourceId(k,i)===LAYER&&!assetOf(project,layer?.assetId||'')?.hasAudio)||
     (!sourceId(k,i).startsWith('@')&&!assetOf(project,sourceId(k,i)))||
     (i.media==='video'&&sourceId(k,i)!==RANGE&&assetOf(project,sourceId(k,i)===LAYER?layer?.assetId||'':sourceId(k,i))?.kind!=='video')));
-  const postprocess=wf&&Object.entries(wf.inputs).some(([k,i])=>i.media==='audio'&&sourceId(k,i)===PREPARED)?draft.postprocess:undefined;
+  const postprocess=wf&&Object.entries(wf.inputs).some(([k,i])=>i.media==='audio'&&sourceId(k,i)===PREPARED)?draft.postprocess||originalDraft?.postprocess:undefined;
   const blocked=project.id==='sample'?'Open or create a project to generate a take.':
     !wf?'Choose a workflow first.':!wf.output?'Choose an output in the workflow settings.':
     wf.readinessError|| (wf.missing.length?'This workflow needs nodes that are unavailable on the selected ComfyUI.':
@@ -115,8 +134,9 @@ export function WorkflowsPanel({scene,project,edit,checkpoint,time,range,selecte
     const form=new FormData();form.append('file',f);
     try{const a=await request<Asset>(`/api/projects/${pid}/assets`,{method:'POST',body:form});if(!mounted.current)return;
       edit(p=>{if(p.id!==pid)return p;const q=mergeAssets(p,pid,[a]);
-        if(target.sceneId){const s=sceneForId(q,target.sceneId);if(!s)return q;
+        if(target.sceneId){const s=(target.takeId?scenesOf(q).find(s=>s.takes.includes(target.takeId)):undefined)||sceneForId(q,target.sceneId);if(!s)return q;
           const next=patchScene(q,s.id,{refs:[...new Set([...s.refs,a.id])]});
+          if(target.takeId){const gen=takeGeneration(q,s,target.takeId)||s.generation;return setTakeGeneration(next,s.id,target.takeId,target.wid,{sources:{...gen?.workflows?.[target.wid]?.sources,[target.key]:a.id},sourceWindows:{...gen?.workflows?.[target.wid]?.sourceWindows,[target.key]:{}}});}
           const recipeId=target.recipeId||target.sceneId,generation=s.recipes?.find(r=>r.id===recipeId)?.generation||s.generation;
           return setSceneGeneration(next,s.id,target.wid,{sources:{...generation?.workflows?.[target.wid]?.sources,[target.key]:a.id}},recipeId);}
         if(!target.layerId)return q;const prev=visualLayer(q,target.layerId)?.generation?.workflows?.[target.wid]?.sources;
@@ -136,7 +156,22 @@ export function WorkflowsPanel({scene,project,edit,checkpoint,time,range,selecte
   }
   const mediaInputs=wf?Object.entries(wf.inputs).filter(([,i])=>i.role==='media'):[];
   const otherInputs=wf?Object.entries(wf.inputs).filter(([,i])=>i.role!=='media'):[];
-  return <div className="wf-panel">
+  const chooseSource=(key:string,id:string)=>{patch({sources:{...sources,...Object.fromEntries(mediaInputs.map(([k,i])=>[k,sourceId(k,i)])),[key]:id},sourceWindows:{...draft.sourceWindows,[key]:{}},...(id===PREPARED?{mediaFiles:{...draft.mediaFiles,[key]:mediaFiles[key]}}:{})});setReferencePicker('');};
+  const options=(key:string,inp:WfInput):SourceChoice[]=>[
+    ...(inp.media==='audio'&&mediaFiles[key]?[{id:PREPARED,name:mediaFiles[key].name,detail:'Original prepared vocal'}]:[]),
+    ...(inp.media==='audio'&&(project.media.audio||project.media.video)?[{id:SONG,name:'Song',detail:range?'Loop range':layer?'Selected clip range':'3 seconds from playhead'}]:[]),
+    ...(layer&&compatible(layer.assetId,inp)?[{id:LAYER,name:'Timeline clip',detail:inp.media==='image'?'Frame at playhead':'Selected clip range'}]:[]),
+    ...(project.media.video&&inp.media==='image'?[{id:FOOT,name:'Base video',detail:'Frame at playhead'}]:[]),
+    ...(project.media.video&&inp.media==='video'?[{id:RANGE,name:'Base video',detail:range?'Loop range':'3 seconds from playhead'}]:[])];
+  const nearby=[...new Set([selectedTake,...related,...scene?.refs||[],...scene?.takes||[],...Object.values(sources)])].filter(Boolean);
+  const primaryInputs=otherInputs.filter(([k,i])=>i.role==='prompt'&&!/negative/i.test(`${k} ${i.title}`));
+  const advancedInputs=otherInputs.filter(entry=>!primaryInputs.includes(entry));
+  const inputControl=([k,inp]:[string,WfInput])=>{
+    if(inp.role==='prompt')return <textarea key={k} className="wf-prompt" rows={4} value={String(vals[k]??inp.default??'')} aria-label={inp.title} title={inp.title} placeholder="Prompt…" onChange={e=>setVal(k,e.target.value)}/>;
+    if(inp.role==='bool')return <label key={k} className="check" title={inp.title}><input type="checkbox" checked={!!(vals[k]??inp.default)} onChange={e=>setVal(k,e.target.checked)}/>{inp.field}</label>;
+    const seed=inp.role==='seed';return <div className="wf-row" key={k} title={`${inp.title} · ${inp.field}`}><span className="lbl">{seed?'Seed':inp.field.replace(/_/g,' ')}</span><input type={inp.role==='text'?'text':'number'} aria-label={seed?`Seed: ${inp.title}`:inp.title} className="mono" min={inp.min} max={inp.max} step={inp.step} placeholder={seed?'random':undefined} value={String(vals[k]??(seed?'':inp.default??''))} onChange={e=>setVal(k,inp.role==='text'?e.target.value:e.target.value===''?undefined:Number(e.target.value))}/></div>;
+  };
+  return <div className="wf-panel" data-take-id={selectedTake}>
     {!scene&&<div className="wf-context">
       <label htmlFor="take-layer">Reference clip <span>optional</span></label>
       <select id="take-layer" value={layer?.id||''} onChange={e=>{onAudition(null);onSelect(e.target.value);}} aria-label="Reference clip">
@@ -144,17 +179,15 @@ export function WorkflowsPanel({scene,project,edit,checkpoint,time,range,selecte
       </select>
       <p>{layer?'Uses this clip’s references and settings. ':''}Every take is saved as footage. Drag any number onto the timeline to trim and combine.</p>
     </div>}
-    <div className="wf-section-title"><b>Workflow</b><span>ComfyUI</span></div>
     <div className="wf-head">
-      <select value={wid} onChange={e=>{patch({},e.target.value);setMapping(false);}} aria-label="Workflow" title={wf?`${wf.nodes} nodes`:undefined}>
-        {!list.length&&<option value="">{loading?'Loading…':'Import a workflow'}</option>}
-        {wid&&!wf&&!!list.length&&<option value={wid}>Workflow unavailable</option>}
-        {list.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select>
+      <button className="wf-workflow-choice" aria-label="Workflow" aria-haspopup="dialog" title={wf?.name} onClick={()=>setWorkflowPicker(true)}><span>{wf?.name||(loading?'Loading…':wid?'Workflow unavailable':'Choose a workflow')}</span><span aria-hidden="true">⌄</span></button>
       <button className="icon-sm" onClick={()=>file.current?.click()} title="Import ComfyUI API workflow (.json)" aria-label="Import workflow"><Icon name="upload" size={15}/></button>
       {wf&&<button className={`icon-sm ${mapping?'on':''}`} onClick={()=>setMapping(m=>!m)} title="Choose inputs and output" aria-label="Choose inputs and output" aria-pressed={mapping}><Icon name="keys" size={15}/></button>}
       <input ref={file} type="file" accept=".json,application/json" hidden onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void importFile(f);}}/>
       <input ref={ref} type="file" accept="image/*,video/*" hidden onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void addRef(f);}}/>
     </div>
+    {workflowPicker&&<WorkflowPicker workflows={list} value={wid} related={[original?.workflowId||'',...Object.keys(scene?.generation?.workflows||{})]} onChoose={id=>{patch({},id);setMapping(false);setWorkflowPicker(false);}} onClose={()=>setWorkflowPicker(false)}/>}
+    {referencePicker&&wf?.inputs[referencePicker]&&<ReferencePicker project={project} input={wf.inputs[referencePicker]} nearby={nearby} value={sourceId(referencePicker,wf.inputs[referencePicker])} choices={options(referencePicker,wf.inputs[referencePicker])} onChoose={id=>chooseSource(referencePicker,id)} onClose={()=>setReferencePicker('')}/>}
     {!loading&&!list.length&&<div className="wf-empty"><p>Bring a workflow from ComfyUI. Choose its references and prompt here, then compare the results with your music.</p>
       <button onClick={()=>file.current?.click()}>Import workflow JSON</button><small>Use ComfyUI’s Export (API), or import from its Reprise sidebar.</small></div>}
     {error&&<div className="wf-err" role="alert">{error}<button className="icon-sm" aria-label="Dismiss generation error" onClick={()=>setError('')}>×</button></div>}
@@ -164,43 +197,27 @@ export function WorkflowsPanel({scene,project,edit,checkpoint,time,range,selecte
     {wf&&mapping&&<><Mapping key={wf.id} wf={wf} onSave={patch=>void updateWorkflow(wf.id,patch).then(w=>{setList(ls=>ls.map(x=>x.id===w.id?w:x));setMapping(false);}).catch(fail)}/>
       <button className="danger" onClick={()=>{if(confirm(`Remove ${wf.name}?`))void deleteWorkflow(wf.id).then(()=>refresh()).catch(fail);}}>Remove workflow</button></>}
     {wf&&!mapping&&<>
-      {mediaInputs.length>0&&<><div className="wf-section-title"><b>References</b><span>{mediaInputs.length} input{mediaInputs.length===1?'':'s'}</span></div>
-        <div className="wf-references">{mediaInputs.map(([k,inp])=>{const value=sourceId(k,inp),a=assetOf(project,value===LAYER?layer?.assetId||'':value);
-          return <div className="wf-reference" key={k}>
-            <div className="wf-reference-image">{a?<TakeThumb project={project} asset={a}/>:<Icon name="media" size={20}/>}</div>
-            <div className="wf-reference-field"><label htmlFor={`ref-${k}`}>{inp.title}</label>
-              <select id={`ref-${k}`} value={value} onChange={e=>patch({sources:{...sources,[k]:e.target.value}})} aria-label={`Reference: ${inp.title}`}>
-                <option value="" disabled>Choose a reference</option>
-                {inp.media==='audio'&&draft.mediaFiles?.[k]&&<option value={PREPARED}>{draft.mediaFiles[k].name}</option>}
-                {inp.media==='audio'&&(project.media.audio||project.media.video)&&<option value={SONG}>Song · {layer?'selected shot window':'playhead window'}</option>}
-                {layer&&(inp.media==='audio'?assetOf(project,layer.assetId)?.hasAudio:inp.media!=='video'||assetOf(project,layer.assetId)?.kind==='video')&&<option value={LAYER}>Current take{inp.media==='audio'?' · sound':inp.media==='video'?'':' · frame'}</option>}
-                {project.media.video&&inp.media!=='video'&&inp.media!=='audio'&&<option value={FOOT}>Footage at playhead</option>}
-                {project.media.video&&inp.media==='video'&&<option value={RANGE}>{range?'Loop range':'3 s from playhead'}</option>}
-                {(project.assets||[]).filter(a=>inp.media==='audio'?a.hasAudio:inp.media!=='video'||a.kind==='video').map(a=><option key={a.id} value={a.id}>{a.name||a.path.split('/').pop()}</option>)}
-              </select></div>
-            {inp.media!=='audio'&&<button className="icon-sm" disabled={project.id==='sample'} onClick={()=>{refTarget.current={key:k,wid,layerId:layer?.id||'',sceneId:scene?.id||'',recipeId:scene?.recipeId||''};if(ref.current)ref.current.accept=inp.media==='video'?'video/*':'image/*,video/*';ref.current?.click();}} title="Upload reference" aria-label={`Upload reference: ${inp.title}`}><Icon name="plus" size={14}/></button>}
-            {scene&&inp.media!=='audio'&&<div className="scene-source-choices" aria-label={`Scene references for ${inp.title}`}>
-              {[...new Set([...scene.refs,...scene.takes])].filter(id=>inp.media!=='video'||assetOf(project,id)?.kind==='video').map(id=>{const a=assetOf(project,id);return a&&<button key={id} title={a.name||'Reference'} aria-label={`Use reference ${a.name||id}`} aria-pressed={value===id} className={value===id?'active':''} onClick={()=>patch({sources:{...sources,[k]:id}})}><TakeThumb project={project} asset={a}/></button>;})}
-            </div>}
-          </div>;})}</div></>}
-      {postprocess&&<p className="wf-note">Imported vocal timing · returns at {postprocess.fps} fps, {postprocess.trimStart.toFixed(2)} s pre-roll removed. The prepared vocal stays fixed when you move this shot.</p>}
-      {otherInputs.map(([k,inp])=>{
-        if(inp.role==='prompt')return <label className="wf-prompt" key={k}><span>{inp.title}</span><textarea rows={4} value={String(vals[k]??inp.default??'')} aria-label={inp.title} placeholder="Describe the movement, mood, and details you want to explore…" onChange={e=>setVal(k,e.target.value)}/></label>;
-        if(inp.role==='bool')return <label key={k} className="check" title={inp.title}><input type="checkbox" checked={!!(vals[k]??inp.default)} onChange={e=>setVal(k,e.target.checked)}/>{inp.field}</label>;
-        const seed=inp.role==='seed';
-        return <div className="wf-row" key={k} title={`${inp.title} · ${inp.field}`}><span className="lbl">{seed?'Seed':inp.field.replace(/_/g,' ')}</span>
-          <input type={inp.role==='text'?'text':'number'} aria-label={seed?`Seed: ${inp.title}`:inp.title} className="mono" min={inp.min} max={inp.max} step={inp.step} placeholder={seed?'random':undefined}
-            value={String(vals[k]??(seed?'':inp.default??''))} onChange={e=>setVal(k,inp.role==='text'?e.target.value:e.target.value===''?undefined:Number(e.target.value))}/></div>;
-      })}
+      {mediaInputs.length>0&&<div className="wf-references">{mediaInputs.map(([k,inp])=>{const value=sourceId(k,inp),a=assetOf(project,value===LAYER?layer?.assetId||'':value),special=options(k,inp).find(c=>c.id===value),label=inp.title.split(/[·(]/)[0].trim();
+          const audioPath=inp.media==='audio'?(value===PREPARED?mediaFiles[k]?.path:a?.path||project.media.audio?.path||project.media.video?.path):undefined;
+          return <div className={`wf-reference ${inp.media==='audio'?'wf-reference-audio':''}`} key={k} data-reference-key={k} data-reference-id={value}
+            onDragOver={e=>{if(e.dataTransfer.types.includes(ASSET_MIME)){e.preventDefault();e.dataTransfer.dropEffect='copy';}}}
+            onDrop={e=>{const id=e.dataTransfer.getData(ASSET_MIME);if(!id)return;e.preventDefault();e.stopPropagation();if(compatible(id,inp))chooseSource(k,id);else setError(`Choose ${inp.media==='audio'?'media with sound':inp.media==='video'?'a video':'an image or video'} for ${inp.title}.`);}}>
+            {audioPath&&<ReferenceAudio key={`${selectedTake}:${k}:${value}`} src={assetUrl(project,audioPath)} name={a?.name||special?.name||label} start={source(k,inp).start||0} end={source(k,inp).end}/>}
+            <button className="wf-reference-choice" aria-label={`Reference: ${inp.title}`} aria-haspopup="dialog" onClick={()=>setReferencePicker(k)} title={`${inp.title}: ${a?.name||special?.name||'Choose reference'}\nClick to change, or drop a take here`}>
+              {inp.media!=='audio'&&<span className="wf-reference-image">{a?<SceneThumb project={project} asset={a} time={source(k,inp).time}/>:<Icon name="plus" size={22}/>}</span>}
+              <span className="wf-reference-label">{label||'Reference'}<span aria-hidden="true">⌄</span></span>
+            </button>
+            {inp.media!=='audio'&&<button className="icon-sm" disabled={project.id==='sample'} onClick={()=>{refTarget.current={key:k,wid,layerId:layer?.id||'',sceneId:scene?.id||'',recipeId:scene?.recipeId||'',takeId:selectedTake};if(ref.current)ref.current.accept=inp.media==='video'?'video/*':'image/*,video/*';ref.current?.click();}} title="Upload reference" aria-label={`Upload reference: ${inp.title}`}><Icon name="plus" size={14}/></button>}
+          </div>;})}</div>}
+      {primaryInputs.map(inputControl)}
+      {advancedInputs.length>0&&<details className="wf-settings"><summary aria-label="Generation settings" title="Generation settings"><Icon name="sliders" size={15}/><span aria-hidden="true">⌄</span></summary><div>{advancedInputs.map(inputControl)}</div></details>}
       <div className="wf-run">
         <div className="seg mini" role="radiogroup" aria-label="Variants" title="Number of takes to generate">{[1,2,4].map(n=>
           <button key={n} role="radio" aria-checked={variants===n} className={variants===n?'active':''} disabled={n>1&&!hasSeed} title={n>1&&!hasSeed?'Expose a seed input to generate different takes':undefined} onClick={()=>patch({variants:n})}>{n}×</button>)}</div>
-        <button className="primary" onClick={()=>void run()} disabled={running||!!blocked} aria-describedby="wf-run-status" title={blocked||undefined}>
-          {preparing?'Preparing…':activeJobs.length?`Generating ${Math.round((activeJobs[0].progress||0)*100)}%`:`Generate ${variants===1?'take':`${variants} takes`}`}</button>
+        <button className="primary" onClick={()=>void run()} disabled={running||!!blocked} aria-label={preparing?'Preparing…':activeJobs.length?`Generating ${Math.round((activeJobs[0].progress||0)*100)}%`:`Generate ${variants===1?'take':`${variants} takes`}`} aria-describedby={blocked?'wf-run-status':undefined} title={blocked||`Generate on ${wf.target==='remote'?'remote GPU':'local ComfyUI'}`}>
+          {preparing?'Preparing…':activeJobs.length?`Generating ${Math.round((activeJobs[0].progress||0)*100)}%`:'Generate'}</button>
       </div>
-      <div id="wf-run-status" className="wf-note" role="status">{blocked||`Runs on ${wf.target==='remote'?'remote GPU':'local ComfyUI'}.`}
-        {!!blocked&&<button className="wf-more" onClick={()=>void refresh()}>Check again</button>}</div>
-      {activeJobs.length>0&&<p className="wf-note" role="status">{activeJobs[0].message||'Queued'} · You can keep editing.</p>}
+      {!!blocked&&<div id="wf-run-status" className="wf-note" role="status">{blocked}<button className="wf-more" onClick={()=>void refresh()}>Check again</button></div>}
     </>}
     {!scene&&<><div className="wf-section-title wf-takes-title"><b>Generated footage</b><span>{results.length}</span></div>
     <div className="seg mini" role="radiogroup" aria-label="Show takes">

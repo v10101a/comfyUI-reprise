@@ -66,12 +66,17 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
   const sourcePreview=project?assetOf(project,sourcePreviewId):undefined;
   const sourceVideo=useRef<HTMLVideoElement>(null),sourceMode=useRef('');sourceMode.current=sourcePreviewId;
   const [activeScene,setActiveScene]=useState(''),[inspector,setInspector]=useState<'generate'|'clip'|'text'>('generate');
+  const [takeContext,setTakeContext]=useState<{sceneId:string;assetId:string}|null>(null);
+  const [sceneLibrary,setSceneLibrary]=useState(false);
   const [textScope,setTextScope]=useState<'clip'|'default'>('default'),[paint,setPaint]=useState(0);
   const [sceneView,setSceneView]=useState<BoardView|null>(null);
   const scenes=useMemo(()=>project?scenesOf(project):[],[project]);
   const scene=scenes.find(s=>s.id===activeScene)||scenes.find(s=>s.clips.includes(selectedLayer))||scenes[0];
   const sceneRef=useRef(scene);sceneRef.current=scene;
-  useEffect(()=>{setActiveScene('');setSceneView(null);setInspector('generate');},[project?.id]);
+  const generationTake=scene?(takeContext?.sceneId===scene.id&&(takeContext.assetId===''||scene.takes.includes(takeContext.assetId))?takeContext.assetId:
+    sceneClips(project!,scene).find(l=>l.id===selectedLayer)?.assetId||scene.takes[0]||''):'';
+  useEffect(()=>setSceneLibrary(false),[scene?.id]);
+  useEffect(()=>{setActiveScene('');setTakeContext(null);setSceneView(null);setInspector('generate');},[project?.id]);
   const [matteTarget,setMatteTarget]=useState('');
   useEffect(()=>{if(selectedLayer)setMatteTarget(selectedLayer);},[selectedLayer]);
   const previewProject=useMemo(()=>project?auditionProject(project,audition&&audition.layerId===selectedLayer?audition:null):null,[project,audition,selectedLayer]);
@@ -215,11 +220,12 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
   const setRail=(v:boolean)=>{setRailState(v);try{localStorage.setItem('typeset.leftRail',v?'1':'0');}catch{/* private mode */}};
   const openLeft=(tab:'pipeline'|'media'|'layers'|'workflows'|'scenes'|'board')=>{setLeftTab(tab==='layers'?'media':tab==='workflows'?'scenes':tab);setRail(false);if(tab==='workflows')setInspector('generate');};
   const selectVisual=(id:string)=>{setSelectedLayer(id);setSelected('');setMulti(null);setSelectedWall('');setAudition(null);setSourcePreviewId('');setInspector(id?'clip':'generate');
-    const s=projectRef.current&&scenesOf(projectRef.current).find(s=>s.clips.includes(id));if(s)setActiveScene(s.id);
+    const s=projectRef.current&&scenesOf(projectRef.current).find(s=>s.clips.includes(id));if(s){setActiveScene(s.id);setTakeContext({sceneId:s.id,assetId:visualLayer(projectRef.current!,id)?.assetId||''});}
   };
   const closePreview=()=>{setSourcePreviewId('');setAudition(null);};
   const selectScene=(s:Scene)=>{const p=projectRef.current;if(!p)return;const clips=sceneClips(p,s),l=clips.find(l=>l.id===layerSel.current)||clips[0];selectVisual(l?.id||'');setActiveScene(s.id);setInspector('generate');if(l)seekFrame(l.start*p.fps);};
   const previewSceneTake=(s:Scene,id:string)=>{if(scene?.id!==s.id)selectScene(s);if(sourcePreviewId===id){closePreview();return;}previewSource(id);};
+  const selectSceneTake=(s:Scene,id:string)=>{if(scene?.id!==s.id)selectScene(s);setTakeContext({sceneId:s.id,assetId:id});setInspector('generate');};
   const renameScene=(id:string,name:string)=>{checkpoint();edit(p=>patchScene(p,id,{name}));};
   const organizeScenes=(update:(p:Project)=>Project)=>{checkpoint();edit(update);hist.current.gesture=false;hist.current.last=0;};
   const combineSceneGroups=(target:string,ids:string[],name:string)=>{organizeScenes(p=>combineScenes(p,target,ids,name));closePreview();setActiveScene(target);setInspector('generate');setNotice('Scenes combined');};
@@ -596,6 +602,7 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
       </aside>:<aside className="s-left" id="studio-left-panel">
         {(leftTab==='scenes'||leftTab==='board')?<ScenesPanel project={project} scenes={scenes} active={scene?.id||''} selected={selectedLayer} preview={sourcePreviewId||audition?.assetId||''} mode={leftTab}
           view={sceneView} onView={setSceneView} onMode={setLeftTab} onNew={addScene} onSelect={selectScene} onBlank={closePreview} onPreview={previewSceneTake}
+          onTakeSelect={selectSceneTake}
           onExpand={()=>{setPlaying(false);audio.current?.pause();closePreview();}}
           onClip={id=>{selectVisual(id);const l=visualLayer(project,id);if(l)seekFrame(l.start*project.fps);}} onUndo={redo=>undo(!!redo)} onRename={renameScene} onDelete={deleteScenes}
           onCombine={combineSceneGroups} onReorder={(id,target,after)=>organizeScenes(p=>placeSceneInList(p,id,target,after))} onTakeMove={moveTakeToScene}
@@ -672,13 +679,17 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
       <aside className="s-right">
         <div className="scene-inspector-tabs seg" aria-label="Inspector"><button className={inspector==='generate'?'active':''} onClick={()=>setInspector('generate')}>Generate</button><button disabled={!selectedLayer} className={inspector==='clip'?'active':''} onClick={()=>setInspector('clip')}>Clip</button><button className={inspector==='text'?'active':''} onClick={()=>{setInspector('text');if(!current&&!multi)setTextScope('default');}}>Text style</button></div>
         <div hidden={inspector!=='generate'}>
-          {scene?<section className="panel-sec"><SceneHeading scene={scene} onRename={name=>renameScene(scene.id,name)} onDelete={()=>deleteScene(scene.id)}/>
-            {!!scene.recipes?.length&&<label className="scene-recipe">Recipe<select aria-label="Scene recipe" value={scene.recipeId} onChange={e=>{const id=e.target.value;organizeScenes(p=>selectSceneRecipe(p,scene.id,id));}}>{scene.recipes.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label>}
-            <SceneReferences project={project} scene={scene} edit={edit} onPreview={id=>previewSceneTake(scene,id)} onError={setError}/>
-            {loop&&<div className="scene-target mono">Song range · {timecode(loop.a)}–{timecode(loop.b)}</div>}
+          {scene?<section className="panel-sec"><SceneHeading scene={scene} onRename={name=>renameScene(scene.id,name)} onDelete={()=>deleteScene(scene.id)}>
+            {!!generationTake&&<button className={`icon-sm ${sceneLibrary?'on':''}`} aria-label="Scene references and recipes" aria-expanded={sceneLibrary} title="Scene references and recipes" onClick={()=>setSceneLibrary(v=>!v)}><Icon name="layers" size={14}/></button>}
+            </SceneHeading>
+            {(!generationTake||sceneLibrary)&&<>
+              {!!scene.recipes?.length&&<label className="scene-recipe">Recipe<select aria-label="Scene recipe" value={generationTake?'':scene.recipeId} onChange={e=>{const id=e.target.value;if(!id)return;setTakeContext({sceneId:scene.id,assetId:''});organizeScenes(p=>selectSceneRecipe(p,scene.id,id));}}>{generationTake&&<option value="">Selected shot</option>}{scene.recipes.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label>}
+              <SceneReferences project={project} scene={scene} edit={edit} onPreview={id=>previewSceneTake(scene,id)} onError={setError}/>
+            </>}
+            {loop&&<div className="scene-target mono" title="Song range"><Icon name="loop" size={12}/> {timecode(loop.a)}–{timecode(loop.b)}</div>}
           </section>:<section className="panel-sec"><button onClick={addScene}>+ Add a scene</button></section>}
         </div>
-        <div hidden={inspector!=='generate'||!scene}><WorkflowsPanel key={project.id} scene={scene} project={project} edit={edit} checkpoint={checkpoint} time={time} range={loop&&loop.b>loop.a?loop:null}
+        <div hidden={inspector!=='generate'||!scene}><WorkflowsPanel key={project.id} scene={scene} selectedTake={generationTake} project={project} edit={edit} checkpoint={checkpoint} time={time} range={loop&&loop.b>loop.a?loop:null}
           selected={scene?.clips.includes(selectedLayer)?selectedLayer:scene?sceneClips(project,scene)[0]?.id||'':''} onSelect={selectVisual} audition={audition} onAudition={setAudition} onSeek={t=>seekFrame(Math.round(t*project.fps))}
           sourcePreview={sourcePreviewId} onPreview={previewSource} onPlace={(assetId,at,generation)=>void run(()=>dropTimelineMedia({assetId,generation},at))} prepare={()=>save(projectRef.current,true)}/></div>
         {inspector==='clip'&&<>{selectedLayer&&<LayerInspector project={project} id={selectedLayer} time={time} edit={edit} checkpoint={checkpoint} onClose={()=>setInspector('generate')} onSeek={t=>seekFrame(Math.round(t*project.fps))} onCreate={()=>setInspector('generate')}/>}<FootageGrade project={project} edit={edit}/></>}

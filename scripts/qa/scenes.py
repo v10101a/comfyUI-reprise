@@ -75,7 +75,7 @@ with sync_playwright() as pw:
     choose('Star motion');expect(take('Star motion',2)).to_be_visible();check('Legacy clips become scenes with provenance takes')
     expect(page.locator('.ly-clip[data-layer-id="star"]')).to_have_class(__import__('re').compile('scene-linked'))
     panel.get_by_label('Direction',exact=True).fill('Wind and a head-only glance.')
-    panel.get_by_label('Reference: Identity',exact=True).select_option('ref')
+    panel.get_by_label('Reference: Identity',exact=True).click();page.get_by_label('Search media',exact=True).fill('Face reference');page.get_by_role('button',name='Use Face reference',exact=True).click()
     panel.get_by_role('radio',name='2×',exact=True).click()
     choose('Background texture');expect(panel.get_by_label('Direction',exact=True)).to_have_value('Gentle movement')
     choose('Star motion');expect(panel.get_by_label('Direction',exact=True)).to_have_value('Wind and a head-only glance.');check('Scene recipes stay separate')
@@ -105,7 +105,7 @@ with sync_playwright() as pw:
     # Fresh scene generation works without any clip. Switch scenes while job is running.
     page.get_by_role('button',name='New scene',exact=True).click();expect(page.get_by_label('Scene name',exact=True)).to_have_value('Scene 3')
     page.get_by_role('button',name='Add scene reference',exact=True).click();page.get_by_role('button',name='Attach Face reference',exact=True).click()
-    expect(panel.get_by_label('Reference: Identity',exact=True)).to_have_value('ref')
+    expect(panel.locator('[data-reference-key="image"]')).to_have_attribute('data-reference-id','ref')
     panel.get_by_label('Direction',exact=True).fill('Silent scene, wind in hair.')
     panel.get_by_role('button',name='Generate take',exact=True).click()
     expect(panel.get_by_role('button',name=__import__('re').compile('Generating'))).to_be_visible()
