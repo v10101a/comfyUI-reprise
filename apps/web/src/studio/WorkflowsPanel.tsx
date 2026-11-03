@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import type {Asset,WorkflowDraft,Job,LayerGeneration,MediaLayer,Project} from '../types';
 import {request} from '../api';
 import {assetOf,layersOf} from '../layers';
@@ -66,7 +66,8 @@ export function WorkflowsPanel({scene,project,edit,checkpoint,time,range,selecte
   useEffect(()=>{const focus=()=>void refresh();window.addEventListener('focus',focus);
     return()=>window.removeEventListener('focus',focus);},[]);
   useEffect(()=>{setPick('');setMapping(false);setMore(false);onAudition(null);},[selected,scene?.id,wid]);
-  useEffect(()=>{if(scene&&wf&&!scene.generation?.workflowId)edit(p=>setSceneGeneration(p,scene.id,wf.id));
+  // Finish the default recipe before the next keyboard edit (including immediate scene deletion).
+  useLayoutEffect(()=>{if(scene&&wf&&!scene.generation?.workflowId)edit(p=>setSceneGeneration(p,scene.id,wf.id));
     else if(!scene&&layer&&wf&&!layer.generation?.workflowId)edit(p=>setGeneration(p,layer.id,wf.id));},[scene?.id,layer?.id,wf?.id]);
 
   async function importFile(f:File){

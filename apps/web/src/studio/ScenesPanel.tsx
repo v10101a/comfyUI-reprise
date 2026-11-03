@@ -1,5 +1,7 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import type {Project} from '../types';
+import {assetUrl} from '../api';
 import {assetOf} from '../layers';
 import {SceneThumb as AssetThumb} from './SceneThumb';
 import {SceneCanvas} from './SceneCanvas';
@@ -11,7 +13,7 @@ import type {BoardView} from './board';
 
 type Props={project:Project;scenes:Scene[];active:string;selected:string;preview:string;mode:'scenes'|'board';view:BoardView|null;
   onView:(v:BoardView)=>void;onMode:(m:'scenes'|'board')=>void;onNew:()=>void;onSelect:(s:Scene)=>void;
-  onClip:(id:string)=>void;onPreview:(s:Scene,id:string)=>void;onBlank:()=>void;onUndo:(redo?:boolean)=>void;
+  onClip:(id:string)=>void;onPreview:(s:Scene,id:string)=>void;onBlank:()=>void;onExpand:()=>void;onUndo:(redo?:boolean)=>void;
   onMove:(positions:{id:string;x:number;y:number}[])=>void;onRename:(id:string,name:string)=>void;onDelete:(ids:string[])=>void;
   onCombine:(target:string,ids:string[],name:string)=>void;onReorder:(id:string,target:string,after:boolean)=>void;
   onTakeMove:(id:string,target:string,point?:{x:number;y:number})=>void;onTakeDelete:(scene:string,id:string)=>void;onCollapse:(id:string)=>void};
@@ -21,8 +23,27 @@ const stamp=(t:number)=>`${Math.floor(t/60)}:${(t%60).toFixed(1).padStart(4,'0')
 export function ScenesPanel(p:Props){
   const list=useRef<HTMLDivElement>(null),[selection,setSelection]=useState<string[]>([p.active]);
   const [drop,setDrop]=useState<{id:string;kind:'take'|'combine'|'before'|'after'}|null>(null);
+  const dialog=useRef<HTMLDialogElement>(null),expandButton=useRef<HTMLButtonElement>(null),wasExpanded=useRef(false);
+  const [fullscreenRoot,setFullscreenRoot]=useState<HTMLElement|null>(null);
+  const [expanded,setExpanded]=useState(false),[fullView,setFullView]=useState<BoardView|null>(null),[fullPreview,setFullPreview]=useState('');
+  const blank=()=>{setFullPreview('');p.onBlank();};
+  const closeExpanded=()=>{setFullPreview('');setExpanded(false);};
+  const escapeExpanded=()=>{if(fullPreview){setFullPreview('');dialog.current?.querySelector<HTMLElement>('.study-canvas')?.focus();}else closeExpanded();};
+  const preview=(s:Scene,id:string)=>{if(expanded){p.onBlank();if(p.active!==s.id)p.onSelect(s);setFullPreview(v=>v===id?'':id);}else p.onPreview(s,id);};
+  useLayoutEffect(()=>{const el=dialog.current;if(!el)return;
+    if(expanded){el.showModal();el.querySelector<HTMLElement>('.study-canvas')?.focus({preventScroll:true});}
+    else{el.close();if(wasExpanded.current)expandButton.current?.focus({preventScroll:true});}
+    wasExpanded.current=expanded;
+  },[expanded]);
+  const trapFocus=(e:React.KeyboardEvent)=>{if(e.key!=='Tab')return;const el=dialog.current;if(!el)return;
+    const items=Array.from(el.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),video[controls],[tabindex="0"]')).filter(node=>node.getClientRects().length);
+    const first=items[0],last=items[items.length-1];if(!first){e.preventDefault();return;}
+    if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+    else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+  };
+  useEffect(()=>{if(fullPreview&&!p.scenes.some(s=>s.takes.includes(fullPreview)||s.refs.includes(fullPreview)))setFullPreview('');},[p.scenes,fullPreview]);
   const selected=selection.filter(id=>p.scenes.some(s=>s.id===id));
-  useEffect(()=>{setSelection(ids=>ids.includes(p.active)?ids:p.active?[p.active]:[]);},[p.active]);
+  useLayoutEffect(()=>{setSelection(ids=>ids.includes(p.active)?ids:p.active?[p.active]:[]);},[p.active]);
   useEffect(()=>{list.current?.querySelector('.study-chapter.selected')?.scrollIntoView({block:'nearest'});},[p.active,p.mode]);
   const select=(s:Scene,add=false)=>{setSelection(ids=>add?ids.includes(s.id)?ids.filter(id=>id!==s.id):[...ids,s.id]:[s.id]);if(!add)p.onSelect(s);else p.onBlank();};
   const combine=(target?:string)=>{const s=p.scenes.find(s=>s.id===(target||selected[0]));if(s&&selected.length>1){p.onCombine(s.id,selected,s.name);setSelection([s.id]);}};
@@ -42,23 +63,30 @@ export function ScenesPanel(p:Props){
     else if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='g'){e.preventDefault();e.stopPropagation();combine();}
     else if(e.key==='Backspace'||e.key==='Delete'){
       e.preventDefault();e.stopPropagation();const take=(e.target as Element).closest<HTMLElement>('[data-take-id]');
+      const root=(e.currentTarget as HTMLElement).closest('.scene-browser');
+      root?.querySelector<HTMLElement>('.study-canvas,.study-chapters')?.focus({preventScroll:true});
       if(take){p.onTakeDelete(take.dataset.takeScene!,take.dataset.takeId!);p.onBlank();}
-      else remove();(e.currentTarget as HTMLElement).focus({preventScroll:true});
+      else remove();
     }
   };
   const thumb=(id:string)=>{const a=assetOf(p.project,id);return a?<AssetThumb project={p.project} asset={a}/>:<Icon name="media"/>;};
   const takes=(s:Scene)=><><div className="study-takes">{(p.mode==='board'?s.takes.slice(0,6):s.takes).map((id,i)=>{
-    const a=assetOf(p.project,id),used=sceneClips(p.project,s).some(l=>l.assetId===id),preview=p.preview===id;
-    return <button key={id} data-take-id={id} data-take-scene={s.id} className={`study-take ${preview?'previewed':''}`} aria-label={`Preview ${s.name} take ${i+1}`} aria-pressed={preview}
-      draggable onDragStart={e=>{e.stopPropagation();e.dataTransfer.setData(ASSET_MIME,id);e.dataTransfer.setData(TAKE_MIME,id);e.dataTransfer.effectAllowed='copyMove';setSelection([s.id]);p.onSelect(s);p.onBlank();}} onDragEnd={()=>setDrop(null)}
-      title={`${a?.name||'Take'}${used?' · Used on timeline':''} · Drag to a scene or timeline`} onClick={()=>{setSelection([s.id]);p.onPreview(s,id);}}>
-      <span className="study-take-image">{thumb(id)}{used&&<span className="study-used" title="Used on timeline">✓</span>}{preview&&<span className="study-eye"><Icon name="eye" size={14}/></span>}</span>
+    const a=assetOf(p.project,id),used=sceneClips(p.project,s).some(l=>l.assetId===id),previewed=(expanded?fullPreview:p.preview)===id;
+    return <button key={id} data-take-id={id} data-take-scene={s.id} className={`study-take ${previewed?'previewed':''}`} aria-label={`Preview ${s.name} take ${i+1}`} aria-pressed={previewed}
+      draggable onDragStart={e=>{e.stopPropagation();e.dataTransfer.setData(ASSET_MIME,id);e.dataTransfer.setData(TAKE_MIME,id);e.dataTransfer.effectAllowed='copyMove';setSelection([s.id]);p.onSelect(s);blank();}} onDragEnd={()=>setDrop(null)}
+      title={`${a?.name||'Take'}${used?' · Used on timeline':''} · Drag to a scene or timeline`} onClick={()=>{setSelection([s.id]);preview(s,id);}}>
+      <span className="study-take-image">{thumb(id)}{used&&<span className="study-used" title="Used on timeline">✓</span>}{previewed&&<span className="study-eye"><Icon name="eye" size={14}/></span>}</span>
       <span className="study-take-meta"><span className="mono">{String(i+1).padStart(2,'0')}</span><span>{a?.duration?`${a.duration.toFixed(1)}s`:'Image'}</span></span>
     </button>;
-  })}</div>{p.mode==='board'&&s.takes.length>6&&<button className="scene-all-takes" onClick={()=>{p.onSelect(s);p.onMode('scenes');}}>All {s.takes.length} takes ↗</button>}</>;
-  return <div className="scene-browser" tabIndex={-1} onKeyDown={e=>{if(!e.defaultPrevented)key(e);}} onClick={e=>{if(!(e.target as Element).closest('button,input,textarea,select,label,.study-canvas'))p.onBlank();}}>
+  })}</div>{p.mode==='board'&&s.takes.length>6&&<button className="scene-all-takes" onClick={()=>{closeExpanded();p.onSelect(s);p.onMode('scenes');}}>All {s.takes.length} takes ↗</button>}</>;
+  const previewAsset=assetOf(p.project,fullPreview);
+  const browser=<div className="scene-browser" tabIndex={-1} onKeyDown={e=>{
+    if(expanded&&e.key==='Escape'&&!e.defaultPrevented){e.preventDefault();escapeExpanded();}
+    if(!e.defaultPrevented)key(e);if(expanded)e.stopPropagation();
+  }} onClick={e=>{if(!(e.target as Element).closest('button,input,textarea,select,label,.study-canvas,.board-preview'))blank();}}>
     <div className="study-nav">{selected.length>1?<div className="scene-selection-actions"><span>{selected.length} scenes</span><button onClick={()=>combine()} title="Combine selected scenes (⌘/Ctrl G)">Combine</button><button className="icon-sm" aria-label="Delete selected scenes" title="Delete selected scene groups" onClick={remove}><Icon name="trash" size={14}/></button><button className="icon-sm" aria-label="Clear scene selection" onClick={()=>setSelection([])}>×</button></div>:
-      <><div className="seg" aria-label="Scene view">{(['scenes','board'] as const).map(m=><button key={m} className={p.mode===m?'active':''} aria-pressed={p.mode===m} onClick={()=>{p.onBlank();p.onMode(m);}}>{m==='scenes'?'Scenes':'Board'}</button>)}</div><button className="icon-sm" aria-label="New scene" title="New scene" onClick={p.onNew}><Icon name="plus" size={16}/></button></>}
+      <>{expanded?<div className="board-heading"><strong>Board</strong><span>{p.project.name}</span></div>:<div className="seg" aria-label="Scene view">{(['scenes','board'] as const).map(m=><button key={m} className={p.mode===m?'active':''} aria-pressed={p.mode===m} onClick={()=>{blank();p.onMode(m);}}>{m==='scenes'?'Scenes':'Board'}</button>)}</div>}<button className="icon-sm" aria-label="New scene" title="New scene" onClick={p.onNew}><Icon name="plus" size={16}/></button></>}
+      {p.mode==='board'&&<button ref={expandButton} className="icon-sm board-expand" aria-label={expanded?'Exit fullscreen board':'Fullscreen board'} title={expanded?'Exit fullscreen board (Esc)':'Fullscreen board'} onClick={()=>{if(expanded)closeExpanded();else{p.onExpand();setFullscreenRoot(expandButton.current?.closest<HTMLElement>('.studio')||null);setFullView(null);setExpanded(true);}}}><Icon name={expanded?'close':'expand'} size={16}/></button>}
     </div>
     {p.mode==='scenes'?<div ref={list} className="study-chapters" tabIndex={0} aria-label="Scene list" onKeyDown={key}>
       {p.scenes.map((s,i)=><section key={s.id} data-list-scene-id={s.id} {...dropProps(s)} className={`study-chapter ${selected.includes(s.id)?'selected':''} ${drop?.id===s.id?`scene-drop-${drop.kind}`:''}`}>
@@ -69,11 +97,19 @@ export function ScenesPanel(p:Props){
         {drop?.id===s.id&&drop.kind==='combine'&&<span className="scene-drop-label">Release to combine</span>}
         {p.active===s.id&&<div className="study-chapter-body">{takes(s)}<div className="study-occurrences">{sceneClips(p.project,s).map(l=><button key={l.id} className={p.selected===l.id?'active':''} title={`Go to ${l.name}`} aria-label={`Go to clip ${l.name}`} onClick={()=>p.onClip(l.id)}><Icon name="media" size={12}/><span className="mono">{stamp(l.start)}</span></button>)}</div></div>}
       </section>)}{!p.scenes.length&&<button className="scene-empty" onClick={p.onNew}>+ Add a scene</button>}
-    </div>:<SceneCanvas scenes={p.scenes} active={p.active} selection={selected} onSelection={setSelection} view={p.view} onView={p.onView}
-      onSelect={p.onSelect} onMove={p.onMove} onBlank={p.onBlank} onKeyDown={key} onRename={p.onRename} onCombine={p.onCombine}
+    </div>:<div className="board-workspace"><SceneCanvas scenes={p.scenes} active={p.active} selection={selected} onSelection={setSelection} view={expanded?fullView:p.view} onView={expanded?setFullView:p.onView} expanded={expanded} onEscape={expanded?escapeExpanded:undefined}
+      onSelect={s=>{setFullPreview('');p.onSelect(s);}} onMove={p.onMove} onBlank={blank} onKeyDown={key} onRename={p.onRename} onCombine={p.onCombine}
       takes={takes} dropTarget={drop?.id||''} dropProps={dropProps} onCollapse={s=>p.onCollapse(s.id)} onTakeMove={p.onTakeMove}
-      references={s=><div className="study-board-refs">{s.refs.slice(0,3).map(id=><button key={id} aria-label={`Preview reference ${assetOf(p.project,id)?.name||''}`} title={s.roles?.[id]||'Reference'} onClick={()=>p.onPreview(s,id)}>{thumb(id)}</button>)}{s.refs.length>3&&<span className="scene-ref-count" title={`${s.refs.length} references; select the scene to browse them in the inspector`}>+{s.refs.length-3}</span>}</div>}/>}
+      references={s=><div className="study-board-refs">{s.refs.slice(0,3).map(id=><button key={id} aria-label={`Preview reference ${assetOf(p.project,id)?.name||''}`} title={s.roles?.[id]||'Reference'} onClick={()=>preview(s,id)}>{thumb(id)}</button>)}{s.refs.length>3&&<span className="scene-ref-count" title={`${s.refs.length} references; select the scene to browse them in the inspector`}>+{s.refs.length-3}</span>}</div>}/>
+      {expanded&&previewAsset&&<aside className="board-preview" aria-label="Board take preview" onKeyDown={e=>{if(e.key!=='Escape')e.stopPropagation();}}>
+        <div className="board-preview-head"><span title={previewAsset.name}>{previewAsset.name||'Take preview'}</span><button className="icon-sm" aria-label="Close board preview" title="Close preview (Esc)" onClick={()=>{setFullPreview('');dialog.current?.querySelector<HTMLElement>('.study-canvas')?.focus();}}><Icon name="close" size={14}/></button></div>
+        {previewAsset.kind==='video'?<video key={previewAsset.id} src={assetUrl(p.project,previewAsset.path)} controls autoPlay playsInline preload="auto" aria-label={`Source: ${previewAsset.name||'take'}`}/>:<img src={assetUrl(p.project,previewAsset.path)} alt={previewAsset.name||'Take preview'}/>}
+        <button className="board-open-editor" onClick={()=>{const s=p.scenes.find(s=>s.takes.includes(fullPreview)||s.refs.includes(fullPreview));closeExpanded();if(s)p.onPreview(s,fullPreview);}}>Open in editor <span aria-hidden="true">↗</span></button>
+      </aside>}
+    </div>}
+    {expanded&&<div className="board-hints">Drag background to pan <span>·</span> Shift-drag to select <span>·</span> Space-drag anywhere to pan <span>·</span> Esc to exit</div>}
   </div>;
+  return <>{!expanded&&browser}{fullscreenRoot&&createPortal(<dialog ref={dialog} className="board-fullscreen" aria-label="Fullscreen scene board" onKeyDownCapture={trapFocus} onCancel={e=>{e.preventDefault();escapeExpanded();}}>{expanded&&browser}</dialog>,fullscreenRoot)}</>;
 }
 
 export function SceneHeading({scene,onRename,onDelete}:{scene:Scene;onRename:(name:string)=>void;onDelete:()=>void}){

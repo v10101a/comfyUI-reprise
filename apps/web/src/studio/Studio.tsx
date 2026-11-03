@@ -596,6 +596,7 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
       </aside>:<aside className="s-left" id="studio-left-panel">
         {(leftTab==='scenes'||leftTab==='board')?<ScenesPanel project={project} scenes={scenes} active={scene?.id||''} selected={selectedLayer} preview={sourcePreviewId||audition?.assetId||''} mode={leftTab}
           view={sceneView} onView={setSceneView} onMode={setLeftTab} onNew={addScene} onSelect={selectScene} onBlank={closePreview} onPreview={previewSceneTake}
+          onExpand={()=>{setPlaying(false);audio.current?.pause();closePreview();}}
           onClip={id=>{selectVisual(id);const l=visualLayer(project,id);if(l)seekFrame(l.start*project.fps);}} onUndo={redo=>undo(!!redo)} onRename={renameScene} onDelete={deleteScenes}
           onCombine={combineSceneGroups} onReorder={(id,target,after)=>organizeScenes(p=>placeSceneInList(p,id,target,after))} onTakeMove={moveTakeToScene}
           onTakeDelete={(sid,id)=>{organizeScenes(p=>removeSceneTake(p,sid,id));closePreview();}}
