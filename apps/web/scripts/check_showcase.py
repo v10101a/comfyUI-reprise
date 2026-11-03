@@ -63,7 +63,7 @@ def main():
         choose(page, pieces[0]['name'])
         page.get_by_role('button', name='Original', exact=True).click()
         expect(page.locator('.sc-layer.on')).to_be_visible()
-        page.get_by_role('button', name='Typeset', exact=True).click()
+        page.get_by_role('button', name='Reprise', exact=True).click()
         expect(page.locator('.sc-layer.on')).to_have_count(0)
 
         # A static checkout plays the same clip without the project API.

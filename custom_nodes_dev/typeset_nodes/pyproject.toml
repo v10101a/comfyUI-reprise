@@ -1,6 +1,6 @@
 [project]
 name = "typeset-nodes"
-description = "Where can words live in this shot? Occupancy grid, planar surface tracking, subject-following reframe crop, beat grid and lyric-aligned Whisper words — JSON + previews for kinetic typography in real footage."
+description = "Reprise: a music video studio and ComfyUI node pack. Iterate on scenes and takes, then compose footage, music and editable typography with reusable analysis."
 version = "0.2.0"
 license = { text = "MIT" }
 readme = "README.md"
@@ -19,6 +19,6 @@ dependencies = [
 # then `comfy node publish`.
 [tool.comfy]
 PublisherId = ""
-DisplayName = "Typeset Nodes — words in footage"
+DisplayName = "Reprise — music video studio and nodes"
 Icon = ""
 includes = ["fonts/", "docs/"]

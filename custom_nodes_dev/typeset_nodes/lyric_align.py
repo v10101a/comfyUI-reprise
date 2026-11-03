@@ -589,7 +589,7 @@ class TypesetAlignLyrics:
     RETURN_TYPES = ("STRING", "IMAGE", "AUDIO", "INT")
     RETURN_NAMES = ("words_json", "preview", "vocals", "word_count")
     FUNCTION = "run"
-    CATEGORY = "typeset/audio"
+    CATEGORY = "Reprise/audio"
     DESCRIPTION = ("Forced alignment of known lyrics to singing: HDemucs vocal stem -> MMS_FA CTC alignment -> "
                    "onset refinement. Outputs SCHEMA words.json, a stem/spectrogram preview with word boxes, and the stem.")
 
@@ -619,7 +619,7 @@ class TypesetAlignLyrics:
             if unload_models:
                 unload_models_fn()
         img = render_preview(stem16, [("aligned", doc["words"], (255, 120, 200))], onsets=extra["onsets"],
-                             px_per_s=80, title=f"TypesetAlignLyrics · {len(doc['words'])} words · "
+                             px_per_s=80, title=f"Reprise · Align Lyrics · {len(doc['words'])} words · "
                                                 f"{doc['stats']['lowConfidence']} low-confidence")
         image = torch.from_numpy(np.asarray(img).astype(np.float32) / 255.0)[None]
         stem_audio = {"waveform": stem16[None, None, :].clone(), "sample_rate": ALIGN_SR}
@@ -629,4 +629,4 @@ class TypesetAlignLyrics:
 unload_models_fn = unload_models
 
 NODE_CLASS_MAPPINGS = {"TypesetAlignLyrics": TypesetAlignLyrics}
-NODE_DISPLAY_NAME_MAPPINGS = {"TypesetAlignLyrics": "Align Lyrics (forced alignment) (typeset)"}
+NODE_DISPLAY_NAME_MAPPINGS = {"TypesetAlignLyrics": "Align Lyrics (forced alignment) (Reprise)"}

@@ -84,7 +84,7 @@ class TypesetVoiceField:
     RETURN_TYPES = ("STRING", "IMAGE", "AUDIO")
     RETURN_NAMES = ("voice_json", "preview", "vocals")
     FUNCTION = "run"
-    CATEGORY = "typeset/audio"
+    CATEGORY = "Reprise/audio"
     DESCRIPTION = "Vocal stem → per-frame loudness, pitch (pYIN), vibrato and onsets: the 'voice' field that animates the type."
 
     def run(self, audio, fps, separator="hdemucs", vocals=None, duration=0.0, device="cpu"):
@@ -107,4 +107,4 @@ class TypesetVoiceField:
 
 
 NODE_CLASS_MAPPINGS = {"TypesetVoiceField": TypesetVoiceField}
-NODE_DISPLAY_NAME_MAPPINGS = {"TypesetVoiceField": "Voice Field • loudness + pitch (typeset)"}
+NODE_DISPLAY_NAME_MAPPINGS = {"TypesetVoiceField": "Voice Field • loudness + pitch (Reprise)"}

@@ -6,6 +6,7 @@ import {at} from './base';
 import type {Project} from './types';
 import {ThemeToggle} from './studio/ThemeToggle';
 import {LooksSection} from './LooksSection';
+import {ShowcaseCredits} from './ShowcaseCredits';
 import PIECES from './showcase-pieces.json';
 import './showcase.css';
 
@@ -44,7 +45,7 @@ export default function Showcase() {
   /** File mtimes from the API: a clip re-rendered after a studio save gets a fresh URL. */
   const [ver, setVer] = useState<Record<string, number>>({});
   const vsrc = (p: Piece) => ver[p.id] ? `${p.src}?v=${ver[p.id]}` : p.src;
-  /** The Typeset video is the clock and the only sound; alt views are muted layers kept in sync under it. */
+  /** The Reprise video is the clock and the only sound; alt views are muted layers kept in sync under it. */
   const video = useRef<HTMLVideoElement>(null);
   const layers = useRef<(HTMLVideoElement | null)[]>([]);
   const stage = useRef<HTMLDivElement>(null);
@@ -114,11 +115,12 @@ export default function Showcase() {
 
   return <div className="showcase">
     <header className="sc-top">
-      <a className="sc-brand" href="#/showcase">typeset</a>
+      <a className="sc-brand" href="#/showcase" aria-label="Reprise home">reprise</a>
       <nav><a className="sc-open" href={studio}>Open studio</a><ThemeToggle/></nav>
     </header>
 
     <main>
+      <p className="sc-intro">A studio for music and moving images.<span>Generate takes. Try them in the edit. Find the next idea.</span></p>
       <section className="sc-stage-wrap" ref={stage}>
         <div className={`sc-stage ${image ? 'is-image' : ''}`} style={{aspectRatio: aspect}}>
           {image
@@ -134,7 +136,7 @@ export default function Showcase() {
         <div className="sc-bar">
           <h1 title={still ? undefined : piece.note}>{still ? still.split('/').pop()!.replace(/\.png$/, '').replace('-', ' ') : piece.name}</h1>
           {(piece.alts?.length || 0) > 0 && !still && <div className="sc-alts" role="group" aria-label="view">
-            <button aria-pressed={alt < 0} onClick={() => showView(-1)}>Typeset</button>
+            <button aria-pressed={alt < 0} onClick={() => showView(-1)}>Reprise</button>
             {piece.alts!.map((a, i) => <button key={a.label} aria-pressed={alt === i} onClick={() => showView(i)}>{a.label}</button>)}
           </div>}
           {!image && <div className="sc-controls">
@@ -162,6 +164,7 @@ export default function Showcase() {
       </section>
 
       <LooksSection/>
+      <ShowcaseCredits/>
     </main>
   </div>;
 }

@@ -282,7 +282,7 @@ class TypesetRender:
     RETURN_TYPES = ("IMAGE", "IMAGE", "STRING")
     RETURN_NAMES = ("images", "text_layer", "renderer")
     FUNCTION = "run"
-    CATEGORY = "typeset/render"
+    CATEGORY = "Reprise/render"
     DESCRIPTION = "Burn lyric type into footage with the studio's renderer: behind the subject, moved by the voice and by motion in the shot."
 
     def run(self, images, words_json, fps, look_json="", subject_mask=None, voice_json="", flow_json="",
@@ -389,4 +389,4 @@ class TypesetRender:
 
 
 NODE_CLASS_MAPPINGS = {"TypesetRender": TypesetRender}
-NODE_DISPLAY_NAME_MAPPINGS = {"TypesetRender": "Typeset Render • words in the shot (typeset)"}
+NODE_DISPLAY_NAME_MAPPINGS = {"TypesetRender": "Reprise Render • words in the shot (Reprise)"}

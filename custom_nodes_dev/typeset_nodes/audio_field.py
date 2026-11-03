@@ -103,7 +103,7 @@ class TypesetAudioField:
     RETURN_TYPES = ("STRING", "IMAGE")
     RETURN_NAMES = ("voice_json", "preview")
     FUNCTION = "run"
-    CATEGORY = "typeset/audio"
+    CATEGORY = "Reprise/audio"
     DESCRIPTION = "Mix → low-band (kick/bass) energy per frame, smoothed with attack/release: the 'audio' field that pulses the type."
 
     def run(self, audio, fps, band_low=40.0, band_high=140.0, attack_ms=0.0, release_ms=250.0, lead_frames=0.5, duration=0.0):
@@ -118,4 +118,4 @@ class TypesetAudioField:
 
 
 NODE_CLASS_MAPPINGS = {"TypesetAudioField": TypesetAudioField}
-NODE_DISPLAY_NAME_MAPPINGS = {"TypesetAudioField": "Audio Field • low-band pulse (typeset)"}
+NODE_DISPLAY_NAME_MAPPINGS = {"TypesetAudioField": "Audio Field • low-band pulse (Reprise)"}

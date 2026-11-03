@@ -25,7 +25,7 @@ class TypesetFlowField:
     RETURN_TYPES = ("STRING", "IMAGE")
     RETURN_NAMES = ("flow_json", "preview")
     FUNCTION = "run"
-    CATEGORY = "typeset/analysis"
+    CATEGORY = "Reprise/analysis"
 
     def run(self, images, fps, long_side_cells=cv.FLOW_LONG, preview_frames=8):
         B, H, W = images.shape[:3]
@@ -42,4 +42,4 @@ class TypesetFlowField:
 
 
 NODE_CLASS_MAPPINGS = {"TypesetFlowField": TypesetFlowField}
-NODE_DISPLAY_NAME_MAPPINGS = {"TypesetFlowField": "Motion Field • optical flow (typeset)"}
+NODE_DISPLAY_NAME_MAPPINGS = {"TypesetFlowField": "Motion Field • optical flow (Reprise)"}

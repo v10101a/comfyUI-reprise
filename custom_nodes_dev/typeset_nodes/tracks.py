@@ -73,7 +73,7 @@ class MaskToTracks:
     RETURN_TYPES = ("STRING", "INT")
     RETURN_NAMES = ("tracks_json", "visible_frames")
     FUNCTION = "run"
-    CATEGORY = "typeset/analysis"
+    CATEGORY = "Reprise/analysis"
 
     def run(self, fps, label, mask=None, images=None, track_id="person0", threshold=0.5,
             min_area=0.002, smooth=3, max_side=512, frame_offset=0, raw=False):
@@ -123,4 +123,4 @@ class MaskToTracks:
 
 
 NODE_CLASS_MAPPINGS = {"MaskToTracks": MaskToTracks}
-NODE_DISPLAY_NAME_MAPPINGS = {"MaskToTracks": "Mask → Tracks JSON (typeset)"}
+NODE_DISPLAY_NAME_MAPPINGS = {"MaskToTracks": "Mask → Tracks JSON (Reprise)"}

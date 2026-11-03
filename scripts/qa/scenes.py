@@ -121,7 +121,7 @@ with sync_playwright() as pw:
     expect(canvas).to_be_visible();v=float(canvas.get_attribute('data-zoom'));canvas.hover();page.keyboard.down('Control');page.mouse.wheel(0,-90);page.keyboard.up('Control');page.wait_for_timeout(150)
     check('Board zoom works',float(canvas.get_attribute('data-zoom'))>v)
     page.get_by_role('button',name='Focus selected scene',exact=True).click()
-    card=page.locator('.study-board-card.selected');name=card.locator('input');name.fill('Wind study');name.press('Enter');expect(page.get_by_label('Scene name',exact=True)).to_have_value('Wind study');check('Board and inspector share scene name')
+    card=page.locator('.study-board-card.selected');card.locator('.scene-title').dblclick();name=card.locator('input');name.fill('Wind study');name.press('Enter');expect(page.get_by_label('Scene name',exact=True)).to_have_value('Wind study');check('Board and inspector share scene name')
     save();sid=page.locator('.study-board-card.selected').get_attribute('data-scene-id');oldxy=next((x['x'],x['y']) for x in saved['board']['scenes'] if x['id']==sid)
     box=card.bounding_box();page.mouse.move(box['x']+4,box['y']+8);page.mouse.down();page.mouse.move(box['x']+44,box['y']+48,steps=4);page.mouse.up();save()
     nowxy=next((x['x'],x['y']) for x in saved['board']['scenes'] if x['id']==sid);check('Dragging a board frame persists its position',nowxy!=oldxy)

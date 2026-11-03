@@ -113,7 +113,7 @@ class TextToMask:
     RETURN_TYPES = ("MASK", "IMAGE")
     RETURN_NAMES = ("mask", "image")
     FUNCTION = "run"
-    CATEGORY = "typeset/text"
+    CATEGORY = "Reprise/text"
 
     def run(self, text, font, size, x, y, width, height, letter_spacing=0.0, padding=0,
             align="center", line_spacing=1.1, invert=False):
@@ -127,4 +127,4 @@ class TextToMask:
 
 
 NODE_CLASS_MAPPINGS = {"TextToMask": TextToMask}
-NODE_DISPLAY_NAME_MAPPINGS = {"TextToMask": "Text → Mask (typeset)"}
+NODE_DISPLAY_NAME_MAPPINGS = {"TextToMask": "Text → Mask (Reprise)"}

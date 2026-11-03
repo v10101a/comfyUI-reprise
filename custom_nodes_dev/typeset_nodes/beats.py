@@ -23,7 +23,7 @@ class AudioBeatMarkers:
     RETURN_TYPES = ("STRING", "FLOAT", "INT")
     RETURN_NAMES = ("beats_json", "bpm", "beat_count")
     FUNCTION = "run"
-    CATEGORY = "typeset/audio"
+    CATEGORY = "Reprise/audio"
 
     def run(self, audio, tightness):
         wav = audio["waveform"][0]            # first item in batch -> [C, T]
@@ -36,7 +36,7 @@ class AudioBeatMarkers:
 
 
 NODE_CLASS_MAPPINGS = {"AudioBeatMarkers": AudioBeatMarkers}
-NODE_DISPLAY_NAME_MAPPINGS = {"AudioBeatMarkers": "Audio → Beat Markers (typeset)"}
+NODE_DISPLAY_NAME_MAPPINGS = {"AudioBeatMarkers": "Audio → Beat Markers (Reprise)"}
 
 
 # ---- TypesetBeatGrid -------------------------------------------------------------------------
@@ -147,7 +147,7 @@ class TypesetBeatGrid:
     RETURN_TYPES = ("STRING", "FLOAT", "IMAGE")
     RETURN_NAMES = ("beats_json", "bpm", "preview")
     FUNCTION = "run"
-    CATEGORY = "typeset/audio"
+    CATEGORY = "Reprise/audio"
 
     def run(self, audio, beats_per_bar=4, section_seconds=8.0):
         import torch
@@ -163,4 +163,4 @@ class TypesetBeatGrid:
 
 
 NODE_CLASS_MAPPINGS["TypesetBeatGrid"] = TypesetBeatGrid
-NODE_DISPLAY_NAME_MAPPINGS["TypesetBeatGrid"] = "Beat Grid — beats, downbeats, sections (typeset)"
+NODE_DISPLAY_NAME_MAPPINGS["TypesetBeatGrid"] = "Beat Grid — beats, downbeats, sections (Reprise)"

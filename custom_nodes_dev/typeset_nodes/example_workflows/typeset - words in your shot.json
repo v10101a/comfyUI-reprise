@@ -517,7 +517,7 @@
     {
       "id": 9,
       "type": "TypesetRender",
-      "title": "typeset",
+      "title": "Reprise",
       "pos": [
         1600,
         100
@@ -796,7 +796,7 @@
       "inputs": [],
       "outputs": [],
       "widgets_values": [
-        "# Words in your shot\n\nChoose footage with audio, paste the matching lyrics, choose a look, then Run. The output keeps the original song.\n\nApp Mode exposes the everyday choices. Graph view exposes lettering, matte and analysis controls. Grade settings feeds JSON to TypesetRender, which applies the grade once. Align Lyrics shares its vocal stem with Voice Field.\n\nNeeds Typeset nodes, ComfyUI-RMBG (BiRefNet), HDemucs + MMS_FA weights for lyrics, and a built Typeset Studio + Playwright for full-quality rendering. Auto renderer reports when it falls back to draft."
+        "# Words in your shot\n\nChoose footage with audio, paste the matching lyrics, choose a look, then Run. The output keeps the original song.\n\nApp Mode exposes the everyday choices. Graph view exposes lettering, matte and analysis controls. Grade settings feeds JSON to TypesetRender, which applies the grade once. Align Lyrics shares its vocal stem with Voice Field.\n\nNeeds Reprise nodes, ComfyUI-RMBG (BiRefNet), HDemucs + MMS_FA weights for lyrics, and a built Reprise Studio + Playwright for full-quality rendering. Auto renderer reports when it falls back to draft."
       ],
       "properties": {}
     }

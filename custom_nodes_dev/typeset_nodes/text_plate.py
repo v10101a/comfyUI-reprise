@@ -15,10 +15,10 @@ class TypesetTextPlate:
                              'prompt': ('STRING', {'default': 'pink neon lettering'})},
                 'optional': {'mask_png': ('STRING', {'default': ''}),
                              'look_json': ('STRING', {'default': '', 'forceInput': True,
-                                                      'tooltip': 'From Look (typeset): sets face, case, colours, card, halo and glow; prompt is then ignored'})}}
+                                                      'tooltip': 'From Look (Reprise): sets face, case, colours, card, halo and glow; prompt is then ignored'})}}
     RETURN_TYPES = ('IMAGE',)
     FUNCTION = 'run'
-    CATEGORY = 'typeset/text'
+    CATEGORY = 'Reprise/text'
 
     def run(self, image, text, prompt='', mask_png='', look_json=''):
         import json
@@ -64,4 +64,4 @@ class TypesetTextPlate:
         return (torch.stack(rows),)
 
 NODE_CLASS_MAPPINGS = {'TypesetTextPlate': TypesetTextPlate}
-NODE_DISPLAY_NAME_MAPPINGS = {'TypesetTextPlate': 'Text Plate • deterministic prototype (typeset)'}
+NODE_DISPLAY_NAME_MAPPINGS = {'TypesetTextPlate': 'Text Plate • deterministic prototype (Reprise)'}

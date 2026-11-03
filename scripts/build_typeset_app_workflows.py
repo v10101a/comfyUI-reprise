@@ -140,7 +140,7 @@ def ui_workflow(graph, info, separate_song=False):
             "App Mode exposes the everyday choices. Graph view exposes lettering, matte and analysis controls. "
             "Grade settings feeds JSON to TypesetRender, which applies the grade once. "
             "Align Lyrics shares its vocal stem with Voice Field.\n\n"
-            "Needs Typeset nodes, ComfyUI-RMBG (BiRefNet), HDemucs + MMS_FA weights for lyrics, and a built Typeset Studio + Playwright "
+            "Needs Reprise nodes, ComfyUI-RMBG (BiRefNet), HDemucs + MMS_FA weights for lyrics, and a built Reprise Studio + Playwright "
             "for full-quality rendering. Auto renderer reports when it falls back to draft.")
     nodes.append({"id": 99, "type": "MarkdownNote", "pos": [1600, 500], "size": [580, 360], "flags": {},
                   "order": len(nodes), "mode": 0, "inputs": [], "outputs": [], "widgets_values": [note], "properties": {}})

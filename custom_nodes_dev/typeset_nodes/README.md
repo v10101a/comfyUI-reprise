@@ -1,6 +1,10 @@
-# typeset_nodes: where can words live in this shot?
+# Reprise nodes and ComfyUI studio
 
-A ComfyUI node pack for putting lyrics and captions **inside** real footage. It finds where the subject isn't, glues a quad to a wall, reframes landscape to vertical around the head, puts a beat grid on the music and aligns sung lyrics to their timing. Every node outputs plain JSON (documented below) and a preview, so the results also feed other tools: the Typeset editor, a TouchDesigner/Resolve script, or your own renderer.
+Reprise is a studio for iterating on music videos. Open the studio from the Reprise sidebar in ComfyUI, or use its analysis and rendering nodes in your own graph. See the [main README](../../README.md) for the scene workflow, setup, model credits and examples.
+
+The package directory, `/typeset/` mount and `Typeset…` node class IDs retain their original names so existing workflows keep loading. Node display names use Reprise.
+
+A ComfyUI node pack for putting lyrics and captions **inside** real footage. It finds where the subject isn't, glues a quad to a wall, reframes landscape to vertical around the head, puts a beat grid on the music and aligns sung lyrics to their timing. Every node outputs plain JSON (documented below) and a preview, so the results also feed other tools: the Reprise editor, a TouchDesigner/Resolve script, or your own renderer.
 
 Tracking, occupancy, reframe and motion fields use CPU/OpenCV code. Word analysis uses Whisper or HDemucs + MMS_FA forced alignment, and subject masks come from a matte node such as BiRefNet. The code is MIT; model weights and bundled fonts have their own licences.
 
@@ -76,38 +80,38 @@ On the demo song, Whisper hears "say the soul" and the output reads "Hold on, sa
 
 On the demo songs, measured against independent anchors: hero line starts vs pYIN voiced entries are 695 ms → 43 ms mean absolute error, and the Fall For Me hook vs ear-confirmed times is within 31–69 ms. See `docs/comfy-integration.md`. `vocal_start`/`vocal_end` are optional overrides; Fall For Me now aligns the same without them.
 
-### Look and Grade: Typeset styling without the app (`TypesetLook`, `TypesetGrade`)
-The Typeset app splits **look** (text: face, colour, layout, motion, text optics) from **grade** (footage). Both nodes use the app's presets (`look_presets.json`) and output the exact JSON the app stores, so fine-tuning in ComfyUI can be pasted back into a project.
+### Look and Grade: Reprise styling without the app (`TypesetLook`, `TypesetGrade`)
+The Reprise app splits **look** (text: face, colour, layout, motion, text optics) from **grade** (footage). Both nodes use the app's presets (`look_presets.json`) and output the exact JSON the app stores, so fine-tuning in ComfyUI can be pasted back into a project.
 - `TypesetLook`: preset (`flat-card`, `paper-cut`, `graffiti`, `neon`, `hud`, `glyph`, `stitch`, `xerox`, `ticker`, `lens-bound`, `night-code`, `scatter`; hidden but kept for old projects: `red-glow`, `dreamy`, `grey-noise`) + every param as a widget (ink/accent/card colours, font/body face from the bundled OFL fonts, case, layout, size, motion, glow, flicker, drips (graffiti), light (neon), outline, halo, soft, cards/tubes/scroll/hooks, fill/cell/backing (glyph fill: the lyric as a letter grid lit by the footage, on the subject, the world, the frame or the line's wall), dots/dot/gap (raster: the type as a fixed grid of square or round dots), boxes (note blocks behind noted words on/off); "preset"/empty/-1 keeps the preset value) → `look_json` (`{"id","overrides"}` = `project.look`) + a type preview. Connect `look_json` to `TypesetTextPlate` to set the plate in that look (`workflows/text_plate.api.json` has it wired, input `look`, default `default` = prompt colours as before).
 - `TypesetGrade`: IMAGE batch + grade (`none`, `mono`, `xerox`, `teal`, `film`, `wash`, `night`), amount, tint/grain/halation/contrast/flash overrides, optional `beats_json` (from Beat Grid) for the xerox beat flash → graded IMAGE + `grade_json` (= `project.grade`). Same maths as the web renderer (luminance-keeping colour tint, halation, photocopy curve, seeded grain); close, not bit-identical.
 - `TypesetGradeSettings`: the same grade parameters → `grade_json`, without processing images. Use this with `TypesetRender` and connect the original footage directly to Render. It avoids computing a graded frame batch that Render would discard.
 
 ### Motion Field and Voice Field: what moves the type (`TypesetFlowField`, `TypesetVoiceField`)
 - **`TypesetFlowField`:** `IMAGE` batch → `flow_json` (DIS optical flow on a coarse grid; CPU, no weights) + an HSV preview.
-  - Typeset turns the camera part into **drift**: the type floats with the shot and settles back.
+  - Reprise turns the camera part into **drift**: the type floats with the shot and settles back.
   - It turns quick local motion, like a waving hand, into **glass ripples** that refract the type.
 - **`TypesetVoiceField`:** `AUDIO` (or a connected vocal stem, e.g. Align Lyrics' `vocals`) → per-frame vocal loudness, pitch (pYIN), vibrato and onsets.
   - The studio uses vocal energy and onsets to animate the type's weight and width. Pitch and vibrato are available in the analysis JSON; melody/vibrato displacement is currently disabled in the renderer.
 - **`TypesetAudioField`:** `AUDIO` (full mix) → per-frame 40–140 Hz bass energy + preview. The studio's Audio control switches between bass and vocal response; the bass pulse uses centred analysis windows, immediate attack and a smoothed release.
 
-### Typeset Render: words in the shot, in the graph (`TypesetRender`)
+### Reprise Render: words in the shot, in the graph (`TypesetRender`)
 - **In:** `IMAGE` batch + `words_json`, plus optionally `look_json` (Look node), `grade_json` (Grade node; connect ungraded frames), `subject_mask` (the words go behind the person), `voice_json` and `flow_json`.
 - **Out:** the frames with the type burned in, the text layer (rendered only when connected), and `renderer`: which renderer ran.
 - **Renderer** (`auto` default):
-  - `studio`: the inputs become a Typeset project (`comfy-<footage hash>`, updated in place on re-runs), and headless Chromium renders it with the studio's own renderer. Every look; same pixels as a studio export. Needs the `/typeset` host, a built studio (`apps/web/dist`) and Playwright (in ComfyUI's venv, or the repo's `server/.venv`).
+  - `studio`: the inputs become a Reprise project (`comfy-<footage hash>`, updated in place on re-runs), and headless Chromium renders it with the studio's own renderer. Every look; same pixels as a studio export. Needs the `/typeset` host, a built studio (`apps/web/dist`) and Playwright (in ComfyUI's venv, or the repo's `server/.venv`).
   - `draft`: the Python port, one line at a time; font, palette and glow only. `auto` falls back to it when the studio renderer is unavailable or fails, and says why.
 
 ### App: words in your shot
-The template **typeset - words in your shot** (`example_workflows/`) is one graph you can use as an App Mode form:
+The template **Reprise - words in your shot** (`example_workflows/`) is one graph you can use as an App Mode form:
 - **In:** a clip and its lyrics.
 - **Out:** a lyric video.
 - **Controls:** look, grade, voice and flow.
 
 Switch to the graph view to rewire any step.
 
-For separate footage and music, use **[typeset - words in your shot and song](example_workflows/typeset%20-%20words%20in%20your%20shot%20and%20song.json)**. Its App Mode form exposes Footage, Song excerpt, Exact lyrics, Text look, Footage grade, Voice response and Motion response. Audio starts at zero and the output lasts as long as the footage; choose the matching song excerpt first. Alignment, vocal analysis and the output all use that same song. Align Lyrics shares its vocal stem with Voice Field.
+For separate footage and music, use **[Reprise - words in your shot and song](example_workflows/typeset%20-%20words%20in%20your%20shot%20and%20song.json)**. Its App Mode form exposes Footage, Song excerpt, Exact lyrics, Text look, Footage grade, Voice response and Motion response. Audio starts at zero and the output lasts as long as the footage; choose the matching song excerpt first. Alignment, vocal analysis and the output all use that same song. Align Lyrics shares its vocal stem with Voice Field.
 
-Both templates are generated by `scripts/build_typeset_app_workflows.py` in the full repository. It reads the current Typeset node schemas so newly added Look controls do not shift saved widget values. Restart ComfyUI after updating node Python. App Mode requires ComfyUI frontend 1.41.13 or newer; local users can save/share workflow JSON, while hosted App share links require Comfy Cloud ([official guide](https://docs.comfy.org/interface/app-mode)).
+Both templates are generated by `scripts/build_typeset_app_workflows.py` in the full repository. It reads the current Reprise node schemas so newly added Look controls do not shift saved widget values. Restart ComfyUI after updating node Python. App Mode requires ComfyUI frontend 1.41.13 or newer; local users can save/share workflow JSON, while hosted App share links require Comfy Cloud ([official guide](https://docs.comfy.org/interface/app-mode)).
 
 ### Utilities
 | Node | In → Out |
@@ -126,7 +130,7 @@ pip install -r typeset_nodes/requirements.txt                 # opencv, librosa,
 Restart ComfyUI and check `/object_info/TypesetPlanarTrack`. The showcase also uses ComfyUI-RMBG (BiRefNet) and VideoHelperSuite (video combine), both installable through ComfyUI-Manager.
 
 ## Reuse outside ComfyUI
-All the maths lives in `core_vision.py` (numpy, OpenCV and Pillow; no torch). The nodes are thin tensor adapters around it. The Typeset server imports this same file for its offline fallback, so there is exactly one implementation.
+All the maths lives in `core_vision.py` (numpy, OpenCV and Pillow; no torch). The nodes are thin tensor adapters around it. The Reprise server imports this same file for its offline fallback, so there is exactly one implementation.
 
 ## Tests
 ```bash

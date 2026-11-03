@@ -6,7 +6,9 @@ export const BOARD_ROLES=['reference','character','wardrobe','setting','lighting
 export type BoardRole=typeof BOARD_ROLES[number];
 export type BoardCard={id:string;kind:'asset'|'note'|'group';x:number;y:number;w:number;h:number;title:string;role:BoardRole;assetId?:string;layerId?:string;text?:string;url?:string};
 export type BoardView={x:number;y:number;zoom:number};
-export type ReferenceBoardState={cards:BoardCard[];view?:BoardView;scenes?:Scene[];sceneView?:BoardView};
+export type ReferenceBoardState={cards:BoardCard[];view?:BoardView;scenes?:Scene[];sceneView?:BoardView;
+  /** Explicit take moves override inferred clip/generation history without changing asset provenance. */
+  takeAssignments?:Record<string,string>};
 export const DEFAULT_VIEW:BoardView={x:40,y:40,zoom:1};
 export const cardId=()=>`card_${crypto.randomUUID().slice(0,12)}`;
 export const cardsOf=(p:Project)=>p.board?.cards||[];

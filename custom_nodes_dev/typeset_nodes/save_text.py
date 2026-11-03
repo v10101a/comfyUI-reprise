@@ -36,7 +36,7 @@ class SaveTextFile:
     RETURN_NAMES = ("text",)
     FUNCTION = "save"
     OUTPUT_NODE = True
-    CATEGORY = "typeset/io"
+    CATEGORY = "Reprise/io"
     DESCRIPTION = "Writes the string to <output>/<filename_prefix>_NNNNN_.<ext> and lists it as a text output."
 
     def save(self, text, filename_prefix, extension="json", pretty_json=True):
@@ -64,4 +64,4 @@ class SaveTextFile:
 
 
 NODE_CLASS_MAPPINGS = {"SaveTextFile": SaveTextFile}
-NODE_DISPLAY_NAME_MAPPINGS = {"SaveTextFile": "Save Text File (typeset)"}
+NODE_DISPLAY_NAME_MAPPINGS = {"SaveTextFile": "Save Text File (Reprise)"}

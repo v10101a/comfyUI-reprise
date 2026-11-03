@@ -6,7 +6,7 @@ import {Icon} from './icons';
 import {type Workflow,type WfInput,type WfSource,deleteWorkflow,importWorkflow,inputKey,listWorkflows,updateWorkflow} from './workflows';
 import {type Audition,layerTakes,mergeAssets,setGeneration,useTake,visualLayer} from './takes';
 import {ASSET_MIME} from './duration';
-import {scenesOf,setSceneGeneration,patchScene,type Scene} from './scenes';
+import {sceneForId,setSceneGeneration,patchScene,type Scene} from './scenes';
 import {SceneThumb} from './SceneThumb';
 import './workflows.css';
 
@@ -23,7 +23,7 @@ export function WorkflowsPanel({scene,project,edit,checkpoint,time,range,selecte
   const [pick,setPick]=useState(''),[more,setMore]=useState(false);
   const [scope,setScope]=useState<'all'|'clip'>('all');
   const file=useRef<HTMLInputElement>(null),ref=useRef<HTMLInputElement>(null);
-  const refTarget=useRef({key:'',wid:'',layerId:'',sceneId:''}),mounted=useRef(true),starting=useRef(false);
+  const refTarget=useRef({key:'',wid:'',layerId:'',sceneId:'',recipeId:''}),mounted=useRef(true),starting=useRef(false);
   const knownAssets=useRef(new Set<string>());knownAssets.current=new Set((project.assets||[]).map(a=>a.id));
   const mediaLayers=layersOf(project).filter((l):l is MediaLayer=>l.kind==='media');
   const layer=visualLayer(project,selected),generation=scene?.generation||layer?.generation||(!layer?loose:{});
@@ -114,9 +114,10 @@ export function WorkflowsPanel({scene,project,edit,checkpoint,time,range,selecte
     const form=new FormData();form.append('file',f);
     try{const a=await request<Asset>(`/api/projects/${pid}/assets`,{method:'POST',body:form});if(!mounted.current)return;
       edit(p=>{if(p.id!==pid)return p;const q=mergeAssets(p,pid,[a]);
-        if(target.sceneId){const s=scenesOf(q).find(s=>s.id===target.sceneId);if(!s)return q;
+        if(target.sceneId){const s=sceneForId(q,target.sceneId);if(!s)return q;
           const next=patchScene(q,s.id,{refs:[...new Set([...s.refs,a.id])]});
-          return setSceneGeneration(next,s.id,target.wid,{sources:{...s.generation?.workflows?.[target.wid]?.sources,[target.key]:a.id}});}
+          const recipeId=target.recipeId||target.sceneId,generation=s.recipes?.find(r=>r.id===recipeId)?.generation||s.generation;
+          return setSceneGeneration(next,s.id,target.wid,{sources:{...generation?.workflows?.[target.wid]?.sources,[target.key]:a.id}},recipeId);}
         if(!target.layerId)return q;const prev=visualLayer(q,target.layerId)?.generation?.workflows?.[target.wid]?.sources;
         return setGeneration(q,target.layerId,target.wid,{sources:{...prev,[target.key]:a.id}});});
       if(!target.layerId&&!target.sceneId)setLoose(g=>{const prev=g.workflows?.[target.wid]||{};return {...g,workflows:{...g.workflows,
@@ -154,7 +155,7 @@ export function WorkflowsPanel({scene,project,edit,checkpoint,time,range,selecte
       <input ref={ref} type="file" accept="image/*,video/*" hidden onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void addRef(f);}}/>
     </div>
     {!loading&&!list.length&&<div className="wf-empty"><p>Bring a workflow from ComfyUI. Choose its references and prompt here, then compare the results with your music.</p>
-      <button onClick={()=>file.current?.click()}>Import workflow JSON</button><small>Use ComfyUI’s Export (API), or import from its Typeset sidebar.</small></div>}
+      <button onClick={()=>file.current?.click()}>Import workflow JSON</button><small>Use ComfyUI’s Export (API), or import from its Reprise sidebar.</small></div>}
     {error&&<div className="wf-err" role="alert">{error}<button className="icon-sm" aria-label="Dismiss generation error" onClick={()=>setError('')}>×</button></div>}
     {wf?.missing.length?<div className="wf-err">Missing nodes: {wf.missing.join(', ')}</div>:null}
     {!!wf?.missingModels?.length&&<details className="wf-unavailable"><summary>{wf.missingModels.length} models unavailable on {wf.target==='remote'?'remote':'local'} ComfyUI</summary>
@@ -176,7 +177,7 @@ export function WorkflowsPanel({scene,project,edit,checkpoint,time,range,selecte
                 {project.media.video&&inp.media==='video'&&<option value={RANGE}>{range?'Loop range':'3 s from playhead'}</option>}
                 {(project.assets||[]).filter(a=>inp.media==='audio'?a.hasAudio:inp.media!=='video'||a.kind==='video').map(a=><option key={a.id} value={a.id}>{a.name||a.path.split('/').pop()}</option>)}
               </select></div>
-            {inp.media!=='audio'&&<button className="icon-sm" disabled={project.id==='sample'} onClick={()=>{refTarget.current={key:k,wid,layerId:layer?.id||'',sceneId:scene?.id||''};if(ref.current)ref.current.accept=inp.media==='video'?'video/*':'image/*,video/*';ref.current?.click();}} title="Upload reference" aria-label={`Upload reference: ${inp.title}`}><Icon name="plus" size={14}/></button>}
+            {inp.media!=='audio'&&<button className="icon-sm" disabled={project.id==='sample'} onClick={()=>{refTarget.current={key:k,wid,layerId:layer?.id||'',sceneId:scene?.id||'',recipeId:scene?.recipeId||''};if(ref.current)ref.current.accept=inp.media==='video'?'video/*':'image/*,video/*';ref.current?.click();}} title="Upload reference" aria-label={`Upload reference: ${inp.title}`}><Icon name="plus" size={14}/></button>}
             {scene&&inp.media!=='audio'&&<div className="scene-source-choices" aria-label={`Scene references for ${inp.title}`}>
               {[...new Set([...scene.refs,...scene.takes])].filter(id=>inp.media!=='video'||assetOf(project,id)?.kind==='video').map(id=>{const a=assetOf(project,id);return a&&<button key={id} title={a.name||'Reference'} aria-label={`Use reference ${a.name||id}`} aria-pressed={value===id} className={value===id?'active':''} onClick={()=>patch({sources:{...sources,[k]:id}})}><TakeThumb project={project} asset={a}/></button>;})}
             </div>}

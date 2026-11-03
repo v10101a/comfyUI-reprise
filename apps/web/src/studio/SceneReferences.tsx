@@ -5,7 +5,7 @@ import {uploadAssets} from './LayersPanel';
 import {SceneThumb as AssetThumb} from './SceneThumb';
 import {mergeAssets} from './takes';
 import {BOARD_ROLES} from './board';
-import {patchScene,scenesOf,type Scene} from './scenes';
+import {patchScene,scenesOf,sceneForId,type Scene} from './scenes';
 import {Icon} from './icons';
 
 export function SceneReferences({project,scene,edit,onPreview,onError}:{project:Project;scene:Scene;edit:(f:(p:Project)=>Project)=>void;onPreview:(id:string)=>void;onError:(message:string)=>void}){
@@ -14,7 +14,7 @@ export function SceneReferences({project,scene,edit,onPreview,onError}:{project:
   useEffect(()=>{setExpanded(false);setOpen(false);},[scene.id]);
   const add=(id:string)=>{edit(p=>{const s=scenesOf(p).find(s=>s.id===scene.id);return s?patchScene(p,s.id,{refs:[...new Set([...s.refs,id])]}):p;});setOpen(false);};
   const upload=async(files:File[])=>{const pid=project.id,sid=scene.id;setUploading(true);
-    try{const assets=await uploadAssets(pid,files);edit(p=>{if(p.id!==pid)return p;const q=mergeAssets(p,pid,assets),s=scenesOf(q).find(s=>s.id===sid);return s?patchScene(q,sid,{refs:[...new Set([...s.refs,...assets.map(a=>a.id)])]}):q;});}
+    try{const assets=await uploadAssets(pid,files);edit(p=>{if(p.id!==pid)return p;const q=mergeAssets(p,pid,assets),s=sceneForId(q,sid);return s?patchScene(q,s.id,{refs:[...new Set([...s.refs,...assets.map(a=>a.id)])]}):q;});}
     catch(e){onError(String(e));}finally{setUploading(false);setOpen(false);}
   };
   return <div className="scene-references">

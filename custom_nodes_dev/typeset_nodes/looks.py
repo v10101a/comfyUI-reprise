@@ -375,7 +375,7 @@ class TypesetLook:
     RETURN_TYPES = ("STRING", "IMAGE")
     RETURN_NAMES = ("look_json", "preview")
     FUNCTION = "run"
-    CATEGORY = "typeset/look"
+    CATEGORY = "Reprise/look"
 
     def run(self, preset, ink="", accent="", card="", font="preset", body="preset", case="preset", layout="preset",
             scale=1.0, motion=1.0, glow=-1.0, outline=-1.0, halo=-1.0, soft=-1.0, cards="preset", scroll="preset",
@@ -417,7 +417,7 @@ class TypesetGrade:
     RETURN_TYPES = ("IMAGE", "STRING")
     RETURN_NAMES = ("images", "grade_json")
     FUNCTION = "run"
-    CATEGORY = "typeset/look"
+    CATEGORY = "Reprise/look"
 
     @staticmethod
     def ref(grade, amount=1.0, tint="", tint_amount=-1.0, grain=-1.0, halation=-1.0, contrast=-1.0, flash=-1.0):
@@ -451,12 +451,12 @@ class TypesetGradeSettings:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("grade_json",)
     FUNCTION = "run"
-    CATEGORY = "typeset/look"
+    CATEGORY = "Reprise/look"
 
     def run(self, grade, amount=1.0, tint="", tint_amount=-1.0, grain=-1.0, halation=-1.0, contrast=-1.0, flash=-1.0):
         return (json.dumps(TypesetGrade.ref(grade, amount, tint, tint_amount, grain, halation, contrast, flash)),)
 
 
 NODE_CLASS_MAPPINGS = {"TypesetLook": TypesetLook, "TypesetGrade": TypesetGrade, "TypesetGradeSettings": TypesetGradeSettings}
-NODE_DISPLAY_NAME_MAPPINGS = {"TypesetLook": "Look • text style (typeset)", "TypesetGrade": "Grade • footage (typeset)",
-                              "TypesetGradeSettings": "Grade settings • footage (typeset)"}
+NODE_DISPLAY_NAME_MAPPINGS = {"TypesetLook": "Look • text style (Reprise)", "TypesetGrade": "Grade • footage (Reprise)",
+                              "TypesetGradeSettings": "Grade settings • footage (Reprise)"}

@@ -54,7 +54,7 @@ class TypesetMatteRefine:
     RETURN_TYPES = ("IMAGE", "MASK")
     RETURN_NAMES = ("rgba", "mask")
     FUNCTION = "run"
-    CATEGORY = "typeset/analysis"
+    CATEGORY = "Reprise/analysis"
     DESCRIPTION = "Close holes inside the subject (white shirt vs bright wall) so words behind them stay behind them."
 
     def run(self, images, mask, max_hole=0.25, min_speck=0.002):
@@ -72,4 +72,4 @@ class TypesetMatteRefine:
 
 
 NODE_CLASS_MAPPINGS = {"TypesetMatteRefine": TypesetMatteRefine}
-NODE_DISPLAY_NAME_MAPPINGS = {"TypesetMatteRefine": "Matte Refine • fill holes in the subject (typeset)"}
+NODE_DISPLAY_NAME_MAPPINGS = {"TypesetMatteRefine": "Matte Refine • fill holes in the subject (Reprise)"}

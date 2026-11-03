@@ -1,6 +1,6 @@
-"""Typeset studio inside ComfyUI: http://<comfy>/typeset
+"""Reprise studio inside ComfyUI: http://<comfy>/typeset
 
-Mounts the studio (apps/web/dist) and the Typeset project API on ComfyUI's own aiohttp server, so
+Mounts the studio (apps/web/dist) and the Reprise project API on ComfyUI's own aiohttp server, so
 nothing else has to run: workflows go straight onto ComfyUI's queue (`TYPESET_COMFY_MODE=direct`),
 project files live in the repo's data/ dir (or TYPESET_DATA_DIR).
 
@@ -74,10 +74,10 @@ def register(server) -> bool:
     try:
         service = _load_service()
     except Exception:
-        log.exception("Typeset studio: could not load the project API; nodes still work")
+        log.exception("Reprise studio: could not load the project API; nodes still work")
         return False
     if service is None:
-        log.info("Typeset studio: server/ not found next to the node pack; /typeset not mounted")
+        log.info("Reprise studio: server/ not found next to the node pack; /typeset not mounted")
         return False
     from typeset_server.config import settings
     from typeset_server import models
@@ -319,9 +319,9 @@ def register(server) -> bool:
     @routes.get(f"{PREFIX}/{{rel:.*}}")
     async def studio(request):
         if not dist.is_dir():
-            return web.Response(status=503, text="Typeset studio is not built. Run: cd apps/web && pnpm install && pnpm build")
+            return web.Response(status=503, text="Reprise studio is not built. Run: cd apps/web && npm install && npm run build")
         return static(dist, request.match_info["rel"], index=True)
 
     server.app.add_routes(routes)
-    log.info("Typeset studio: %s%s/ (projects in %s)", _comfy_url(), PREFIX, settings.projects_dir)
+    log.info("Reprise studio: %s%s/ (projects in %s)", _comfy_url(), PREFIX, settings.projects_dir)
     return True

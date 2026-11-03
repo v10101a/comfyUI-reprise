@@ -8,7 +8,7 @@ if [ ! -x server/.venv/bin/python ]; then
   exit 1
 fi
 if lsof -tiTCP:8787 -sTCP:LISTEN >/dev/null; then
-  echo 'API port 8787 already in use; check the existing Typeset service before launching another.' >&2
+  echo 'API port 8787 already in use; check the existing Reprise service before launching another.' >&2
   exit 1
 fi
 web_port="${TYPESET_WEB_PORT:-5173}"
@@ -27,5 +27,5 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM
 (cd apps/web && exec npm run dev -- --host 127.0.0.1 --port "$web_port") &
 web_pid=$!
-echo "Typeset editor: $TYPESET_WEB_URL | API: http://127.0.0.1:8787/docs"
+echo "Reprise editor: $TYPESET_WEB_URL | API: http://127.0.0.1:8787/docs"
 wait

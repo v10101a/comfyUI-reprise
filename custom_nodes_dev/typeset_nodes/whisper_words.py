@@ -232,7 +232,7 @@ class WhisperWords:
     RETURN_TYPES = ("STRING", "INT", "STRING")
     RETURN_NAMES = ("words_json", "word_count", "language")
     FUNCTION = "run"
-    CATEGORY = "typeset/audio"
+    CATEGORY = "Reprise/audio"
 
     def run(self, audio, model_size="small", language="auto", lyrics="", lyrics_as_prompt=True):
         prompt = None
@@ -244,4 +244,4 @@ class WhisperWords:
 
 
 NODE_CLASS_MAPPINGS = {"WhisperWords": WhisperWords}
-NODE_DISPLAY_NAME_MAPPINGS = {"WhisperWords": "Whisper → Words JSON (typeset)"}
+NODE_DISPLAY_NAME_MAPPINGS = {"WhisperWords": "Whisper → Words JSON (Reprise)"}

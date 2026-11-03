@@ -1,4 +1,6 @@
-# Showcase media
+# Reprise showcase media
+
+Model roles, source-material credits and licences are in the [main README](../../../../README.md#models-and-credits). The page exposes the same credits in its Models & credits disclosure.
 
 The demo page (`src/Showcase.tsx`) plays these files directly. To swap a piece, copy a new file over the old name. No code change is needed.
 

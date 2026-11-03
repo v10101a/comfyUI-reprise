@@ -33,7 +33,7 @@ import {setSession} from './workflows';
 import {auditionProject,useTake,mergeAssets,type Audition} from './takes';
 import {ScenesPanel,SceneHeading} from './ScenesPanel';
 import {SceneReferences} from './SceneReferences';
-import {scenesOf,sceneClips,patchScene,setScenes,newScene,attachSceneClip,type Scene} from './scenes';
+import {scenesOf,sceneClips,patchScene,setScenes,newScene,attachSceneClip,combineScenes,moveSceneTake,removeSceneTake,placeSceneInList,selectSceneRecipe,type Scene} from './scenes';
 import type {BoardView} from './board';
 import {TextStyle} from './TextStyle';
 import {FootageGrade} from './FootageGrade';
@@ -221,7 +221,14 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
   const selectScene=(s:Scene)=>{const p=projectRef.current;if(!p)return;const clips=sceneClips(p,s),l=clips.find(l=>l.id===layerSel.current)||clips[0];selectVisual(l?.id||'');setActiveScene(s.id);setInspector('generate');if(l)seekFrame(l.start*p.fps);};
   const previewSceneTake=(s:Scene,id:string)=>{if(scene?.id!==s.id)selectScene(s);if(sourcePreviewId===id){closePreview();return;}previewSource(id);};
   const renameScene=(id:string,name:string)=>{checkpoint();edit(p=>patchScene(p,id,{name}));};
-  const deleteScene=(id:string)=>{checkpoint();edit(p=>setScenes(p,scenesOf(p).filter(s=>s.id!==id)));closePreview();selectVisual('');setActiveScene('');};
+  const organizeScenes=(update:(p:Project)=>Project)=>{checkpoint();edit(update);hist.current.gesture=false;hist.current.last=0;};
+  const combineSceneGroups=(target:string,ids:string[],name:string)=>{organizeScenes(p=>combineScenes(p,target,ids,name));closePreview();setActiveScene(target);setInspector('generate');setNotice('Scenes combined');};
+  const moveTakeToScene=(id:string,target:string,point?:{x:number;y:number})=>{const p=projectRef.current;if(!p)return;let next=p;
+    if(target==='@new'){const s=newScene(p),origin=scenesOf(p).find(s=>s.id===sceneRef.current?.id&&s.takes.includes(id));
+      if(origin){s.generation=structuredClone(origin.generation||{});s.refs=[...origin.refs];s.roles={...origin.roles};}if(point){s.x=point.x;s.y=point.y;}next=setScenes(p,[...scenesOf(p),s]);target=s.id;}
+    organizeScenes(q=>moveSceneTake(next===p?q:next,id,target));setActiveScene(target);setInspector('generate');setNotice('Take moved · Timeline unchanged');};
+  const deleteScenes=(ids:string[])=>{organizeScenes(p=>setScenes(p,scenesOf(p).filter(s=>!ids.includes(s.id))));closePreview();selectVisual('');setActiveScene('');};
+  const deleteScene=(id:string)=>deleteScenes([id]);
   const attachAddedClip=(id:string,assetId:string)=>{const p=projectRef.current;if(!p)return;const s=sceneRef.current||newScene(p);edit(q=>attachSceneClip(sceneRef.current?q:setScenes(q,[...scenesOf(q),s]),s.id,id,assetId));setActiveScene(s.id);};
   const addScene=()=>{const p=projectRef.current;if(!p)return;const s=newScene(p);checkpoint();edit(q=>setScenes(q,[...scenesOf(q),s]));selectScene(s);setRail(false);if(leftTab!=='board')setLeftTab('scenes');};
   function previewSource(id:string){
@@ -542,7 +549,7 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
 
   return <div className="studio scene-workspace" onPointerDownCapture={e=>{if(sourcePreview&&(e.target as Element).closest('.tl'))setSourcePreviewId('');}}>
     <header className="s-top">
-      <a className="s-brand" href="#/showcase" aria-label="Back to showcase" onClick={e=>{e.preventDefault();void run(async()=>{if(dirty)await save();location.hash='/showcase';});}}><span className="s-word">typeset</span></a>
+      <a className="s-brand" href="#/showcase" aria-label="Back to Reprise showcase" onClick={e=>{e.preventDefault();void run(async()=>{if(dirty)await save();location.hash='/showcase';});}}><span className="s-word">reprise</span></a>
       <div className="s-proj">
         <select className="project-switch" aria-label="Switch project" value={project.id} onChange={e=>{const v=e.target.value;void run(()=>v==='+new'?create():openProject(v));}}><option value="sample">sample</option>{projects.filter(p=>p.id!=='sample').map(p=><option key={p.id} value={p.id}>{p.name}</option>)}{!projects.some(p=>p.id===project.id)&&project.id!=='sample'&&<option value={project.id}>{project.name}</option>}<option value="+new">+ new</option></select>
         <input aria-label="Project name" title={`${project.width}×${project.height} · ${project.fps} fps · ${project.duration.toFixed(2)} s${project.frame?.source?` · ${project.frame.aspect} reframe`:''}`} value={project.name} onChange={e=>edit(p=>({...p,name:e.target.value}))}/>
@@ -589,8 +596,11 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
       </aside>:<aside className="s-left" id="studio-left-panel">
         {(leftTab==='scenes'||leftTab==='board')?<ScenesPanel project={project} scenes={scenes} active={scene?.id||''} selected={selectedLayer} preview={sourcePreviewId||audition?.assetId||''} mode={leftTab}
           view={sceneView} onView={setSceneView} onMode={setLeftTab} onNew={addScene} onSelect={selectScene} onBlank={closePreview} onPreview={previewSceneTake}
-          onClip={id=>{selectVisual(id);const l=visualLayer(project,id);if(l)seekFrame(l.start*project.fps);}} onUndo={()=>undo(false)} onRename={renameScene} onDelete={deleteScene}
-          onMove={(id,x,y)=>{checkpoint();edit(p=>patchScene(p,id,{x,y}));}}/>
+          onClip={id=>{selectVisual(id);const l=visualLayer(project,id);if(l)seekFrame(l.start*project.fps);}} onUndo={redo=>undo(!!redo)} onRename={renameScene} onDelete={deleteScenes}
+          onCombine={combineSceneGroups} onReorder={(id,target,after)=>organizeScenes(p=>placeSceneInList(p,id,target,after))} onTakeMove={moveTakeToScene}
+          onTakeDelete={(sid,id)=>{organizeScenes(p=>removeSceneTake(p,sid,id));closePreview();}}
+          onCollapse={id=>organizeScenes(p=>setScenes(p,scenesOf(p).map(s=>s.id===id?{...s,collapsed:!s.collapsed}:s)))}
+          onMove={positions=>organizeScenes(p=>setScenes(p,scenesOf(p).map(s=>({...s,...positions.find(pos=>pos.id===s.id)}))))}/>
         :<><div className="study-nav"><button className="icon-sm" aria-label="Back to scenes" onClick={()=>setLeftTab('scenes')}>←</button><span>{leftTab==='media'?'Media':'Pipeline'}</span></div><div className="scene-utility-content">
           {leftTab==='pipeline'?<PipelinePanel project={project} matteLayerId={matteTarget} onMatteLayer={setMatteTarget} jobs={jobMap} occKind={occKind} hasBeats={!!beats} beatsNote={beats?`${beats.bpm?Math.round(beats.bpm)+' BPM · ':''}${beats.beats.length} beats`:undefined} comparing={compare} busy={busy} onRun={runStep} onOpenWorkflow={setWfStep}/>:
           <><div className="media-panel">
@@ -662,6 +672,7 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
         <div className="scene-inspector-tabs seg" aria-label="Inspector"><button className={inspector==='generate'?'active':''} onClick={()=>setInspector('generate')}>Generate</button><button disabled={!selectedLayer} className={inspector==='clip'?'active':''} onClick={()=>setInspector('clip')}>Clip</button><button className={inspector==='text'?'active':''} onClick={()=>{setInspector('text');if(!current&&!multi)setTextScope('default');}}>Text style</button></div>
         <div hidden={inspector!=='generate'}>
           {scene?<section className="panel-sec"><SceneHeading scene={scene} onRename={name=>renameScene(scene.id,name)} onDelete={()=>deleteScene(scene.id)}/>
+            {!!scene.recipes?.length&&<label className="scene-recipe">Recipe<select aria-label="Scene recipe" value={scene.recipeId} onChange={e=>{const id=e.target.value;organizeScenes(p=>selectSceneRecipe(p,scene.id,id));}}>{scene.recipes.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label>}
             <SceneReferences project={project} scene={scene} edit={edit} onPreview={id=>previewSceneTake(scene,id)} onError={setError}/>
             {loop&&<div className="scene-target mono">Song range · {timecode(loop.a)}–{timecode(loop.b)}</div>}
           </section>:<section className="panel-sec"><button onClick={addScene}>+ Add a scene</button></section>}

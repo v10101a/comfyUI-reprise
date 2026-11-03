@@ -28,7 +28,7 @@ async def lifespan(app):
     service.shutdown()
 
 
-app = FastAPI(title="Typeset", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Reprise", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["GET", "POST", "PUT"], allow_headers=["Content-Type"])
 
 

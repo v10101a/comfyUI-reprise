@@ -77,7 +77,7 @@ class TypesetLoadImageSequence:
     RETURN_TYPES = ("IMAGE", "MASK", "INT")
     RETURN_NAMES = ("images", "mask", "count")
     FUNCTION = "load"
-    CATEGORY = "typeset/io"
+    CATEGORY = "Reprise/io"
 
     @classmethod
     def IS_CHANGED(cls, directory, pattern, max_frames=0):
@@ -149,7 +149,7 @@ class TypesetOccupancyGrid:
     RETURN_TYPES = ("STRING", "IMAGE")
     RETURN_NAMES = ("occupancy_json", "preview")
     FUNCTION = "run"
-    CATEGORY = "typeset/analysis"
+    CATEGORY = "Reprise/analysis"
 
     def run(self, mask, fps, long_side_cells=cv.OCC_LONG, images=None, preview_frames=6):
         if mask.ndim == 2:
@@ -209,7 +209,7 @@ class TypesetPlanarTrack:
     RETURN_TYPES = ("STRING", "IMAGE", "INT")
     RETURN_NAMES = ("surface_json", "preview", "tracked_frames")
     FUNCTION = "run"
-    CATEGORY = "typeset/analysis"
+    CATEGORY = "Reprise/analysis"
 
     def run(self, images, corners, key_frame, fps, subject_mask=None, feature_region=1.0, min_confidence=0.35,
             smooth=2, preview_frames=8):
@@ -269,7 +269,7 @@ class TypesetReframeCrop:
     RETURN_TYPES = ("STRING", "IMAGE")
     RETURN_NAMES = ("crop_json", "cropped_preview")
     FUNCTION = "run"
-    CATEGORY = "typeset/analysis"
+    CATEGORY = "Reprise/analysis"
 
     def run(self, aspect, fps, tracks_json=None, mask=None, images=None, surfaces_json="", width=0, height=0,
             frames=0, track_id="person0", focus_json=""):
@@ -310,8 +310,8 @@ NODE_CLASS_MAPPINGS = {
     "TypesetReframeCrop": TypesetReframeCrop,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "TypesetLoadImageSequence": "Load Image Sequence + Alpha (typeset)",
-    "TypesetOccupancyGrid": "Occupancy Grid — where the subject isn't (typeset)",
-    "TypesetPlanarTrack": "Planar Track — glue a quad to a wall (typeset)",
-    "TypesetReframeCrop": "Reframe Crop — subject-following virtual camera (typeset)",
+    "TypesetLoadImageSequence": "Load Image Sequence + Alpha (Reprise)",
+    "TypesetOccupancyGrid": "Occupancy Grid — where the subject isn't (Reprise)",
+    "TypesetPlanarTrack": "Planar Track — glue a quad to a wall (Reprise)",
+    "TypesetReframeCrop": "Reframe Crop — subject-following virtual camera (Reprise)",
 }

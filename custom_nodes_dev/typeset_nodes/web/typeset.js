@@ -1,5 +1,5 @@
-// Typeset inside ComfyUI: a sidebar tab (projects, recent footage from this graph, import this graph as a
-// workflow), "open in typeset" on any node that produced a video or a song, and "add to <project>" (the
+// Reprise inside ComfyUI: a sidebar tab (projects, recent footage from this graph, import this graph as a
+// workflow), "open in Reprise" on any node that produced a video or a song, and "add to <project>" (the
 // project last opened in the studio) for videos and images. The studio itself is at /typeset/.
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
@@ -40,7 +40,7 @@ async function openInTypeset(ref) {
   }
 }
 
-const toast = (severity, detail, life = 4000) => app.extensionManager?.toast?.add({ severity, summary: "typeset", detail, life });
+const toast = (severity, detail, life = 4000) => app.extensionManager?.toast?.add({ severity, summary: "Reprise", detail, life });
 
 async function refreshCurrent() {
   try { const s = await (await fetch(`${STUDIO}api/session`)).json(); current = s?.projectId ? s : null; } catch { current = null; }
@@ -64,7 +64,7 @@ async function addToProject(ref) {
   } catch (err) { toast("error", String(err.message || err), 6000); }
 }
 
-// The open graph becomes a Typeset workflow: Comfy's own conversion gives the API form (subgraphs, dynamic widgets).
+// The open graph becomes a Reprise workflow: Comfy's own conversion gives the API form (subgraphs, dynamic widgets).
 async function importGraph() {
   try {
     const { output, workflow } = await app.graphToPrompt();
@@ -115,11 +115,11 @@ function el(tag, props = {}, text) {
 async function renderSide(root) {
   root.replaceChildren();
   const side = el("div", { className: "ts-side" });
-  side.append(el("style", {}, CSS), el("h1", {}, "typeset"), el("div", { className: "sub" }, "words that live in the shot ✦"));
+  side.append(el("style", {}, CSS), el("h1", {}, "reprise"), el("div", { className: "sub" }, "a studio for music and moving images"));
   await refreshCurrent();
   const acts = el("div", { className: "acts" });
   acts.append(el("a", { className: "open", href: STUDIO + (current ? `#/studio?project=${encodeURIComponent(current.projectId)}` : ""), target: "_blank" }, "open studio ↗"),
-    Object.assign(el("button", { className: "open", title: "use this graph as a typeset workflow" }, "import graph"), { onclick: importGraph }));
+    Object.assign(el("button", { className: "open", title: "use this graph as a Reprise workflow" }, "import graph"), { onclick: importGraph }));
   side.append(acts);
 
   side.append(el("div", { className: "rule" }), el("div", { className: "h" }, "from this graph/"));
@@ -161,8 +161,8 @@ app.registerExtension({
     app.extensionManager?.registerSidebarTab?.({
       id: "typeset",
       icon: "pi pi-align-left",
-      title: "typeset",
-      tooltip: "Typeset — words in the shot",
+      title: "Reprise",
+      tooltip: "Reprise — music and moving images",
       type: "custom",
       render: root => { rerender = () => renderSide(root); renderSide(root); },
     });
@@ -171,8 +171,8 @@ app.registerExtension({
     const media = (byNode.get(String(node.id)) || []).slice(0, 3);
     const tag = m => (media.length > 1 ? ` · ${m.filename}` : "");
     return [
-      ...media.filter(m => m.kind !== "image").map(m => ({ content: `open in typeset${tag(m)}`, callback: () => openInTypeset(m) })),
-      ...(current ? media.filter(m => m.kind !== "audio").map(m => ({ content: `add to ${current.name || "typeset project"}${tag(m)}`, callback: () => addToProject(m) })) : []),
+      ...media.filter(m => m.kind !== "image").map(m => ({ content: `open in Reprise${tag(m)}`, callback: () => openInTypeset(m) })),
+      ...(current ? media.filter(m => m.kind !== "audio").map(m => ({ content: `add to ${current.name || "Reprise project"}${tag(m)}`, callback: () => addToProject(m) })) : []),
     ];
   },
 });
