@@ -76,7 +76,8 @@ def object_info(force: bool = False, *, remote: bool = False) -> dict:
     if not force and cached and time.monotonic() - cached[0] < (60 if cached[1] else 5):
         return cached[1]
     try:
-        r = httpx.get(f"{url}/object_info", timeout=10)
+        # Comfy Cloud needs its API key on every call and its registry (900+ models) is slow to serve.
+        r = httpx.get(f"{url}/object_info", headers=getattr(run, "api_headers", None), timeout=30 if getattr(run, "cloud", False) else 10)
         r.raise_for_status()
         registry = r.json()
     except Exception as exc:

@@ -238,7 +238,8 @@ with sync_playwright() as pw:
     page.get_by_role('button', name='Board', exact=True).click()
     page.get_by_role('button', name='Fit board', exact=True).click()
     boxes = [card(s['id']).bounding_box() for s in saved['board']['scenes']]
-    left, top = min(b['x'] for b in boxes) - 6, min(b['y'] for b in boxes) - 35
+    zoom = float(canvas.get_attribute('data-zoom'))
+    left, top = min(b['x'] for b in boxes) - 6, min(b['y'] for b in boxes) - 32 * zoom - 6
     right, bottom = max(b['x'] + b['width'] for b in boxes) + 6, max(b['y'] + b['height'] for b in boxes) + 6
     page.mouse.move(left, top)
     page.mouse.down()
@@ -252,6 +253,14 @@ with sync_playwright() as pw:
     page.keyboard.press('Meta+z')
     save()
     check('Multi-scene deletion restores in one undo', len(saved['board']['scenes']) == 3)
+    page.get_by_role('button', name='New scene', exact=True).click()
+    save()
+    empty_id = next(s['id'] for s in saved['board']['scenes'] if s['id'] not in {'a-scene', 'arrival', fresh['id']})
+    page.get_by_role('button', name='Focus selected scene', exact=True).click()
+    card(empty_id).click(position=dict(x=8, y=8))
+    page.keyboard.press('Backspace')
+    save()
+    check('Clicking an empty board frame then Backspace deletes it immediately', all(s['id'] != empty_id for s in saved['board']['scenes']))
     check('No browser exceptions', not errors)
     print(json.dumps(dict(checks=len(checks), passed=checks, errors=errors), indent=2))
     browser.close()

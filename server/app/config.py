@@ -31,6 +31,8 @@ class Settings:
     remote_comfy_url: str | None = None
     remote_comfy_base_url: str = "http://127.0.0.1:8190"
     remote_comfy_api_key: str = "local"
+    cloud_url: str = "https://cloud.comfy.org"
+    cloud_api_key: str | None = None
     ffmpeg: str = "/opt/homebrew/bin/ffmpeg"
     ffprobe: str = "/opt/homebrew/bin/ffprobe"
     render_timeout: float = 120.0
@@ -77,6 +79,9 @@ def load_settings() -> Settings:
         remote_comfy_url=os.environ.get("TYPESET_REMOTE_COMFY_URL", "").strip().rstrip("/") or None,
         remote_comfy_base_url=os.environ.get("TYPESET_REMOTE_COMFY_BASE_URL", "http://127.0.0.1:8190").rstrip("/"),
         remote_comfy_api_key=os.environ.get("TYPESET_REMOTE_COMFY_API_KEY", "local"),
+        # Comfy Cloud as the generation host: a platform.comfy.org key makes it the remote target (no proxy, no 4090).
+        cloud_url=os.environ.get("TYPESET_CLOUD_URL", "https://cloud.comfy.org").strip().rstrip("/") or "https://cloud.comfy.org",
+        cloud_api_key=os.environ.get("TYPESET_CLOUD_API_KEY", "").strip() or None,
         ffmpeg=os.environ.get("FFMPEG", "/opt/homebrew/bin/ffmpeg"),
         ffprobe=os.environ.get("FFPROBE", "/opt/homebrew/bin/ffprobe"),
         render_timeout=float(os.environ.get("TYPESET_RENDER_TIMEOUT", "120")),

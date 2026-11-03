@@ -1,10 +1,43 @@
 # Reprise
 
-**A studio for music and motion graphics.** Reprise is an open-source music video studio and ComfyUI node pack. Gather references, generate alternate takes, try them against your song, and iteratively re-shaping your edit. Scenes keep references and takes together; the timeline brings footage, performances and editable typography into one composition.
+**A studio for music and motion graphics.**
 
-The edit is part of the creative loop. Preview a take in full, place or replace a clip, adjust its timing and treatment, then return to generation with the next idea. ComfyUI runs the visual workflows and prepares word timings, subject mattes, tracks and audio/motion signals. Reprise reuses that analysis while you change text and composition.
+[Watch the demos](#made-with-reprise) · [Inside the studio](#inside-the-studio) · [Run locally](#run-locally) · [ComfyUI nodes](#comfyui-nodes-and-workflows) · [Models and credits](#models-and-credits)
 
-The front page includes **[Fall For Me](apps/web/public/showcase/ffm-angel.mp4)** and **[So I Die](apps/web/public/showcase/so-i-die.mp4)**, music video made by the author of this tool while creating this project. Also including fully Comfy generated demos. Each piece opens its editable Studio project when that project is available locally.
+[![Reprise Studio editing So I Die: alternate takes grouped by scene, the composition preview, a singing workflow and the music timeline.](assets/readme/studio.png)](assets/readme/studio-walkthrough.mp4)
+
+**[Watch the Studio walkthrough ↗](assets/readme/studio-walkthrough.mp4)** — compare takes, browse the board and preview text styles. Silent screen recording.
+
+Reprise is an open-source music video studio and ComfyUI node pack. Gather references, generate alternate takes, try them against your song, and keep reshaping your edit. 
+
+Real creative work is not done by a million attempts to one-shot something: instead, reprise gives you the ability to iterate and work from within a creative loop. Preview a take in full, place or replace a clip, adjust its timing and treatment on a timeline, then return to generation with the next idea. 
+
+## Made with Reprise
+
+The front page includes **Fall For Me** and **So I Die**, music videos made by the author of this tool while building this project, alongside fully Comfy-generated demos. Each piece opens its editable Studio project when that project is available locally.
+
+Short, silent previews below. **Click a preview or “Watch with sound” for the full video.**
+
+| Fall For Me · Angel | Fall For Me · Stars |
+| :---: | :---: |
+| [<img src="assets/readme/fall-for-me-angel.gif" width="360" alt="Fall For Me: an angel performance among clouds, with floating lyric cards.">](apps/web/public/showcase/ffm-angel.mp4) | [<img src="assets/readme/fall-for-me-stars.gif" width="360" alt="Fall For Me: a dancing star character, dreamy glow, pixels and animated lyrics.">](apps/web/public/showcase/ffm.mp4) |
+| Generated performances, shifting backgrounds and dreamy lyric cards.<br>[Watch with sound ↗](apps/web/public/showcase/ffm-angel.mp4) | Star footage composited in TouchDesigner, with text and effects in Reprise.<br>[Watch with sound ↗](apps/web/public/showcase/ffm.mp4) |
+
+| So I Die | Neon Rain |
+| :---: | :---: |
+| [<img src="assets/readme/so-i-die.gif" width="480" alt="So I Die: a subway performance with tracked HUD lyrics and text on the station wall.">](apps/web/public/showcase/so-i-die.mp4) | [<img src="assets/readme/neon-rain.gif" width="480" alt="Neon Rain: a night-city music video with large lettering behind the performer.">](apps/web/public/showcase/hero-16x9.mp4) |
+| Alternate performances cut to an original song, with wall text and tracked lyrics.<br>[Watch with sound ↗](apps/web/public/showcase/so-i-die.mp4) | Music and footage generated through ComfyUI; editable text and composition in Reprise.<br>[Watch with sound ↗](apps/web/public/showcase/hero-16x9.mp4) |
+
+## Inside the studio
+
+**Keep the scene, its references and its takes together.** Arrange scenes on the board, then move between the board and scene list while the composition and timeline stay in view.
+
+![The scene board beside the So I Die composition: reference images and generated takes share scene frames, with the selected scene's workflow on the right and the edit below.](assets/readme/board.png)
+
+| Compare a take before committing | Keep shaping the edit |
+| :--- | :--- |
+| [![A different take playing in the source viewer, with the used take still marked and explicit add, audition and replace controls.](assets/readme/takes.png)](assets/readme/takes.png) | [![Text-style controls and visual preset previews beside the composition and lyric timeline.](assets/readme/text-style.png)](assets/readme/text-style.png) |
+| Preview the full source, try it in the edit, then add it or replace the selected clip. Checkmarks show which takes are already used. | Refine lyrics, timing, placement and text styling against the footage. Style previews use the current composition. |
 
 ## ComfyUI nodes and workflows
 

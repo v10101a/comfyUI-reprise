@@ -2,6 +2,9 @@
 
 Two transports: `direct` posts the API graph to ComfyUI's own /prompt and reads /history (no extra
 process; the default when Typeset runs inside ComfyUI), `sdk` goes Comfy SDK → comfy-api-proxy → ComfyUI.
+A third host, Comfy Cloud (`cloud=True`), speaks the SDK natively: inputs are uploaded as content-hashed
+assets (`asset://<id>` placeholders that `_bind` turns into SDK handles) and the v1 Cloud REST surface
+(`/api/object_info`, `/api/queue`, X-API-Key) serves preflight and health.
 
 A workflow is addressed by *name*: `<workflows_dir>/<name>.inputs.json` (SCHEMA §3) names
 the API-format graph, the inputs (node/field/kind) and the outputs (node/type). The server
@@ -43,6 +46,8 @@ KINDS = {"comfy_input_path", "string", "int", "float", "bool"}
 _MISSING = object()
 ProgressFn = Callable[[str, float], None]  # (status, elapsed_seconds)
 _SDK_ENV_LOCK = threading.Lock()
+ASSET_SCHEME = "asset://"  # Comfy Cloud input placeholder: an uploaded asset id
+CLOUD_REGISTRY_TTL = 600.0
 
 
 class _SkipProxy(Exception):
@@ -225,14 +230,24 @@ def read_json_output(paths: list[Path]) -> Any:
 
 class ComfyRunner:
     def __init__(self, *, base_url: str | None = None, comfyui_url: str | None = None,
-                 api_key: str | None = None, remote: bool = False, direct: bool | None = None) -> None:
+                 api_key: str | None = None, remote: bool = False, direct: bool | None = None,
+                 cloud: bool = False) -> None:
         self._client = None
-        self.direct = settings.comfy_mode == "direct" if direct is None else direct
+        self.cloud = cloud
+        # Cloud only exists behind the SDK (asset uploads, signed downloads); `direct` has no /prompt to post to.
+        self.direct = False if cloud else (settings.comfy_mode == "direct" if direct is None else direct)
         self._client_lock = threading.Lock()
         self.base_url = (base_url or settings.comfy_base_url).rstrip("/")
         self.comfyui_url = (comfyui_url or settings.comfyui_url).rstrip("/")
         self.api_key = api_key or settings.comfy_api_key
-        self.remote = remote
+        self.remote = remote or cloud
+        self._assets: dict[str, Any] = {}  # Cloud: asset id -> SDK handle (hash + path hints for the upload)
+        self._registry: tuple[float, dict] | None = None
+
+    @property
+    def api_headers(self) -> dict[str, str] | None:
+        """Auth for raw REST calls to the generation host (only Comfy Cloud needs any)."""
+        return {"X-API-Key": self.api_key} if self.cloud else None
 
     def client(self):
         with self._client_lock:
@@ -264,26 +279,38 @@ class ComfyRunner:
     # -- health --------------------------------------------------------------------
     def health(self) -> dict[str, Any]:
         out: dict[str, Any] = {"proxy": False, "comfyui": False, "proxyUrl": self.base_url, "comfyuiUrl": self.comfyui_url,
-                               "transport": "direct" if self.direct else "sdk"}
+                               "transport": "direct" if self.direct else "sdk", "host": "cloud" if self.cloud else "comfyui"}
         try:
             if self.direct:
                 raise _SkipProxy
-            r = httpx.get(f"{self.base_url}/api/v2/health", timeout=3)
+            r = httpx.get(f"{self.base_url}/api/v2/health", headers=self.api_headers, timeout=8 if self.cloud else 3)
             out["proxy"] = r.status_code == 200
+            if self.cloud and r.status_code in (401, 403):
+                out["proxyError"] = f"Comfy Cloud rejected the API key (HTTP {r.status_code})"
         except _SkipProxy:
             pass
         except Exception as exc:
             out["proxyError"] = str(exc)
         try:
-            r = httpx.get(f"{self.comfyui_url}/system_stats", timeout=3)
-            out["comfyui"] = r.status_code == 200
-            if out["comfyui"]:
-                out["comfyuiVersion"] = r.json().get("system", {}).get("comfyui_version")
+            if self.cloud:
+                r = httpx.get(f"{self.comfyui_url}/queue", headers=self.api_headers, timeout=8)
+                out["comfyui"] = r.status_code == 200
+                if out["comfyui"]:
+                    out["comfyuiVersion"] = "cloud"
+                    q = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+                    out["queue"] = {"running": len(q.get("queue_running") or []), "pending": len(q.get("queue_pending") or [])}
+            else:
+                r = httpx.get(f"{self.comfyui_url}/system_stats", timeout=3)
+                out["comfyui"] = r.status_code == 200
+                if out["comfyui"]:
+                    out["comfyuiVersion"] = r.json().get("system", {}).get("comfyui_version")
         except Exception as exc:
             out["comfyuiError"] = str(exc)
         return out
 
     def stage_image(self, src: Path, project_id: str, *parts: str) -> str:
+        if self.cloud:
+            return self.stage_asset(src)
         if not self.remote:
             from .media import stage_to_comfy_input
             return stage_to_comfy_input(src, project_id, *parts)
@@ -299,6 +326,50 @@ class ComfyRunner:
             raise WorkflowRunError("Remote upload did not return an input file")
         return remote_input_path("/".join(filter(None, [uploaded.get("subfolder", ""), uploaded["name"]])))
 
+    def stage_asset(self, src: Path) -> str:
+        """Upload a file to Comfy Cloud (content-hashed; a repeat upload is free) and return its asset:// placeholder.
+
+        The placeholder is a plain string so job provenance stays JSON; `_bind` swaps it for the SDK handle."""
+        src = Path(src)
+        if not src.is_file():
+            raise WorkflowInputError(f"Cannot upload {src}: not a file")
+        asset = self.client().assets.from_file(src)
+        try:
+            asset_id = asset.commit()
+        except Exception as exc:
+            raise WorkflowRunError(f"Comfy Cloud upload of {src.name} failed: {type(exc).__name__}: {exc}") from exc
+        self._assets[asset_id] = asset
+        log.info("cloud asset %s <- %s (%s)", asset_id, src.name, "new" if asset.created_new else "dedup")
+        return f"{ASSET_SCHEME}{asset_id}"
+
+    def _cloud_input(self, value: Any, name: str) -> Any:
+        """A `comfy_input_path` on Comfy Cloud: an asset:// placeholder (preferred) or a local file to upload now."""
+        text = str(value)
+        if text.startswith(ASSET_SCHEME):
+            asset_id = text[len(ASSET_SCHEME):]
+            handle = self._assets.get(asset_id)
+            if handle is not None:
+                return handle
+            from comfy_sdk._core import asset_reference  # id alone is authoritative; hints are optional
+            return asset_reference(asset_id)
+        path = Path(text)
+        if path.is_file():
+            return self._assets[self.stage_asset(path)[len(ASSET_SCHEME):]]
+        raise WorkflowInputError(f"input '{name}': Comfy Cloud needs an uploaded asset (asset://id) or a local file, got {text!r}")
+
+    def object_info(self, *, force: bool = False, timeout: float = 30) -> dict:
+        """Node registry of the generation host. Cloud's lists 900+ models, so it is cached for a while."""
+        if self.cloud and not force and self._registry and time.monotonic() - self._registry[0] < CLOUD_REGISTRY_TTL:
+            return self._registry[1]
+        r = httpx.get(f"{self.comfyui_url}/object_info", headers=self.api_headers, timeout=timeout)
+        if self.cloud and r.status_code in (401, 403):
+            raise WorkflowRunError(f"Comfy Cloud rejected the API key (HTTP {r.status_code}); check TYPESET_CLOUD_API_KEY and that the plan includes API access")
+        r.raise_for_status()
+        registry = r.json()
+        if self.cloud:
+            self._registry = (time.monotonic(), registry)
+        return registry
+
     def preflight(self, name: str, workflows_dir: Path | None = None) -> None:
         sidecar = load_sidecar(name, workflows_dir)
         self.preflight_graph(json.loads(sidecar.workflow_path.read_text()))
@@ -306,18 +377,23 @@ class ComfyRunner:
     def preflight_graph(self, graph: dict) -> None:
         """Check the chosen remote host before uploading or submitting expensive work."""
         try:
-            proxy = None if self.direct else httpx.get(f"{self.base_url}/api/v2/health", timeout=5)
-            if proxy is not None:
-                proxy.raise_for_status()
-            upstream = self.comfyui_url if proxy is None else str(proxy.json().get("upstream", "")).rstrip("/")
-            if upstream != self.comfyui_url:
-                raise WorkflowRunError(f"Remote proxy upstream is {upstream!r}; expected {self.comfyui_url}. Start a separate proxy on 8190; do not repoint the local 8189 proxy.")
-            response = httpx.get(f"{self.comfyui_url}/object_info", timeout=30)
-            response.raise_for_status()
-            registry = response.json()
+            if self.cloud:
+                registry = self.object_info()
+            else:
+                proxy = None if self.direct else httpx.get(f"{self.base_url}/api/v2/health", timeout=5)
+                if proxy is not None:
+                    proxy.raise_for_status()
+                upstream = self.comfyui_url if proxy is None else str(proxy.json().get("upstream", "")).rstrip("/")
+                if upstream != self.comfyui_url:
+                    raise WorkflowRunError(f"Remote proxy upstream is {upstream!r}; expected {self.comfyui_url}. Start a separate proxy on 8190; do not repoint the local 8189 proxy.")
+                response = httpx.get(f"{self.comfyui_url}/object_info", timeout=30)
+                response.raise_for_status()
+                registry = response.json()
         except WorkflowRunError:
             raise
         except Exception as exc:
+            if self.cloud:
+                raise WorkflowRunError(f"Cannot reach Comfy Cloud at {self.comfyui_url}: {exc}") from exc
             raise WorkflowRunError(f"Cannot reach remote ComfyUI/proxy. Start the separate remote proxy at {self.base_url} targeting {self.comfyui_url}: {exc}") from exc
         missing = []
         model_fields = {"ckpt_name", "unet_name", "clip_name", "vae_name", "lora_name", "model_name"}
@@ -333,6 +409,8 @@ class ComfyRunner:
                 if name in model_fields and isinstance(value, str) and spec and isinstance(spec[0], list) and value not in spec[0]:
                     missing.append(f"{kind}.{name}={value}")
         if missing:
+            if self.cloud:
+                raise WorkflowRunError("Comfy Cloud does not host these (custom nodes cannot be installed there; pick a hosted model or node): " + "; ".join(dict.fromkeys(missing)))
             raise WorkflowRunError(f"Remote ComfyUI is not ready: install missing nodes/weights on {self.comfyui_url}: " + "; ".join(dict.fromkeys(missing)))
 
     # -- main entry ----------------------------------------------------------------
@@ -463,7 +541,10 @@ class ComfyRunner:
                     continue
                 else:
                     raise WorkflowInputError(f"workflow '{sidecar.name}': required input '{key}' (node {spec.node}.{spec.field}) was not provided")
-            value = coerce(spec.kind, value, key, remote=self.remote)
+            if self.cloud and spec.kind == "comfy_input_path":
+                value = self._cloud_input(value, key)
+            else:
+                value = coerce(spec.kind, value, key, remote=self.remote)
             node = graph.get(spec.node)
             if node is None:
                 raise WorkflowError(f"workflow '{sidecar.name}': sidecar input '{key}' points at node {spec.node} which is not in {sidecar.workflow_path.name}")
@@ -607,6 +688,8 @@ class ComfyRunner:
 
     def _history_text(self, job_id: str, node: str) -> str | None:
         """Fallback for text outputs the proxy cannot see (plain-string ui.text entries)."""
+        if self.cloud:
+            return None  # the Cloud API has no /history; text outputs must be saved as files there
         try:
             r = httpx.get(f"{self.comfyui_url}/history/{job_id}", timeout=10)
             if r.status_code != 200:
@@ -644,8 +727,14 @@ def _looks_like_json(text: str) -> bool:
 
 
 runner = ComfyRunner()
-remote_runner = ComfyRunner(base_url=settings.remote_comfy_base_url, comfyui_url=settings.remote_comfy_url,
-                           api_key=settings.remote_comfy_api_key, remote=True) if settings.remote_comfy_url else None
+if settings.cloud_api_key:
+    remote_runner: ComfyRunner | None = ComfyRunner(base_url=settings.cloud_url, comfyui_url=f"{settings.cloud_url}/api",
+                                                    api_key=settings.cloud_api_key, cloud=True)
+elif settings.remote_comfy_url:
+    remote_runner = ComfyRunner(base_url=settings.remote_comfy_base_url, comfyui_url=settings.remote_comfy_url,
+                                api_key=settings.remote_comfy_api_key, remote=True)
+else:
+    remote_runner = None
 
 
 def generation_runner() -> ComfyRunner:
