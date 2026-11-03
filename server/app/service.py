@@ -1,4 +1,4 @@
-"""Typeset API logic, independent of the web framework.
+"""Reprise API logic, independent of the web framework.
 
 `main.py` (FastAPI, :8787) and `typeset_nodes/studio_host.py` (aiohttp routes inside ComfyUI, /typeset)
 are thin adapters over these functions. Errors are `ApiError(status, detail)`.

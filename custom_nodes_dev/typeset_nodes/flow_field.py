@@ -1,4 +1,4 @@
-"""TypesetFlowField: footage → motion field that pushes and smears the type (Typeset "motion" field)."""
+"""TypesetFlowField: footage → motion field that pushes and smears the type (Reprise "motion" field)."""
 import json
 
 import numpy as np

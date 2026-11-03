@@ -1,4 +1,4 @@
-"""TypesetLook / TypesetGrade: the Typeset look (text) and grade (footage) as ComfyUI nodes.
+"""TypesetLook / TypesetGrade: the Reprise look (text) and grade (footage) as ComfyUI nodes.
 
 Presets come from look_presets.json, a copy of apps/web/src/look-presets.json (a test keeps them equal).
   TypesetLook   preset + the full param set as widgets -> look_json ({"id", "overrides"}, the exact shape of

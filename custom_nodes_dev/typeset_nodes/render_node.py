@@ -1,7 +1,7 @@
 """TypesetRender: words + look (+ subject matte, voice and motion fields) burned into an IMAGE batch, in the graph.
 
 Two renderers, picked by the `renderer` input:
-  studio  the graph's inputs become a Typeset project that headless Chromium renders through the studio's own
+  studio  the graph's inputs become a Reprise project that headless Chromium renders through the studio's own
           renderer (browser_render.py): every look (walls, neon relight, graffiti, ticker, HUD, entrances, fields),
           pixel-identical to a studio export of that project. Needs the /typeset host (studio_host.py), a built
           studio (apps/web/dist) and Playwright.

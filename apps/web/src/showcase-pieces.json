@@ -1,15 +1,15 @@
 {
-  "_doc": "Demo-page pieces: one source of truth for Showcase.tsx and the server's save\u2192demo refresh (server/app/showcase.py). A piece with `encode` is re-rendered from its project into public/showcase/<file> after studio saves; alts (Original layers) are never touched. encode: scale = output width (omit to keep the project size), fadeOut / audioFadeOut = seconds faded at the end.",
+  "_doc": "Demo-page pieces: one source of truth for Showcase.tsx and the server's save→demo refresh (server/app/showcase.py). A piece with `encode` is re-rendered from its project into public/showcase/<file> after studio saves; alts (Original layers) are never touched. encode: scale = output width (omit to keep the project size), fadeOut / audioFadeOut = seconds faded at the end. credits: {image, music} are shown under the title on the demo page (image = footage source, music = song or music model; add the artist's name to the song title).",
   "pieces": [
     {
       "id": "ffm-angel",
-      "name": "Fall For Me \u00b7 Angel",
+      "name": "Fall For Me · Angel",
       "file": "ffm-angel.mp4",
       "kind": "video",
       "aspect": "1080/1280",
       "optional": false,
       "project": "b678f509-ca77-4423-a0a6-739869cb0030",
-      "note": "lyric video \u00b7 Dreamy + pixels \u00b7 27 s",
+      "note": "lyric video · Dreamy + pixels · 27 s",
       "alts": [
         {
           "label": "Original",
@@ -19,6 +19,10 @@
       "encode": {
         "scale": 720,
         "fadeOut": 0.5
+      },
+      "credits": {
+        "image": "MiniMax H3 · Z-Image-Turbo backgrounds",
+        "music": "Fall For Me — v10101a"
       }
     },
     {
@@ -31,6 +35,10 @@
       "note": "lyric video · scene edit + HUD · 23 s",
       "encode": {
         "scale": 1280
+      },
+      "credits": {
+        "image": "Wan 2.2 S2V · MiniMax H3",
+        "music": "So I Die — v10101a & Bradley CD"
       }
     },
     {
@@ -40,7 +48,7 @@
       "kind": "video",
       "aspect": "1080/1280",
       "project": "14ef9e95-1d22-4bc1-8e42-5a1db01368ee",
-      "note": "lyric video \u00b7 24 s",
+      "note": "lyric video · 24 s",
       "alts": [
         {
           "label": "Original",
@@ -51,6 +59,10 @@
         "scale": 720,
         "fadeOut": 0.65,
         "audioFadeOut": 0.65
+      },
+      "credits": {
+        "image": "Stars composited in TouchDesigner",
+        "music": "Fall For Me — v10101a"
       }
     },
     {
@@ -60,24 +72,32 @@
       "kind": "video",
       "aspect": "1344/768",
       "project": "54da2790-92c6-4737-bc43-81a207e47ab5",
-      "note": "lyric video \u00b7 flat-card look \u00b7 22 s \u00b7 1344\u00d7768",
+      "note": "lyric video · flat-card look · 22 s · 1344×768",
       "alts": [
         {
           "label": "Original",
           "file": "hero-source.mp4"
         }
       ],
-      "encode": {}
+      "encode": {},
+      "credits": {
+        "image": "MiniMax H3 · Qwen-Image-Edit lettering",
+        "music": "Neon Rain — ACE-Step 1.5"
+      }
     },
     {
       "id": "hero-dark",
-      "name": "Neon Rain \u00b7 Night",
+      "name": "Neon Rain · Night",
       "file": "hero-dark.mp4",
       "kind": "video",
       "aspect": "1344/768",
       "optional": true,
       "project": "54da2790-92c6-4737-bc43-81a207e47ab5",
-      "note": "dark restyle"
+      "note": "dark restyle",
+      "credits": {
+        "image": "MiniMax H3 · Qwen-Image-Edit lettering",
+        "music": "Neon Rain — ACE-Step 1.5"
+      }
     },
     {
       "id": "louder",
@@ -86,14 +106,18 @@
       "kind": "video",
       "aspect": "1344/768",
       "project": "42b7723d-7518-4a0a-b8b2-3c7641b18d73",
-      "note": "motion + voice fields \u00b7 type bends with the dance, swells with the voice \u00b7 8 s",
+      "note": "motion + voice fields · type bends with the dance, swells with the voice · 8 s",
       "alts": [
         {
           "label": "Original",
           "file": "louder-source.mp4"
         }
       ],
-      "encode": {}
+      "encode": {},
+      "credits": {
+        "image": "MiniMax H3",
+        "music": "Vivaldi in Techno — v10101a"
+      }
     }
   ]
 }

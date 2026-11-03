@@ -2,31 +2,31 @@
 
 **A studio for music and motion graphics.**
 
-[Watch the demos](#made-with-reprise) · [Inside the studio](#inside-the-studio) · [Run locally](#run-locally) · [ComfyUI nodes](#comfyui-nodes-and-workflows) · [Models and credits](#models-and-credits)
+[Watch the demos](#made-with-reprise) · [Inside the studio](#inside-the-studio) · [Kinetic typography](#kinetic-typography) · [Run locally](#run-locally) · [ComfyUI nodes](#comfyui-nodes-and-workflows) · [Models and credits](#models-and-credits)
 
 [![Reprise Studio editing So I Die: alternate takes grouped by scene, the composition preview, a singing workflow and the music timeline.](assets/readme/studio.png)](assets/readme/studio-walkthrough.mp4)
 
-**[Watch the Studio walkthrough ↗](assets/readme/studio-walkthrough.mp4)** — compare takes, browse the board and preview text styles. Silent screen recording.
+**[Watch the Studio walkthrough ↗](assets/readme/studio-walkthrough.mp4)
 
 Reprise is an open-source music video studio and ComfyUI node pack. Gather references, generate alternate takes, try them against your song, and keep reshaping your edit. 
 
-Real creative work is not done by a million attempts to one-shot something: instead, reprise gives you the ability to iterate and work from within a creative loop. Preview a take in full, place or replace a clip, adjust its timing and treatment on a timeline, then return to generation with the next idea. 
+Real creative work is not done by a million attempts to one-shot something: instead, reprise gives you the ability to iterate and work from within a creative loop. Gather inspiration, generate a take, place or replace a clip, adjust its timing and treatment on a timeline, then return to generation with the next idea. 
 
 ## Made with Reprise
 
-The front page includes **Fall For Me** and **So I Die**, music videos made by the author of this tool while building this project, alongside fully Comfy-generated demos. Each piece opens its editable Studio project when that project is available locally.
+The front page includes **Fall For Me** and **So I Die**, music videos made by the author of this tool while building this project, alongside a few fully Comfy-generated demos. Each piece opens its editable Studio project when that project is available locally.
 
 Short, silent previews below. **Click a preview or “Watch with sound” for the full video.**
 
 | Fall For Me · Angel | Fall For Me · Stars |
 | :---: | :---: |
 | [<img src="assets/readme/fall-for-me-angel.gif" width="360" alt="Fall For Me: an angel performance among clouds, with floating lyric cards.">](apps/web/public/showcase/ffm-angel.mp4) | [<img src="assets/readme/fall-for-me-stars.gif" width="360" alt="Fall For Me: a dancing star character, dreamy glow, pixels and animated lyrics.">](apps/web/public/showcase/ffm.mp4) |
-| Generated performances, shifting backgrounds and dreamy lyric cards.<br>[Watch with sound ↗](apps/web/public/showcase/ffm-angel.mp4) | Star footage composited in TouchDesigner, with text and effects in Reprise.<br>[Watch with sound ↗](apps/web/public/showcase/ffm.mp4) |
+| Generated performances, shifting backgrounds and dreamy lyric cards.<br>[Watch with sound ↗](apps/web/public/showcase/ffm-angel.mp4) | footage composed in TouchDesigner, with text and effects in comfyUI-reprise.<br>[Watch with sound ↗](apps/web/public/showcase/ffm.mp4) |
 
 | So I Die | Neon Rain |
 | :---: | :---: |
 | [<img src="assets/readme/so-i-die.gif" width="480" alt="So I Die: a subway performance with tracked HUD lyrics and text on the station wall.">](apps/web/public/showcase/so-i-die.mp4) | [<img src="assets/readme/neon-rain.gif" width="480" alt="Neon Rain: a night-city music video with large lettering behind the performer.">](apps/web/public/showcase/hero-16x9.mp4) |
-| Alternate performances cut to an original song, with wall text and tracked lyrics.<br>[Watch with sound ↗](apps/web/public/showcase/so-i-die.mp4) | Music and footage generated through ComfyUI; editable text and composition in Reprise.<br>[Watch with sound ↗](apps/web/public/showcase/hero-16x9.mp4) |
+| Generated music video to an original song, with wall text and tracked lyrics.<br>[Watch with sound ↗](apps/web/public/showcase/so-i-die.mp4) | Music and footage generated through ComfyUI; editable text and composition in Reprise.<br>[Watch with sound ↗](apps/web/public/showcase/hero-16x9.mp4) |
 
 ## Inside the studio
 
@@ -39,9 +39,19 @@ Short, silent previews below. **Click a preview or “Watch with sound” for th
 | [![A different take playing in the source viewer, with the used take still marked and explicit add, audition and replace controls.](assets/readme/takes.png)](assets/readme/takes.png) | [![Text-style controls and visual preset previews beside the composition and lyric timeline.](assets/readme/text-style.png)](assets/readme/text-style.png) |
 | Preview the full source, try it in the edit, then add it or replace the selected clip. Checkmarks show which takes are already used. | Refine lyrics, timing, placement and text styling against the footage. Style previews use the current composition. |
 
+## Kinetic typography
+
+Words are a layer of the edit, not a caption track. Lyrics align to the vocal, then sit behind the subject, on a tracked wall or beside the head as a HUD, and move with the beat, the voice and the motion in the footage. Eight text styles and four grades, all editable in the Studio and previewed on the current composition. The [demo page](apps/web/src/LooksSection.tsx) plays every style on the same shot.
+
+| Flat card | Paper cut | Graffiti | Neon |
+| :---: | :---: | :---: | :---: |
+| ![Flat card: lyric cards pinned to a tracked wall.](apps/web/public/showcase/looks/flat-card.jpg) | ![Paper cut: layered cut-out lettering on the wall.](apps/web/public/showcase/looks/paper-cut.jpg) | ![Graffiti: painted lettering that takes the wall's light.](apps/web/public/showcase/looks/graffiti.jpg) | ![Neon: monoline tube lettering glowing on the wall.](apps/web/public/showcase/looks/neon.jpg) |
+| **HUD** | **Photocopy** | **Marquee** | **Scatter** |
+| ![HUD: a label that follows the head with a type-on reveal.](apps/web/public/showcase/looks/hud.jpg) | ![Photocopy: high-contrast xeroxed lettering.](apps/web/public/showcase/looks/xerox.jpg) | ![Marquee: a dot-matrix LED sign crawling across the wall.](apps/web/public/showcase/looks/ticker.jpg) | ![Scatter: words scattered around the subject.](apps/web/public/showcase/looks/scatter.jpg) |
+
 ## ComfyUI nodes and workflows
 
-Open the **Reprise** sidebar inside ComfyUI (studio route `/typeset/`), or start with the [**words in your shot** App Mode workflow](custom_nodes_dev/typeset_nodes/example_workflows/typeset%20-%20words%20in%20your%20shot.json): clip + lyrics → look, grade, voice and flow controls → lyric video. Switch to the graph to rewire the steps.
+Open the **Reprise** sidebar inside ComfyUI (studio route `/typeset/`), or start with the [**words in your shot** App Mode workflow](custom_nodes_dev/typeset_nodes/example_workflows/Reprise%20-%20words%20in%20your%20shot.json): clip + lyrics → look, grade, voice and flow controls → lyric video. Switch to the graph to rewire the steps.
 
 | Nodes | Purpose |
 |---|---|

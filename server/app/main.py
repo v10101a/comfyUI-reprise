@@ -1,4 +1,4 @@
-"""Typeset local API. Run: server/.venv/bin/uvicorn app.main:app --app-dir server --port 8787
+"""Reprise local API. Run: server/.venv/bin/uvicorn app.main:app --app-dir server --port 8787
 
 Thin FastAPI adapter over `service.py`; the same API also runs inside ComfyUI at /typeset (see
 custom_nodes_dev/typeset_nodes/studio_host.py).

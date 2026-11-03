@@ -1,11 +1,11 @@
-"""Typeset analysis nodes: where can words live in this shot?
+"""Reprise analysis nodes: where can words live in this shot?
 
   TypesetLoadImageSequence  folder of PNGs (e.g. RGBA mattes) → IMAGE + MASK (alpha) batch
   TypesetOccupancyGrid      MASK batch → occupancy grid JSON (+ heatmap preview)
   TypesetPlanarTrack        IMAGE batch + quad + key frame (+ subject MASK) → per-frame corners JSON (+ preview)
   TypesetReframeCrop        tracks JSON or MASK batch + aspect → smoothed crop JSON (+ cropped preview)
 
-All math is in core_vision.py (shared with the Typeset server); these classes only convert ComfyUI
+All math is in core_vision.py (shared with the Reprise server); these classes only convert ComfyUI
 tensors ([B,H,W,C] float 0..1 IMAGE, [B,H,W] float MASK) to numpy and draw previews.
 """
 import glob

@@ -2,7 +2,7 @@ import type {Project,RendererAPI} from './types';
 import {request} from './api';
 import {at} from './base';
 
-/** Browser capture: when the host asks for it (Typeset inside ComfyUI has no Playwright), the studio renders the
+/** Browser capture: when the host asks for it (Reprise inside ComfyUI has no Playwright), the studio renders the
  *  export frames itself, through the same #/render route Playwright would load, and uploads them as PNG.
  *  Returns extra ExportBody fields ({frames: session}) or {} when the server captures. */
 export async function prepareExport(project:Project,layer:'text'|'composite',formats:string[],progress:(message:string)=>void,scale=1):Promise<{frames?:string}>{

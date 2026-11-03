@@ -1,4 +1,4 @@
-"""TypesetAudioField: the full mix's low band (kick + bass) → a smooth 0..1 pulse per video frame (Typeset "audio" field).
+"""TypesetAudioField: the full mix's low band (kick + bass) → a smooth 0..1 pulse per video frame (Reprise "audio" field).
 
 STFT of the mix, energy in [band_low, band_high] Hz, in dB, normalised by percentiles (robust to a few loud hits),
 then an instant-attack / slow-release envelope, peak-held per video frame, so the type hits ON the kick (never after)

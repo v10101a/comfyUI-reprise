@@ -1,5 +1,5 @@
-"""Typeset core vision — pure numpy/OpenCV/Pillow logic shared by the ComfyUI nodes in this pack
-and by the Typeset server's in-process fallback (server/app/vision.py loads this file; there is one copy).
+"""Reprise core vision — pure numpy/OpenCV/Pillow logic shared by the ComfyUI nodes in this pack
+and by the Reprise server's in-process fallback (server/app/vision.py loads this file; there is one copy).
 
   occupancy_*      MASK → coarse grid of "how much subject is in each cell" (where text stays readable)
   track_plane      planar homography tracker for a 4-corner quad on a wall/sign, subject masked out

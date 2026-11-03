@@ -8,15 +8,14 @@ const models = [
 
 export function ShowcaseCredits(){
   return <footer className="sc-about" id="credits">
-    <p>Built with <a href="https://www.comfy.org/">ComfyUI</a>. References, alternate takes, music and editable typography share one composition.</p>
     <details className="sc-credits">
       <summary>Models &amp; credits</summary>
       <dl>{models.map(m=><div key={m.name}><dt><a href={m.href}>{m.name}</a></dt><dd>{m.use}</dd></div>)}</dl>
       <p>BiRefNet supplies subject mattes; HDemucs separates vocals in the app, with BS-RoFormer used in Fall For Me preparation. MMS_FA aligns lyrics, with Whisper as a transcription fallback. YuNet supplies face detection. Tracking, audio response, text animation and compositing also use OpenCV, librosa and the Reprise renderer.</p>
       <p>Fall For Me and So I Die use artist-supplied music. The original Fall For Me star footage was composited in TouchDesigner. Generative models make footage and reference images; the text styles shown here stay editable in Reprise.</p>
       <p>Krea 2 Turbo was used in still exploration. The repository documents additional experiments, optional workflows, checkpoint variants and model licences. The code is MIT; model weights, fonts and demo media have separate terms.</p>
-      <a href="https://github.com/v10101a/typeset#models-and-credits">Full model and workflow credits ↗</a>
+      <a href="https://github.com/v10101a/comfyUI-reprise#models-and-credits">Full model and workflow credits ↗</a>
     </details>
-    <nav aria-label="Project links"><a href="https://github.com/v10101a/typeset">Source code ↗</a><a href="https://comfy.org/open-source-higgsfield">#OpenSourceHiggsfield ↗</a></nav>
+    <nav aria-label="Project links"><a href="https://github.com/v10101a/comfyUI-reprise">Source code ↗</a><a href="https://github.com/v10101a/comfyUI-reprise/tree/main/custom_nodes_dev/typeset_nodes">ComfyUI node pack ↗</a><a href="https://comfy.org/open-source-higgsfield">#OpenSourceHiggsfield ↗</a></nav>
   </footer>;
 }

@@ -1,4 +1,4 @@
-/* Typeset Studio — v2: a polished creative tool on a paper ground.
+/* Reprise Studio — v2: a polished creative tool on a paper ground.
  * Inter for the UI, mono only for numbers/timecode/code, serif only for the wordmark + project/look names.
  * One accent. Solid hairlines and surface tones for grouping. 8px grid. Whimsy: wordmark, playhead, paper grain.
  * These custom properties are the live tokens (see docs/design/DESIGN_LANGUAGE.md). Scoped under .studio. */

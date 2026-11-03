@@ -165,7 +165,7 @@ def main():
         graph = app_graph(base, info, separate)
         ui = ui_workflow(graph, info, separate)
         files = [(WF / f"app_{name}.api.json", graph), (WF / "showcase" / f"typeset_app_{name}.json", ui),
-                 (PACK / "example_workflows" / ("typeset - " + name.replace('_', ' ') + ".json"), ui)]
+                 (PACK / "example_workflows" / ("Reprise - " + name.replace('_', ' ') + ".json"), ui)]
         for path, data in files:
             path.write_text(json.dumps(data, indent=2) + "\n")
             print(path.relative_to(ROOT))

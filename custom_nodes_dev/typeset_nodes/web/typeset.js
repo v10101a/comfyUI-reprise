@@ -115,7 +115,7 @@ function el(tag, props = {}, text) {
 async function renderSide(root) {
   root.replaceChildren();
   const side = el("div", { className: "ts-side" });
-  side.append(el("style", {}, CSS), el("h1", {}, "reprise"), el("div", { className: "sub" }, "a studio for music and moving images"));
+  side.append(el("style", {}, CSS), el("h1", {}, "reprise"), el("div", { className: "sub" }, "a studio for music video and motion graphics"));
   await refreshCurrent();
   const acts = el("div", { className: "acts" });
   acts.append(el("a", { className: "open", href: STUDIO + (current ? `#/studio?project=${encodeURIComponent(current.projectId)}` : ""), target: "_blank" }, "open studio ↗"),

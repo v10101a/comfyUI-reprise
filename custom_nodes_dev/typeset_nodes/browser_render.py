@@ -1,4 +1,4 @@
-"""TypesetRender's studio path: the graph's inputs become a Typeset project, rendered by the studio's own renderer.
+"""TypesetRender's studio path: the graph's inputs become a Reprise project, rendered by the studio's own renderer.
 
 The project is written into the studio's store (the one /typeset serves, see studio_host.py), then headless
 Chromium renders its `#/render` route frame by frame through server/app/capture.py, the same capture loop the

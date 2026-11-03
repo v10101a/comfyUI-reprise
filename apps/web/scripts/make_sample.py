@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Generate the zero-backend sample for Typeset's mock mode.
+"""Generate the zero-backend sample for Reprise's mock mode.
 
 Writes into apps/web/public/sample/:
   project.json, words.json, tracks.json      (SCHEMA.md §1 / §2)
@@ -47,7 +47,7 @@ LINES = [
     ("l4", "none", "inworld", {"shotId": "s0"},
      [("glass", 9.85, 10.30)]),
     ("l5", "pop", "behind", {"position": {"x": 0.5, "y": 0.52}, "style": {"fontFamily": "Anton", "fontWeight": 400, "fontSize": 0.22, "fill": "#f5e9d0"}},
-     [("Typeset", 10.50, 10.95), ("the", 11.00, 11.20), ("night", 11.25, 11.90)]),
+     [("Reprise", 10.50, 10.95), ("the", 11.00, 11.20), ("night", 11.25, 11.90)]),
 ]
 
 

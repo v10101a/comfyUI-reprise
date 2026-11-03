@@ -1,4 +1,4 @@
-"""Typeset nodes — ComfyUI node pack for the Typeset lyric / kinetic-typography engine.
+"""Reprise nodes — ComfyUI node pack for the Reprise music video studio (package name kept as typeset_nodes).
 
 Nodes (all V1 node API):
   TypesetOccupancyGrid      MASK batch -> occupancy grid JSON + heatmap preview (where text stays readable)
@@ -48,7 +48,7 @@ for _m, _n in ((_beats, _beats_names), (_save, _save_names), (_tracks, _tracks_n
     NODE_CLASS_MAPPINGS.update(_m)
     NODE_DISPLAY_NAME_MAPPINGS.update(_n)
 
-# The studio opens at http://<comfy>/typeset (see studio_host.py); web/ adds the Typeset sidebar tab.
+# The studio opens at http://<comfy>/typeset (see studio_host.py); web/ adds the Reprise sidebar tab.
 WEB_DIRECTORY = "./web"
 try:
     from server import PromptServer

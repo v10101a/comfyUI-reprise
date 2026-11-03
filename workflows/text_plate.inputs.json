@@ -1,6 +1,6 @@
 {
   "workflow": "text_plate.api.json",
-  "description": "Deterministic readable typography plate. With look = a Typeset look id (TypesetLook node) the plate takes that look's face, case, colours, card, halo and glow; with look = default the prompt picks neon/chrome colours. Not generative scene editing; LTX supplies motion downstream.",
+  "description": "Deterministic readable typography plate. With look = a Reprise look id (TypesetLook node) the plate takes that look's face, case, colours, card, halo and glow; with look = default the prompt picks neon/chrome colours. Not generative scene editing; LTX supplies motion downstream.",
   "inputs": {
     "frame": {
       "node": "1",

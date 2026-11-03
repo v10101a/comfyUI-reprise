@@ -1,4 +1,4 @@
-"""TypesetVoiceField: song → how the voice moves, per video frame (Typeset "voice" field).
+"""TypesetVoiceField: song → how the voice moves, per video frame (Reprise "voice" field).
 
 The studio maps it onto the letters: loudness swells the variable-font weight/width, pitch lifts the baseline
 along the melody, vibrato wobbles it, vocal onsets kick. Vocals come from HDemucs (shared with

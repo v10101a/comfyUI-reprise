@@ -1,4 +1,4 @@
-"""Comfy Cloud readiness probe for Typeset's generation workflows.
+"""Comfy Cloud readiness probe for Reprise's generation workflows.
 
   # Save TYPESET_CLOUD_API_KEY in the ignored .env.comfy, or export it in your shell.
   server/.venv/bin/python scripts/cloud_probe.py             # health + which workflows Cloud can run

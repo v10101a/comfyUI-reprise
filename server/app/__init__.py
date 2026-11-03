@@ -1,1 +1,1 @@
-"""Typeset server — FastAPI backend (projects, media, Comfy jobs, export)."""
+"""Reprise server — FastAPI backend (projects, media, Comfy jobs, export)."""

@@ -1,7 +1,7 @@
 """Sidecar-driven ComfyUI workflow runner.
 
 Two transports: `direct` posts the API graph to ComfyUI's own /prompt and reads /history (no extra
-process; the default when Typeset runs inside ComfyUI), `sdk` goes Comfy SDK → comfy-api-proxy → ComfyUI.
+process; the default when Reprise runs inside ComfyUI), `sdk` goes Comfy SDK → comfy-api-proxy → ComfyUI.
 A third host, Comfy Cloud (`cloud=True`), speaks the SDK natively: inputs are uploaded as content-hashed
 assets (`asset://<id>` placeholders that `_bind` turns into SDK handles) and the v1 Cloud REST surface
 (`/api/object_info`, `/api/queue`, X-API-Key) serves preflight and health.

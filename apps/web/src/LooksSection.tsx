@@ -47,7 +47,7 @@ export function LooksSection() {
   function toggle() {const a = audio.current; if (!a) return; if (a.paused) void a.play().catch(() => {}); else a.pause();}
 
   return <section className="sc-looks" aria-label="Looks">
-    <h2>Looks</h2>
+    <h2>Kinetic type</h2>
     <div className="sc-looks-stage">
       <audio ref={audio} src={at('/showcase/looks/song.m4a')} loop muted={muted} autoPlay={!reduce} preload="auto"
         onPlay={() => document.querySelectorAll<HTMLVideoElement>('.sc-looks-stage video').forEach(follow)}

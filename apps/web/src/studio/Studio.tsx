@@ -1,4 +1,4 @@
-// Typeset Studio v3: stage-first editor. Layout: top bar · [Pipeline/Media | Stage | Look + Line] · Arrangement · status.
+// Reprise Studio v3: stage-first editor. Layout: top bar · [Pipeline/Media | Stage | Look + Line] · Arrangement · status.
 import {useState,useEffect,useLayoutEffect,useRef,useCallback,useMemo} from 'react';
 import type {Project,Word,Job,LookId,Surface,Point,HeadSpot} from '../types';
 import {request,getProject,assetUrl,pollJob} from '../api';
