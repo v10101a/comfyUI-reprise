@@ -3,6 +3,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {request} from './api';
 import {at} from './base';
+import {openSetup} from './setup';
 import type {Project} from './types';
 import {ThemeToggle} from './studio/ThemeToggle';
 import {Icon} from './studio/icons';
@@ -127,7 +128,7 @@ export default function Showcase() {
   return <div className="showcase">
     <header className="sc-top">
       <div className="sc-left"><a className="sc-brand" href="#/showcase" aria-label="Reprise home">reprise</a><span className="sc-tag">A ComfyUI studio for music video and motion graphics.</span></div>
-      <nav><a className="sc-open" href={studio}>Open studio</a><ThemeToggle/></nav>
+      <nav><button onClick={()=>openSetup('local')}>Use my ComfyUI</button><a className="sc-open" href={studio}>Open studio</a><ThemeToggle/></nav>
     </header>
 
     <main>

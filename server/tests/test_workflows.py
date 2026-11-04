@@ -1,5 +1,6 @@
 """Bring-your-own workflow import/mapping (no ComfyUI needed: the registry is stubbed)."""
 import os
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -118,6 +119,69 @@ class WorkflowImport(unittest.TestCase):
             self.assertEqual(wf["target"], "local")
             self.assertFalse(any(c.kwargs.get("remote") for c in workflows.object_info.call_args_list))
 
+    def test_model_overrides_use_installed_files_and_leave_import_unchanged(self):
+        registry = {**REGISTRY, "UNETLoader": {"input": {"required": {"unet_name": [["mine.safetensors"], {}]}}}}
+        workflows.object_info.side_effect = lambda force=False, remote=False: registry
+        wf = workflows.import_workflow({"graph": {"1": {"class_type": "UNETLoader", "inputs": {"unet_name": "author.safetensors"}},
+                                                 "5": GRAPH["5"]}, "name": "My model"})
+        key = next(k for k, v in wf["inputs"].items() if v["role"] == "model")
+        self.assertEqual(wf["inputs"][key]["choices"], ["mine.safetensors"])
+        pid = self.c.post("/api/projects", json={"name": "isolated"}).json()["id"]
+        for value in ("not-installed.safetensors", "../outside.safetensors"):
+            with self.assertRaises(workflows.WorkflowApiError):
+                workflows.check_run(service, pid, wf["id"], {"inputs": {key: value}, "remote": False})
+        body = {"inputs": {key: "mine.safetensors"}, "remote": False}
+        self.assertEqual(workflows.check_run(service, pid, wf["id"], body)["missingModels"], [])
+        imported = workflows._dir(wf["id"]) / "graph.api.json"
+        before = imported.read_bytes()
+        raw = Path(self.data.name) / "output.png"
+        raw.write_bytes(b"fake-output")
+        from app.comfy import load_sidecar
+        fake_runner = Mock()
+        def run(name, values, out, **kwargs):
+            side = load_sidecar(name)
+            self.assertNotEqual(side.workflow_path, imported)
+            graph = json.loads(side.workflow_path.read_text())
+            # Exercise the real binder: it must replace the default on the submitted graph.
+            from app.comfy import ComfyRunner
+            ComfyRunner._bind(fake_runner, side, values, graph, lambda n, f, v: graph[n]["inputs"].__setitem__(f, v))
+            self.assertEqual(graph["1"]["inputs"]["unet_name"], "mine.safetensors")
+            return SimpleNamespace(outputs={"result": [raw]}, job_id="fake", timing={})
+        fake_runner.run.side_effect = run
+        def add(pid, name, chunks, source, place, label):
+            return {"id": "result", "source": source}
+        with patch.object(workflows, "runner", fake_runner), patch.object(workflows, "_single_file", return_value=raw), patch.object(service, "add_asset", side_effect=add):
+            result = workflows.run_workflow(service, pid, wf["id"], body, Mock())
+        self.assertEqual(result["asset"]["source"]["inputs"][key], "mine.safetensors")
+        self.assertEqual(imported.read_bytes(), before)
+        self.assertEqual(workflows.get_workflow(wf["id"])["missingModels"], ["author.safetensors"])
+
+    def test_host_selection_changes_model_lists_and_checks_that_host(self):
+        def registry(force=False, remote=False):
+            return {**REGISTRY, "DualCLIPLoader": {"input": {"required": {
+                "clip_name1": [["cloud.safetensors" if remote else "local.safetensors"], {}],
+                "clip_name2": [["encoder.safetensors"], {}]}}},
+                "AudioEncoderLoader": {"input": {"required": {"audio_encoder_name": [["audio.safetensors"], {}]}}}}
+        workflows.object_info.side_effect = registry
+        graph = {**GRAPH, "9": {"class_type": "DualCLIPLoader", "inputs": {"clip_name1": "local.safetensors", "clip_name2": "encoder.safetensors"}},
+                 "10": {"class_type": "AudioEncoderLoader", "inputs": {"audio_encoder_name": "audio.safetensors"}}}
+        with patch.object(workflows, "remote_runner", SimpleNamespace(comfyui_url="https://cloud", cloud=True)):
+            wf = workflows.import_workflow({"graph": graph})
+            local = self.c.get(f"/api/workflows/{wf['id']}?remote=false").json()
+            cloud = self.c.get(f"/api/workflows/{wf['id']}?remote=true").json()
+            self.assertEqual(local["target"], "local")
+            self.assertEqual(cloud["target"], "remote")
+            self.assertEqual(cloud["targets"][1]["label"], "Comfy Cloud")
+            key = next(k for k, v in cloud["inputs"].items() if v["field"] == "clip_name1")
+            self.assertEqual(cloud["inputs"][key]["choices"], ["cloud.safetensors"])
+            self.assertEqual(len([v for v in cloud["inputs"].values() if v["role"] == "model"]), 3)
+            pid = self.c.post("/api/projects", json={"name": "isolated"}).json()["id"]
+            with self.assertRaises(workflows.WorkflowApiError):
+                workflows.check_run(service, pid, wf["id"], {"remote": True, "inputs": {key: "local.safetensors"}})
+            self.assertEqual(workflows.check_run(service, pid, wf["id"], {"remote": True, "inputs": {key: "cloud.safetensors"}})["missingModels"], [])
+            self.c.get('/api/workflows?remote=false&refresh=true')
+            self.assertTrue(any(c.kwargs.get('force') and c.kwargs.get('remote') is False for c in workflows.object_info.call_args_list))
+
     def test_unconfigured_remote_and_unreachable_host_fail_before_queueing(self):
         wf = self.c.post("/api/workflows", json={"graph": GRAPH}).json()
         pid = self.c.post("/api/projects", json={"name": "t"}).json()["id"]
@@ -153,6 +217,8 @@ class WorkflowRegistry(unittest.TestCase):
         self.assertEqual((audio[0]["role"], audio[0]["kind"], audio[0]["media"]), ("media", "comfy_input_path", "audio"))
         plain = workflows.candidates({"6": {"class_type": "LoadAudio", "inputs": {"audio": "x.wav"}}}, {})  # no registry: class name
         self.assertEqual(plain["inputs"][0]["media"], "audio")
+        inputs, _ = workflows._default_mapping(cands)
+        self.assertEqual([v['media'] for v in inputs.values() if v['role'] == 'media'], ['image', 'audio'])
 
 
 if __name__ == "__main__":

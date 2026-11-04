@@ -4,18 +4,18 @@ import {explicitLayers,mediaLayer} from '../layers';
 import {useTake} from './takes';
 
 /** A user-imported Comfy workflow (server/app/workflows.py, data/workflows/<id>/workflow.json). */
-export type WfRole='media'|'prompt'|'text'|'seed'|'number'|'bool';
-export type WfCandidate={node:string;field:string;classType:string;title:string;role:WfRole;kind:string;value:unknown;media?:'image'|'video'|'audio';min?:number;max?:number;step?:number};
+export type WfRole='media'|'prompt'|'text'|'seed'|'number'|'bool'|'model';
+export type WfCandidate={node:string;field:string;classType:string;title:string;role:WfRole;kind:string;value:unknown;media?:'image'|'video'|'audio';min?:number;max?:number;step?:number;choices?:string[]};
 export type WfInput=Omit<WfCandidate,'classType'|'value'>&{default?:unknown};
 export type WfOutput={node:string;classType?:string;title?:string;type:string};
-export type Workflow={id:string;name:string;createdAt:string;source:'file'|'comfy';nodes:number;missing:string[];missingModels?:string[];target?:'local'|'remote';readinessError?:string|null;
+export type Workflow={id:string;name:string;createdAt:string;source:'file'|'comfy';nodes:number;missing:string[];missingModels?:string[];target?:'local'|'remote';targets?:{id:'local'|'remote';label:string}[];readinessError?:string|null;
   candidates:{inputs:WfCandidate[];outputs:WfOutput[]};inputs:Record<string,WfInput>;output:WfOutput|null};
 /** Where the workflow's media input comes from: an asset, else the footage (a frame at `time`, or [start,end)). */
 export type WfSource={assetId?:string;path?:string;time?:number;start?:number;end?:number};
 export type WfRunBody={inputs:Record<string,unknown>;source?:WfSource;sources?:Record<string,WfSource>;variants?:number;layerId?:string;addLayer?:boolean;takeOf?:string};
 export type WfResult={asset:Asset&{layer?:MediaLayer};assetId:string;workflowId:string;promptId:string};
 
-export const listWorkflows=()=>request<Workflow[]>('/api/workflows');
+export const listWorkflows=(remote?:boolean,refresh=false)=>request<Workflow[]>(`/api/workflows?refresh=${refresh}${remote===undefined?'':`&remote=${remote}`}`);
 export const importWorkflow=(graph:unknown,name:string)=>request<Workflow>('/api/workflows',{method:'POST',body:JSON.stringify({graph,name,source:'file'})});
 export const updateWorkflow=(id:string,patch:Partial<Pick<Workflow,'name'|'inputs'|'output'>>)=>request<Workflow>(`/api/workflows/${id}`,{method:'PUT',body:JSON.stringify(patch)});
 export const deleteWorkflow=(id:string)=>request(`/api/workflows/${id}/delete`,{method:'POST'});

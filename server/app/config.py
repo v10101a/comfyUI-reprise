@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -33,8 +34,8 @@ class Settings:
     remote_comfy_api_key: str = "local"
     cloud_url: str = "https://cloud.comfy.org"
     cloud_api_key: str | None = None
-    ffmpeg: str = "/opt/homebrew/bin/ffmpeg"
-    ffprobe: str = "/opt/homebrew/bin/ffprobe"
+    ffmpeg: str = "ffmpeg"
+    ffprobe: str = "ffprobe"
     render_timeout: float = 120.0
     comfy_mode: str = "sdk"
 
@@ -82,8 +83,8 @@ def load_settings() -> Settings:
         # Comfy Cloud as the generation host: a platform.comfy.org key makes it the remote target (no proxy, no 4090).
         cloud_url=os.environ.get("TYPESET_CLOUD_URL", "https://cloud.comfy.org").strip().rstrip("/") or "https://cloud.comfy.org",
         cloud_api_key=os.environ.get("TYPESET_CLOUD_API_KEY", "").strip() or None,
-        ffmpeg=os.environ.get("FFMPEG", "/opt/homebrew/bin/ffmpeg"),
-        ffprobe=os.environ.get("FFPROBE", "/opt/homebrew/bin/ffprobe"),
+        ffmpeg=os.environ.get("FFMPEG") or shutil.which("ffmpeg") or "ffmpeg",
+        ffprobe=os.environ.get("FFPROBE") or shutil.which("ffprobe") or "ffprobe",
         render_timeout=float(os.environ.get("TYPESET_RENDER_TIMEOUT", "120")),
         comfy_mode=os.environ.get("TYPESET_COMFY_MODE", "sdk").strip().lower(),
     )

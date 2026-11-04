@@ -13,6 +13,7 @@ through service.add_asset (the Layers contract, board cc20), with full provenanc
 from __future__ import annotations
 
 import json
+import copy
 import math
 import logging
 import random
@@ -39,6 +40,8 @@ VIDEO_EXT = {".mp4", ".webm", ".mov", ".mkv", ".m4v", ".gif"}
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 MAX_RANGE = 20.0  # seconds of video sent into a workflow
 _registries: dict[str, tuple[float, dict]] = {}
+MODEL_FIELDS = {"unet_name", "clip_name", "clip_name1", "clip_name2", "clip_name3", "vae_name",
+                "ckpt_name", "lora_name", "control_net_name", "audio_encoder_name", "style_model_name", "gligen_name"}
 
 
 class WorkflowApiError(Exception):
@@ -129,6 +132,8 @@ def candidates(graph: dict, registry: dict) -> dict:
                 role, kind, media = "media", "comfy_input_path", "video"
             elif opts.get("audio_upload") or (cls == "LoadAudio" and low == "audio"):
                 role, kind, media = "media", "comfy_input_path", "audio"  # staged from the song (or an asset's track)
+            elif fld in MODEL_FIELDS and isinstance(value, str):
+                role, kind = "model", "string"
             elif low in ("seed", "noise_seed") and (typ == "INT" or isinstance(value, int)):
                 role, kind = "seed", "int"
             elif typ == "STRING" or (typ is None and isinstance(value, str) and not isinstance(spec[0], list)):
@@ -167,8 +172,8 @@ def _default_mapping(cands: dict) -> tuple[dict, dict | None]:
         inputs[key]["default"] = c["value"]
 
     media = [c for c in cands["inputs"] if c["role"] == "media"]
-    if media:
-        add(media[0], "media")
+    for c in media:
+        add(c, "media")
     prompts = [c for c in cands["inputs"] if c["role"] == "prompt"]
     if prompts:  # the first prompt that is not a negative one
         add(next((c for c in prompts if "neg" not in c["title"].lower()), prompts[0]), "prompt")
@@ -192,19 +197,40 @@ def _write_sidecar(d: Path, meta: dict) -> None:
 
 def _readiness(meta: dict, graph: dict, registry: dict) -> dict:
     """Recheck node/model availability without requiring a reimport after installing models."""
+    meta = {**meta, "inputs": _model_inputs(meta, graph, registry)}
     if not registry:
         return {**meta, "readinessError": "Cannot reach ComfyUI. Check the connection and try again."}
-    model_fields = {"unet_name", "clip_name", "vae_name", "ckpt_name", "lora_name"}
     missing_models = set()
     for node in graph.values():
         spec = (registry.get(node["class_type"]) or {}).get("input") or {}
         fields = {**spec.get("required", {}), **spec.get("optional", {})}
         for key, value in node.get("inputs", {}).items():
             choices = fields.get(key) or [None]
-            if key in model_fields and isinstance(value, str) and isinstance(choices[0], list) and value not in choices[0]:
+            if key in MODEL_FIELDS and isinstance(value, str) and isinstance(choices[0], list) and value not in choices[0]:
                 missing_models.add(value)
     return {**meta, "readinessError": None, "missing": sorted({n["class_type"] for n in graph.values() if n["class_type"] not in registry}),
             "missingModels": sorted(missing_models)}
+
+
+def _model_inputs(meta: dict, graph: dict, registry: dict) -> dict:
+    """Expose loaders even for older imports; choices always belong to the selected host."""
+    inputs = copy.deepcopy(meta["inputs"])
+    for nid, node in graph.items():
+        spec = (registry.get(node["class_type"]) or {}).get("input") or {}
+        fields = {**spec.get("required", {}), **spec.get("optional", {})}
+        for field, value in node.get("inputs", {}).items():
+            if field not in MODEL_FIELDS or not isinstance(value, str):
+                continue
+            key = next((k for k, v in inputs.items() if v["node"] == nid and v["field"] == field), None)
+            if key is None:
+                key = f"model.{nid}.{field}"
+                while key in inputs:
+                    key += "_"
+            options = fields.get(field) or [None]
+            inputs[key] = {"node": nid, "field": field, "kind": "string", "role": "model",
+                           "title": _title(node, nid), "default": value,
+                           "choices": [v for v in options[0] if isinstance(v, str)] if isinstance(options[0], list) else []}
+    return inputs
 
 
 def _target_readiness(meta: dict, graph: dict, remote: bool | None = None) -> dict:
@@ -214,6 +240,8 @@ def _target_readiness(meta: dict, graph: dict, remote: bool | None = None) -> di
     """
     if remote is True and remote_runner is None:
         raise WorkflowApiError(400, "Remote generation is not configured")
+    meta = {**meta, "targets": [{"id": "local", "label": "My ComfyUI"}] + (
+        [{"id": "remote", "label": "Comfy Cloud" if getattr(remote_runner, "cloud", False) else "Remote ComfyUI"}] if remote_runner else [])}
     local = None
     if remote is not True:
         local = {**_readiness(meta, graph, object_info()), "target": "local"}
@@ -222,21 +250,32 @@ def _target_readiness(meta: dict, graph: dict, remote: bool | None = None) -> di
     return {**_readiness(meta, graph, object_info(remote=True)), "target": "remote"}
 
 
-def list_workflows() -> list[dict]:
+def list_workflows(remote: bool | None = None, refresh: bool = False) -> list[dict]:
+    if remote is True and remote_runner is None:
+        raise WorkflowApiError(400, "Remote generation is not configured")
+    if refresh:
+        object_info(force=True, remote=remote is True)
     out = []
     for f in sorted(root().glob("*/workflow.json")):
         try:
-            out.append(get_workflow(f.parent.name))
+            out.append(get_workflow(f.parent.name, remote))
         except Exception:
             continue
     out.sort(key=lambda m: m.get("createdAt", ""), reverse=True)
     return out
 
 
-def get_workflow(wid: str, remote: bool | None = None) -> dict:
+def get_workflow(wid: str, remote: bool | None = None, inputs: dict | None = None) -> dict:
     d = _dir(wid)
-    return _target_readiness(json.loads((d / "workflow.json").read_text(encoding="utf-8")),
-                             json.loads((d / "graph.api.json").read_text(encoding="utf-8")), remote)
+    meta = json.loads((d / "workflow.json").read_text(encoding="utf-8"))
+    graph = json.loads((d / "graph.api.json").read_text(encoding="utf-8"))
+    for key, spec in _model_inputs(meta, graph, {}).items():
+        if spec.get("role") == "model" and inputs and key in inputs:
+            value = inputs[key]
+            if not isinstance(value, str) or not value.strip():
+                raise WorkflowApiError(422, f"Choose a model for {spec['title']}")
+            graph[spec["node"]]["inputs"][spec["field"]] = value
+    return _target_readiness(meta, graph, remote)
 
 
 def import_workflow(body: dict) -> dict:
@@ -275,6 +314,9 @@ def update_workflow(wid: str, body: dict) -> dict:
         meta["name"] = str(body["name"]).strip()[:80]
     if "inputs" in body:
         by = {(c["node"], c["field"]): c for c in meta["candidates"]["inputs"]}
+        for v in _model_inputs(meta, graph, {}).values():
+            if v.get("role") == "model":
+                by[(v["node"], v["field"])] = {**v, "value": v["default"]}
         inputs = {}
         for key, spec in (body.get("inputs") or {}).items():
             c = by.get((str(spec.get("node")), str(spec.get("field"))))
@@ -404,7 +446,7 @@ def _single_file(files: list[Path], fps: float, work: Path) -> Path:
 
 def check_run(service, pid: str, wid: str, body: dict) -> dict:
     project = service.require_project(pid)
-    meta = get_workflow(wid, remote=body.get("remote"))
+    meta = get_workflow(wid, remote=body.get("remote"), inputs=body.get("inputs"))
     if not meta.get("output"):
         raise WorkflowApiError(400, "Choose the workflow's output first")
     if meta.get("readinessError"):
@@ -481,13 +523,19 @@ def run_workflow(service, pid: str, wid: str, body: dict, ctx) -> dict:
     run_id = uuid.uuid4().hex[:10]
     work = store.project_dir(pid) / "cache" / "workflows" / run_id
     work.mkdir(parents=True, exist_ok=True)
+    side = d / SIDE
+    if any(s.get("role") == "model" for s in meta["inputs"].values()):
+        # Bind model choices per run. Never rewrite the shared graph or another scene's recipe.
+        write_json_atomic(work / "graph.api.json", json.loads((d / "graph.api.json").read_text(encoding="utf-8")))
+        _write_sidecar(work, meta)
+        side = work / SIDE
     values: dict[str, Any] = {}
     given = body.get("inputs") or {}
     sources = body.get("sources") or {}
     prov: dict[str, Any] = {}
     seeds = [k for k, s in meta["inputs"].items() if s.get("role") == "seed"]
     for key, spec in meta["inputs"].items():
-        v = given.get(key)
+        v = given.get(key, spec.get("default") if spec.get("role") == "model" else None)
         if spec.get("role") == "media":
             if v in (None, ""):
                 ctx.progress(.02, "staging source")
@@ -507,7 +555,7 @@ def run_workflow(service, pid: str, wid: str, body: dict, ctx) -> dict:
         base, span = .05 + .9 * i / n, .9 / n
         label = meta["name"] + (f" {i + 1}/{n}" if n > 1 else "")
         ctx.progress(base, f"{label}: queued")
-        result = run.run(str(d / SIDE), vals, work / f"out{i}",
+        result = run.run(str(side), vals, work / f"out{i}",
                          progress=lambda status, el, base=base, label=label: ctx.progress(base + span * min(.95, el / 90), f"{label}: {status} ({el:.0f}s)"))
         out = _single_file(result.outputs.get("result") or [], project.fps or 24, work)
         if body.get("postprocess"):

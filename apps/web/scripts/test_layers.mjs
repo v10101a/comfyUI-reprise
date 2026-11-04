@@ -59,3 +59,15 @@ test('splits keep at least a frame on each side and retain linked generated cand
   const result=splitMediaLayer(p,'cut',1/24,()=> 'right');assert.equal(result.project.layers[0].out,1/24);
   assert.deepEqual(result.project.layers[1].takes,['a1','generated']);
 });
+
+test('topMediaAt picks the visible clip on top under the playhead', async () => {
+  const {topMediaAt} = await import('../src/layers.ts');
+  const a={id:'a',kind:'media',assetId:'x',start:0,in:0,out:4};
+  const b={id:'b',kind:'media',assetId:'y',start:1,in:0,out:2};
+  const c={id:'c',kind:'media',assetId:'z',start:1,in:0,out:2,hidden:true};
+  const p={layers:[a,b,c,{id:'text-front',kind:'text',which:'front'}]};
+  assert.equal(topMediaAt(p,0.5)?.id,'a');
+  assert.equal(topMediaAt(p,1.5)?.id,'b');
+  assert.equal(topMediaAt(p,3.5)?.id,'a');
+  assert.equal(topMediaAt(p,5),undefined);
+});

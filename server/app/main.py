@@ -209,8 +209,8 @@ def list_jobs(projectId: str | None = None):
 # ---- bring-your-own Comfy workflows (workflows.py) + the project ComfyUI's "add to" targets ----
 
 @app.get("/api/workflows")
-def list_workflows():
-    return workflows.list_workflows()
+def list_workflows(remote: bool | None = None, refresh: bool = False):
+    return workflows.list_workflows(remote, refresh)
 
 
 @app.post("/api/workflows")
@@ -219,8 +219,8 @@ def import_workflow(body: dict):
 
 
 @app.get("/api/workflows/{wid}")
-def get_workflow(wid: str):
-    return workflows.get_workflow(wid)
+def get_workflow(wid: str, remote: bool | None = None):
+    return workflows.get_workflow(wid, remote)
 
 
 @app.put("/api/workflows/{wid}")

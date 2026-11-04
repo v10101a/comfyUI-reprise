@@ -8,6 +8,8 @@ export function assetOf(p:Project,id:string):Asset|undefined{return p.assets?.fi
 export function layerLength(l:MediaLayer){return Math.max(0,l.out-l.in);}
 /** Source time at project time t, or undefined when the layer is not on screen. */
 export function layerSourceTime(l:MediaLayer,t:number){const d=t-l.start;return d>=0&&d<l.out-l.in?l.in+d:undefined;}
+/** The visible media layer on top at t (the one the viewer sees the person in), bottom→top order like the stack. */
+export function topMediaAt(p:Project,t:number):MediaLayer|undefined{return [...layersOf(p)].reverse().find((l):l is MediaLayer=>l.kind==='media'&&!l.hidden&&layerSourceTime(l,t)!==undefined);}
 export const BLEND_OP:Record<LayerBlend,GlobalCompositeOperation>={normal:'source-over',screen:'screen',multiply:'multiply',add:'lighter',overlay:'overlay'};
 type Prop='x'|'y'|'scale'|'rotate'|'opacity';
 const BASE:Record<Prop,number>={x:0,y:0,scale:1,rotate:0,opacity:1};

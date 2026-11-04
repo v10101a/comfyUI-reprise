@@ -254,7 +254,8 @@ def register(server) -> bool:
 
     @routes.get(f"{PREFIX}/api/workflows")
     async def list_workflows(request):
-        return await call(workflows.list_workflows)
+        remote = None if "remote" not in request.query else request.query["remote"].lower() == "true"
+        return await call(workflows.list_workflows, remote, request.query.get("refresh", "").lower() == "true")
 
     @routes.post(f"{PREFIX}/api/workflows")
     async def import_workflow(request):
@@ -263,7 +264,8 @@ def register(server) -> bool:
 
     @routes.get(f"{PREFIX}/api/workflows/{{wid}}")
     async def get_workflow(request):
-        return await call(workflows.get_workflow, request.match_info["wid"])
+        remote = None if "remote" not in request.query else request.query["remote"].lower() == "true"
+        return await call(workflows.get_workflow, request.match_info["wid"], remote)
 
     @routes.put(f"{PREFIX}/api/workflows/{{wid}}")
     async def update_workflow(request):

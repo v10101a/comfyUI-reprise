@@ -2,6 +2,7 @@
 import {useState,useEffect,useLayoutEffect,useRef,useCallback,useMemo} from 'react';
 import type {Project,Word,Job,LookId,Surface,Point,HeadSpot} from '../types';
 import {request,getProject,assetUrl,pollJob} from '../api';
+import {openSetup} from '../setup';
 import {StageRenderer,loadFonts,surfaceCornersAt,surfaceBaseAt,type RenderOpts} from '../renderer';
 import {reframeProject} from '../reframe';
 import {prepareExport} from '../exportFrames';
@@ -24,7 +25,7 @@ import {ThemeToggle} from './ThemeToggle';
 import {Icon} from './icons';
 import {SongMap} from './SongMap';
 import {LayersPanel,LayerInspector,LayerLanes,uploadAssets} from './LayersPanel';
-import {mapLayer,editMedia,assetOf,splitMediaLayer} from '../layers';
+import {mapLayer,editMedia,assetOf,splitMediaLayer,layersOf,topMediaAt} from '../layers';
 import {headSourcePaths,headSourceAt} from '../heads';
 import {setHudPointer} from '../hud';
 import {placeTimelineAssets,type MediaDrop} from './duration';
@@ -77,8 +78,10 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
     sceneClips(project!,scene).find(l=>l.id===selectedLayer)?.assetId||scene.takes[0]||''):'';
   useEffect(()=>setSceneLibrary(false),[scene?.id]);
   useEffect(()=>{setActiveScene('');setTakeContext(null);setSceneView(null);setInspector('generate');},[project?.id]);
-  const [matteTarget,setMatteTarget]=useState('');
-  useEffect(()=>{if(selectedLayer)setMatteTarget(selectedLayer);},[selectedLayer]);
+  // Subject matte source: the clip the user chose (pipeline select or a selected clip); '' = the clip on top under the
+  // playhead, so running the matte from a line never cuts out a clip stacked beneath the one on screen.
+  const [matteChoice,setMatteChoice]=useState('');
+  useEffect(()=>{setMatteChoice(selectedLayer);},[selectedLayer]);
   const previewProject=useMemo(()=>project?auditionProject(project,audition&&audition.layerId===selectedLayer?audition:null):null,[project,audition,selectedLayer]);
   const isAuditioning=!!project&&previewProject!==project;
   useEffect(()=>{setAudition(null);setSourcePreviewId('');},[project?.id]);
@@ -123,7 +126,7 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
     return()=>{window.removeEventListener('pointerdown',down,true);for(const n of ups)window.removeEventListener(n,up,true);};},[]);
   const undo=(redo:boolean)=>{setAudition(null);const h=hist.current;const cur=projectRef.current;const prev=(redo?h.future:h.past).pop();if(!prev||!cur)return;(redo?h.past:h.future).push(cur);h.last=0;setProject({...prev,analysis:{...prev.analysis,headTracks:{...prev.analysis.headTracks,...cur.analysis.headTracks}}});setDirty(true);};
   const undoRef=useRef(undo);undoRef.current=undo;
-  const changeProject=useCallback((p:Project)=>{const first=p.layers?.find(l=>l.kind==='media');const start=first?.kind==='media'?Math.max(.8,first.start+.04):.8;hist.current={past:[],future:[],last:0};setSongStale(false);setMatteTarget(p.layers?.find(l=>l.kind==='media')?.id||'');setProject(p);setSelected('');setSelectedLayer(p.layers?.find(l=>l.kind==='media')?.id||'');setAudition(null);setFrame(Math.min(Math.round(start*p.fps),Math.max(0,Math.round(p.duration*p.fps)-1)));setPlaying(false);setDirty(false);setExports([]);setError('');setLoop(null);setLoopOn(false);setCompare(false);setSurfaceTool(null);setSelectedWall('');setInlineEdit(null);},[]);
+  const changeProject=useCallback((p:Project)=>{const first=p.layers?.find(l=>l.kind==='media');const start=first?.kind==='media'?Math.max(.8,first.start+.04):.8;hist.current={past:[],future:[],last:0};setSongStale(false);setMatteChoice('');setProject(p);setSelected('');setSelectedLayer(p.layers?.find(l=>l.kind==='media')?.id||'');setAudition(null);setFrame(Math.min(Math.round(start*p.fps),Math.max(0,Math.round(p.duration*p.fps)-1)));setPlaying(false);setDirty(false);setExports([]);setError('');setLoop(null);setLoopOn(false);setCompare(false);setSurfaceTool(null);setSelectedWall('');setInlineEdit(null);},[]);
   useEffect(()=>{if(project?.id&&project.id!=='sample')void setSession(project.id);},[project?.id]); // ComfyUI's "add to <project>" target
   useEffect(()=>{let live=true;const initial=initialProjectId==='sample'?request<Project>('/sample/project.json'):getProject(initialProjectId);initial.then(p=>{if(live){const saved=initialProjectId==='sample'?localStorage.getItem('typeset.sample'):null;if(saved){try{p=JSON.parse(saved);}catch{/* fresh sample */}}changeProject(p);}}).catch(e=>{if(live)setError(String(e));});request<Project[]>('/api/projects').then(p=>{if(live)setProjects(p);}).catch(()=>{});return()=>{live=false;};},[changeProject,initialProjectId]);
   const mediaSignature=JSON.stringify([project?.id,project?.media.video,project?.analysis,project?.shots,project?.timing?.sceneOffset]);
@@ -211,7 +214,8 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
   useEffect(()=>()=>{const d=demoTimer.current;if(d){clearTimeout(d.t);void fetch(`/api/projects/${encodeURIComponent(d.id)}/showcase`,{method:'POST',keepalive:true}).catch(()=>{});}},[]);
   // Autosave may continue during snapshot exports; analysis jobs re-fetch their result before saves resume.
   useEffect(()=>{if(!dirty||busy&&job?.kind!=='export'||!project)return;const t=setTimeout(()=>{void save(projectRef.current,true).catch(e=>setError(String(e)));},1200);return()=>clearTimeout(t);},[project,dirty,busy,job?.kind]);// eslint-disable-line react-hooks/exhaustive-deps
-  async function create(){const p=await request<Project>('/api/projects',{method:'POST',body:JSON.stringify({name:'Untitled study'})});setProjects(items=>[p,...items]);changeProject(p);setNotice('');setLeftTab('media');}
+  async function backendAvailable(){try{await request('/api/projects');return true;}catch{openSetup('local');return false;}}
+  async function create(){if(!await backendAvailable())return;const p=await request<Project>('/api/projects',{method:'POST',body:JSON.stringify({name:'Untitled study'})});setProjects(items=>[p,...items]);changeProject(p);setNotice('');setLeftTab('media');}
   async function openProject(id:string){if(dirty)await save();location.hash=`/studio?project=${id}`;}
   // Song swap: drop audio on the waveform → it replaces media.audio (footage and words stay); ↻ then re-runs words + beats.
   const [songStale,setSongStale]=useState(false);
@@ -267,7 +271,7 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
     // The voice / audio fields are computed from the song, so a project that uses one gets a fresh one.
     for(const k of ['audio','voice'] as const)if(projectRef.current!.analysis[k]){const v=await optionalJob(`/api/projects/${id}/analyze/${k}`,{});if(v){trackJob(await pollJob(v,trackJob));await refetch(projectRef.current!);}}
     setNotice('Re-aligned');}
-  async function upload(file:File){let p=project!;if(p.id==='sample'){p=await request<Project>('/api/projects',{method:'POST',body:JSON.stringify({name:file.name.replace(/\.[^.]+$/,'')})});}const form=new FormData();form.append('file',file);form.append('kind',file.type.startsWith('audio/')?'audio':'video');await request(`/api/projects/${p.id}/media`,{method:'POST',body:form});p=await getProject(p.id);changeProject(p);setProjects(items=>[p,...items.filter(item=>item.id!==p.id)]);setNotice('Media ready');}
+  async function upload(file:File){let p=project!;if(p.id==='sample'){if(!await backendAvailable())return;p=await request<Project>('/api/projects',{method:'POST',body:JSON.stringify({name:file.name.replace(/\.[^.]+$/,'')})});}const form=new FormData();form.append('file',file);form.append('kind',file.type.startsWith('audio/')?'audio':'video');await request(`/api/projects/${p.id}/media`,{method:'POST',body:form});p=await getProject(p.id);changeProject(p);setProjects(items=>[p,...items.filter(item=>item.id!==p.id)]);setNotice('Media ready');}
   /** Re-fetch after any analysis job, before the next PUT (a stale copy would overwrite the job's fields). */
   async function refetch(p:Project){const updated=await getProject(p.id);hist.current={past:[],future:[],last:0};setProject(updated);setDirty(false);setSelected(s=>updated.words.some(w=>w.id===s)?s:'');await refreshJobs(p.id);return updated;}
   async function jobAction(kind:'words'|'matte'|'inworld'|'export'){
@@ -465,7 +469,7 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
     const step=(n:NonNullable<typeof nudgeRef.current>,k:number)=>{let x=0,y=0;n.keys.forEach(c=>{x+=DIR[c][0];y+=DIR[c][1];});n.dx+=x*k;n.dy+=y*k;apply(n);};
     const finish=()=>{const n=nudgeRef.current;if(!n)return;cancelAnimationFrame(n.raf);nudgeRef.current=null;
       if(n.placement!=='surface')nudgeFns.current.dragLine(n.lineId,n.placement,n.dx,n.dy,'end');const h=hist.current;h.gesture=false;h.last=0;};
-    const down=(e:KeyboardEvent)=>{if(!DIR[e.code])return;const t=e.target as HTMLElement;if(t.closest('.scene-browser')||sourceMode.current)return;if(t.matches('input,textarea,select,.s-left-resize,.g-anchor-hit')||e.metaKey||e.ctrlKey||e.altKey)return;
+    const down=(e:KeyboardEvent)=>{if(!DIR[e.code])return;const t=e.target as HTMLElement;if(t.closest('dialog,.scene-browser')||sourceMode.current)return;if(t.matches('input,textarea,select,.s-left-resize,.g-anchor-hit')||e.metaKey||e.ctrlKey||e.altKey)return;
       const k=keyState.current;const l=k.currentLine;const p=k.project;if(!l||!p||k.surfaceTool)return;
       e.preventDefault();e.stopImmediatePropagation();
       let n=nudgeRef.current;if(n&&n.lineId!==l.id){finish();n=null;}
@@ -528,6 +532,8 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
   // Stage fit: the composition takes the largest box that fits; with the 9:16 preview both frames share the height.
   useLayoutEffect(()=>{const el=stageWrap.current;if(!el)return;const ro=new ResizeObserver(()=>setStageBox({w:el.clientWidth,h:el.clientHeight}));ro.observe(el);setStageBox({w:el.clientWidth,h:el.clientHeight});return()=>ro.disconnect();},[!!project]);// eslint-disable-line react-hooks/exhaustive-deps
   const thumbs=useLookThumbs(project,frame,!playing&&!!project&&ready&&((inspector==='text'&&(textScope==='default'||!current&&!multi))||looksOpen),mediaSignature);
+  const matteTarget=useMemo(()=>{if(!project)return '';const media=layersOf(project).filter(l=>l.kind==='media');
+    return media.some(l=>l.id===matteChoice)?matteChoice:topMediaAt(project,time)?.id||media[0]?.id||'';},[project,matteChoice,time]);
   const jobMap=useMemo(()=>latestJobs(jobs,matteTarget),[jobs,matteTarget]);
   // What Behind and HUD can use, as the stage loaded it: the subject matte (none / did not load / does not match the
   // footage) and a person track. Shown on the lines that need them, with the matte step one click away.
@@ -563,6 +569,7 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
         {demo!=='idle'&&<span className={`s-demo ${demo}`} role="status" aria-label={demo==='failed'?'Demo clip failed':'Demo clip updating'} title={demo==='failed'?'demo clip failed':'demo clip updating'}/>}
       </div>
       <div className="s-actions">
+        <button onClick={()=>openSetup(project.id==='sample'?'demo':'local')}>{project.id==='sample'?'Demo · setup':'Setup'}</button>
         {project.frame?.source&&<button onClick={()=>void run(()=>openProject(project.frame!.source!.projectId))} disabled={busy} title="Return to the unchanged original project">← Back to original</button>}
         <button className={`comfy-pill ${runningJob?'busy':''}`} onClick={()=>openLeft('pipeline')} title={runningJob?`${runningJob.kind} · ${runningJob.message||''}`:'comfyui pipeline'}><i/>{runningJob?`${Math.round((runningJob.progress||0)*100)}%`:'ComfyUI'}</button>
         <button className={`primary ${outputOpen?'on':''}`} onClick={()=>setOutputOpen(o=>!o)} aria-expanded={outputOpen}>Render</button>
@@ -583,6 +590,7 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
           <div className="seg mini op-scale" role="radiogroup" aria-label="Export size" title={`2× = ${project.width*2}×${project.height*2}: type stays sharp, footage is upscaled`}>{([1,2] as const).map(s=>
             <button key={s} role="radio" aria-checked={exportScale===s} className={exportScale===s?'active':''} onClick={()=>setExportScale(s)}>{s}×</button>)}</div>
           <button className="primary wide" onClick={()=>void run(()=>jobAction('export'))} disabled={busy||!formats.length||project.id==='sample'} title={project.id==='sample'?'sample is offline':undefined}>{busy&&job?.kind==='export'?`${Math.round((job.progress||0)*100)}%`:'Export'}</button>
+          {project.id==='sample'&&<button className="wide" onClick={()=>openSetup('local')}>Set up Reprise to export</button>}
         </div>
         {(exports.length>0||exportJobs.length>0)&&<div className="op-sec"><div className="op-h">Files</div>
           {exports.length>0&&<div className="export-links">{exports.map(file=><a key={file} href={assetUrl(project,file)} target="_blank" rel="noreferrer" download>{file.split('/').pop()}</a>)}</div>}
@@ -610,7 +618,7 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
           onCollapse={id=>organizeScenes(p=>setScenes(p,scenesOf(p).map(s=>s.id===id?{...s,collapsed:!s.collapsed}:s)))}
           onMove={positions=>organizeScenes(p=>setScenes(p,scenesOf(p).map(s=>({...s,...positions.find(pos=>pos.id===s.id)}))))}/>
         :<><div className="study-nav"><button className="icon-sm" aria-label="Back to scenes" onClick={()=>setLeftTab('scenes')}>←</button><span>{leftTab==='media'?'Media':'Pipeline'}</span></div><div className="scene-utility-content">
-          {leftTab==='pipeline'?<PipelinePanel project={project} matteLayerId={matteTarget} onMatteLayer={setMatteTarget} jobs={jobMap} occKind={occKind} hasBeats={!!beats} beatsNote={beats?`${beats.bpm?Math.round(beats.bpm)+' BPM · ':''}${beats.beats.length} beats`:undefined} comparing={compare} busy={busy} onRun={runStep} onOpenWorkflow={setWfStep}/>:
+          {leftTab==='pipeline'?<PipelinePanel project={project} matteLayerId={matteTarget} onMatteLayer={setMatteChoice} jobs={jobMap} occKind={occKind} hasBeats={!!beats} beatsNote={beats?`${beats.bpm?Math.round(beats.bpm)+' BPM · ':''}${beats.beats.length} beats`:undefined} comparing={compare} busy={busy} onRun={runStep} onOpenWorkflow={setWfStep}/>:
           <><div className="media-panel">
             <button className="upload-zone" onClick={()=>uploadInput.current?.click()} disabled={busy}><Icon name="upload" size={22}/><strong>Add song / base video</strong></button>
             {waveform&&songDur>0&&<SongMap project={project} peaks={waveform} songDur={songDur} linkWords={linkWords} edit={edit} checkpoint={checkpoint}/>}

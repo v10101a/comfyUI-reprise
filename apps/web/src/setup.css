@@ -1,0 +1,43 @@
+/* Mounted inside the active app: colors, type and controls come from its theme. */
+.setup-dialog{padding:0;width:min(600px,calc(100vw - 32px));max-height:calc(100dvh - 48px);border:1px solid var(--bd);border-radius:10px;background:var(--p1);color:var(--tx);font:13px/1.55 var(--sans);box-shadow:var(--shadow-pop,var(--shadow-lg));overflow:auto;overscroll-behavior:contain}
+.setup-dialog::backdrop{background:#0007}
+.setup-content>header{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--ln)}
+.setup-content>header>svg{color:var(--mut);flex:none}
+.setup-content h2{font:600 14px/1.4 var(--sans);margin:0;flex:1}
+.setup-dialog button.setup-close{height:28px;width:28px;padding:0;background:transparent;border-color:transparent;color:var(--mut);border-radius:6px}
+.setup-dialog button.setup-close:hover{background:var(--p3);color:var(--tx)}
+.setup-tabs{display:flex;gap:2px;padding:2px;margin:16px 20px 0;border:1px solid var(--ln);border-radius:8px;background:var(--well,#00000008)}
+.setup-dialog .setup-tabs button{flex:1;min-width:0;height:28px;padding:0 8px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--mut);font:500 12px/1 var(--sans);white-space:nowrap;box-shadow:none}
+.setup-dialog .setup-tabs button:hover{background:var(--p2);color:var(--tx)}
+.setup-dialog .setup-tabs button.active{background:var(--p3);border-color:var(--ln2);color:var(--tx);box-shadow:var(--shadow)}
+.setup-content>section{padding:16px 20px 20px}
+.setup-content p{margin:0 0 16px;color:var(--mut)}
+.setup-content a{color:var(--acc);text-underline-offset:3px}
+.setup-content a:hover{text-decoration:underline}
+.setup-content a.setup-primary{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:6px 12px;background:var(--acc);border:1px solid var(--acc);border-radius:6px;color:var(--on-acc);font:600 12px/1.4 var(--sans);text-decoration:none;transition:box-shadow .15s var(--ease)}
+.setup-content a.setup-primary:hover{box-shadow:0 0 0 3px var(--acc-mid)}
+.setup-content .setup-detail,.setup-content .setup-status{font-size:11px;line-height:1.55;margin:10px 0 0;color:var(--mut)}
+.setup-address{display:grid;gap:8px;margin:0 0 12px;color:var(--mut);font:500 12px/1.4 var(--sans)}
+.setup-dialog .setup-address input{width:100%;min-width:0;height:34px;padding:0 10px;font:12px var(--mono);border:1px solid var(--ln2);border-radius:6px;color:var(--tx);background:var(--p3)}
+.setup-dialog .setup-address input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.setup-dialog .setup-error{color:var(--err,#c4001d);font-size:12px}
+.setup-help{margin-top:20px;padding-top:12px;border-top:1px solid var(--ln);font-size:12px;color:var(--mut)}
+.setup-help summary{min-height:28px;line-height:28px;color:var(--tx);font-weight:500;cursor:pointer}
+.setup-help p{margin:12px 0}
+.setup-help ol{margin:12px 0;padding-left:20px}
+.setup-help li{padding-left:4px;margin:12px 0}
+.setup-content .setup-secondary{display:inline-flex;margin-top:16px;font-size:12px}
+.setup-command{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid var(--ln2);background:var(--well,#00000008);border-radius:6px}
+.setup-dialog code{font-family:var(--mono);font-size:11px;overflow-wrap:anywhere;color:var(--tx)}
+.setup-dialog .setup-command button{height:28px;font-size:12px;flex:none;border-radius:6px}
+.setup-models{border-top:1px solid var(--ln)}
+.setup-models article{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--ln)}
+.setup-model-name{min-width:0}
+.setup-model-name h3{font:500 13px/1.4 var(--sans);margin:0 0 3px;color:var(--tx)}
+.setup-model-name span{display:block;font-size:12px;color:var(--mut)}
+.setup-model-name small{display:block;font-size:10px;color:var(--mut);margin-top:4px}
+.setup-model-actions{display:flex;align-items:center;gap:12px;flex:none;font-size:11px;white-space:nowrap}
+.setup-model-actions a{display:inline-flex;align-items:center;gap:4px;min-height:28px}
+.setup-models+.setup-help{margin-top:8px;border:0}
+.setup-dialog :focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+@media(max-width:520px){.setup-dialog{width:calc(100vw - 24px);max-height:calc(100dvh - 24px)}.setup-content>header{padding:12px 16px}.setup-tabs{margin:12px 16px 0}.setup-content>section{padding:16px}.setup-dialog .setup-tabs button{padding:0 4px;font-size:11px}.setup-models article{gap:8px;align-items:flex-start;flex-direction:column}.setup-model-actions{gap:16px}}

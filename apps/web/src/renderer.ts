@@ -1578,7 +1578,7 @@ export class StageRenderer {
    *  are unchanged. Calls on one instance are serialized by the callers (studio loop, thumb loop). */
   async render(canvas:HTMLCanvasElement,frame:number,layer:Layer='composite',opts?:RenderOpts){
     const prev=this.heavyOptics,bg=this.bg,matte=this.matte;if(opts?.heavyOptics!==undefined)this.heavyOptics=opts.heavyOptics;
-    if(opts?.proxy&&this.bgProxy){this.bg=this.bgProxy;if(this.matteProxy)this.matte=this.matteProxy;}
+    if(opts?.proxy){if(this.bgProxy)this.bg=this.bgProxy;if(this.matteProxy)this.matte=this.matteProxy;}
     else if(opts?.full){if(this.bgSeek)this.bg=this.bgSeek;if(this.matteSeek)this.matte=this.matteSeek;}
     this.layerProxy=this.draftMedia&&!!opts?.proxy;
     this.stale=opts?.stale;this.cacheMedia=this.draftMedia&&opts?.cacheMedia===true;

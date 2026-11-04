@@ -11,6 +11,8 @@ import {SceneThumb} from './SceneThumb';
 import {assetGeneration,takeGeneration,relatedReferences,inheritedReference,setTakeGeneration} from './generationContext';
 import {ReferencePicker,WorkflowPicker,type SourceChoice} from './GenerationPickers';
 import {ReferenceAudio} from './ReferenceAudio';
+import {at} from '../base';
+import {GENERATION_PRESETS,openSetup,type GenerationPreset} from '../setup';
 import './workflows.css';
 
 const FOOT='@frame',RANGE='@range',LAYER='@layer',SONG='@song',PREPARED='@prepared';
@@ -24,6 +26,9 @@ export function WorkflowsPanel({scene,selectedTake='',project,edit,checkpoint,ti
   const [list,setList]=useState<Workflow[]>([]),[loading,setLoading]=useState(true),[mapping,setMapping]=useState(false);
   const [loose,setLoose]=useState<LayerGeneration>({}),[jobs,setJobs]=useState<Job[]>([]),[preparing,setPreparing]=useState(false),[error,setError]=useState('');
   const [pick,setPick]=useState(''),[more,setMore]=useState(false);
+  const [target,setTarget]=useState<'local'|'remote'>('local'),[presets,setPresets]=useState(false),[adding,setAdding]=useState('');
+  const [available,setAvailable]=useState<boolean|null>(null);
+  const refreshId=useRef(0),targetRef=useRef(target);targetRef.current=target;
   const [scope,setScope]=useState<'all'|'clip'>('all');
   const [referencePicker,setReferencePicker]=useState(''),[workflowPicker,setWorkflowPicker]=useState(false);
   const file=useRef<HTMLInputElement>(null),ref=useRef<HTMLInputElement>(null);
@@ -43,7 +48,7 @@ export function WorkflowsPanel({scene,selectedTake='',project,edit,checkpoint,ti
     (project.assets||[]).filter(a=>a.source?.kind==='workflow'||a.source?.kind==='comfy'||a.id===layer?.assetId),[project.assets,layer,scope]);
   const picked=results.find(a=>a.id===pick),previewing=!!layer&&audition?.layerId===layer.id;
   const fail=(e:unknown)=>{if(mounted.current)setError(e instanceof Error?e.message:String(e));};
-  const refresh=async()=>{try{const next=await listWorkflows();if(mounted.current)setList(next);}catch(e){fail(e);}finally{if(mounted.current)setLoading(false);}};
+  const refresh=async(force=false)=>{const id=++refreshId.current;setLoading(true);try{const next=await listWorkflows(targetRef.current==='remote',force);if(mounted.current&&id===refreshId.current){setList(next);setAvailable(true);setError('');}}catch(e){if(mounted.current&&id===refreshId.current){setAvailable(false);if(project.id!=='sample')fail(e);}}finally{if(mounted.current&&id===refreshId.current)setLoading(false);}};
   const patch=(changes:WorkflowDraft={},workflowId=wid)=>{
     if(scene&&take)edit(p=>{
       // A loose still inherits the scene's prompt/vocal, but supplies its own image.
@@ -67,7 +72,7 @@ export function WorkflowsPanel({scene,selectedTake='',project,edit,checkpoint,ti
       j=await request<Job>(`/api/jobs/${j.id}`);
     }
   }
-  useEffect(()=>{mounted.current=true;void refresh();
+  useEffect(()=>{mounted.current=true;
     void request<Job[]>(`/api/jobs?projectId=${encodeURIComponent(project.id)}`).then(js=>{
       if(!mounted.current)return;const active=js.filter(j=>j.kind==='workflow'&&(j.status==='queued'||j.status==='running'));
       const arrived=js.filter(j=>j.kind==='workflow').flatMap(j=>(j.result as {assets?:Asset[]}|undefined)?.assets||[]);
@@ -76,6 +81,7 @@ export function WorkflowsPanel({scene,selectedTake='',project,edit,checkpoint,ti
     }).catch(()=>{});
     return()=>{mounted.current=false;};
   },[]);
+  useEffect(()=>{void refresh();},[target]);
   useEffect(()=>{const focus=()=>void refresh();window.addEventListener('focus',focus);
     return()=>window.removeEventListener('focus',focus);},[]);
   useEffect(()=>{setPick('');setMapping(false);setMore(false);setReferencePicker('');setWorkflowPicker(false);onAudition(null);},[selected,selectedTake,scene?.id,wid]);
@@ -85,8 +91,15 @@ export function WorkflowsPanel({scene,selectedTake='',project,edit,checkpoint,ti
 
   async function importFile(f:File){
     setError('');try{const w=await importWorkflow(JSON.parse(await f.text()),f.name.replace(/\.(api\.)?json$/i,''));
-      if(!mounted.current)return;setList(ls=>[w,...ls]);patch({},w.id);setMapping(!w.output);
+      if(!mounted.current)return;patch({},w.id);setMapping(!w.output);await refresh();
     }catch(e){fail(e);}
+  }
+  async function addPreset(p:GenerationPreset){
+    if(available===false){openSetup('local');return;}
+    if(adding)return;setAdding(p.id);setError('');
+    try{const graph=await request<unknown>(`/workflows/${p.file}`);const w=await importWorkflow(graph,p.name);
+      if(mounted.current){patch({},w.id);setPresets(false);setMapping(!w.output);await refresh();}}
+    catch(e){fail(e);}finally{if(mounted.current)setAdding('');}
   }
   const compatible=(id:string,inp:WfInput)=>{const a=assetOf(project,id);return !!a&&(inp.media==='audio'?!!a.hasAudio:inp.media!=='video'||a.kind==='video');};
   const sourceId=(k:string,inp:WfInput)=>{
@@ -114,10 +127,12 @@ export function WorkflowsPanel({scene,selectedTake='',project,edit,checkpoint,ti
     (!sourceId(k,i).startsWith('@')&&!assetOf(project,sourceId(k,i)))||
     (i.media==='video'&&sourceId(k,i)!==RANGE&&assetOf(project,sourceId(k,i)===LAYER?layer?.assetId||'':sourceId(k,i))?.kind!=='video')));
   const postprocess=wf&&Object.entries(wf.inputs).some(([k,i])=>i.media==='audio'&&sourceId(k,i)===PREPARED)?draft.postprocess||originalDraft?.postprocess:undefined;
+  const modelInputs=wf?Object.entries(wf.inputs).filter(([,i])=>i.role==='model'):[];
+  const missingModels=modelInputs.length?modelInputs.filter(([k,i])=>!i.choices?.includes(String(vals[k]??i.default??''))).map(([k,i])=>String(vals[k]??i.default??i.title)):wf?.missingModels||[];
   const blocked=project.id==='sample'?'Open or create a project to generate a take.':
-    !wf?'Choose a workflow first.':!wf.output?'Choose an output in the workflow settings.':
+    loading?'Checking the selected ComfyUI…':available===false?'Connect to Reprise to generate.':!wf?'Choose a workflow first.':wf.target&&wf.target!==target?'Refresh to connect to the selected ComfyUI.':!wf.output?'Choose an output in the workflow settings.':
     wf.readinessError|| (wf.missing.length?'This workflow needs nodes that are unavailable on the selected ComfyUI.':
-    wf.missingModels?.length?'This workflow needs models that are unavailable on the selected ComfyUI.':
+    missingModels.length?'Choose installed models below, or download the missing files.':
     missingReference?'Choose or upload a reference for each input.':'');
   async function run(){
     if(!wf||blocked||starting.current||running)return;starting.current=true;setPreparing(true);setError('');
@@ -155,7 +170,7 @@ export function WorkflowsPanel({scene,selectedTake='',project,edit,checkpoint,ti
     onPreview('');onAudition(null);
   }
   const mediaInputs=wf?Object.entries(wf.inputs).filter(([,i])=>i.role==='media'):[];
-  const otherInputs=wf?Object.entries(wf.inputs).filter(([,i])=>i.role!=='media'):[];
+  const otherInputs=wf?Object.entries(wf.inputs).filter(([,i])=>i.role!=='media'&&i.role!=='model'):[];
   const chooseSource=(key:string,id:string)=>{patch({sources:{...sources,...Object.fromEntries(mediaInputs.map(([k,i])=>[k,sourceId(k,i)])),[key]:id},sourceWindows:{...draft.sourceWindows,[key]:{}},...(id===PREPARED?{mediaFiles:{...draft.mediaFiles,[key]:mediaFiles[key]}}:{})});setReferencePicker('');};
   const options=(key:string,inp:WfInput):SourceChoice[]=>[
     ...(inp.media==='audio'&&mediaFiles[key]?[{id:PREPARED,name:mediaFiles[key].name,detail:'Original prepared vocal'}]:[]),
@@ -172,6 +187,9 @@ export function WorkflowsPanel({scene,selectedTake='',project,edit,checkpoint,ti
     const seed=inp.role==='seed';return <div className="wf-row" key={k} title={`${inp.title} · ${inp.field}`}><span className="lbl">{seed?'Seed':inp.field.replace(/_/g,' ')}</span><input type={inp.role==='text'?'text':'number'} aria-label={seed?`Seed: ${inp.title}`:inp.title} className="mono" min={inp.min} max={inp.max} step={inp.step} placeholder={seed?'random':undefined} value={String(vals[k]??(seed?'':inp.default??''))} onChange={e=>setVal(k,inp.role==='text'?e.target.value:e.target.value===''?undefined:Number(e.target.value))}/></div>;
   };
   return <div className="wf-panel" data-take-id={selectedTake}>
+    <div className="wf-compute"><label>Run on <select aria-label="Run on" value={target} disabled={loading||running} onChange={e=>{if(e.target.value==='setup'){openSetup('cloud');return;}setTarget(e.target.value as 'local'|'remote');}}>
+      <option value="local">My ComfyUI</option>{(wf?.targets||list[0]?.targets||[]).filter(t=>t.id==='remote').map(t=><option key={t.id} value={t.id}>{t.label}</option>)}<option value="setup">Set up Comfy Cloud…</option>
+    </select></label><button className="ghost wf-setup" onClick={()=>openSetup('local')} title="Connect your existing ComfyUI"><Icon name="sliders" size={14}/>Setup</button></div>
     {!scene&&<div className="wf-context">
       <label htmlFor="take-layer">Reference clip <span>optional</span></label>
       <select id="take-layer" value={layer?.id||''} onChange={e=>{onAudition(null);onSelect(e.target.value);}} aria-label="Reference clip">
@@ -181,20 +199,28 @@ export function WorkflowsPanel({scene,selectedTake='',project,edit,checkpoint,ti
     </div>}
     <div className="wf-head">
       <button className="wf-workflow-choice" aria-label="Workflow" aria-haspopup="dialog" title={wf?.name} onClick={()=>setWorkflowPicker(true)}><span>{wf?.name||(loading?'Loading…':wid?'Workflow unavailable':'Choose a workflow')}</span><span aria-hidden="true">⌄</span></button>
-      <button className="icon-sm" onClick={()=>file.current?.click()} title="Import ComfyUI API workflow (.json)" aria-label="Import workflow"><Icon name="upload" size={15}/></button>
+      <button className="icon-sm" onClick={()=>available===false?openSetup('local'):file.current?.click()} title="Import ComfyUI API workflow (.json)" aria-label="Import workflow"><Icon name="upload" size={15}/></button>
       {wf&&<button className={`icon-sm ${mapping?'on':''}`} onClick={()=>setMapping(m=>!m)} title="Choose inputs and output" aria-label="Choose inputs and output" aria-pressed={mapping}><Icon name="keys" size={15}/></button>}
       <input ref={file} type="file" accept=".json,application/json" hidden onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void importFile(f);}}/>
       <input ref={ref} type="file" accept="image/*,video/*" hidden onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void addRef(f);}}/>
     </div>
+    <button className="link wf-add" onClick={()=>setPresets(p=>!p)} aria-expanded={presets}><Icon name="plus" size={14}/>Add model workflow</button>
+    {presets&&<div className="wf-presets">{GENERATION_PRESETS.map(p=><article key={p.id}><div className="wf-preset-title"><b title={`${p.description}\n${p.requirements}`}>{p.name}</b><button disabled={!!adding} aria-label={`Add ${p.name} workflow`} onClick={()=>void addPreset(p)}>{adding===p.id?'Adding…':'Add'}</button></div><small>{p.task}</small><div className="wf-preset-links"><a href={p.models} target="_blank" rel="noreferrer">Model files ↗</a><a href={at(`/workflows/${p.file}`)} download title="Download workflow JSON">Workflow JSON ↓</a></div></article>)}<p>Model files download separately.</p></div>}
     {workflowPicker&&<WorkflowPicker workflows={list} value={wid} related={[original?.workflowId||'',...Object.keys(scene?.generation?.workflows||{})]} onChoose={id=>{patch({},id);setMapping(false);setWorkflowPicker(false);}} onClose={()=>setWorkflowPicker(false)}/>}
     {referencePicker&&wf?.inputs[referencePicker]&&<ReferencePicker project={project} input={wf.inputs[referencePicker]} nearby={nearby} value={sourceId(referencePicker,wf.inputs[referencePicker])} choices={options(referencePicker,wf.inputs[referencePicker])} onChoose={id=>chooseSource(referencePicker,id)} onClose={()=>setReferencePicker('')}/>}
-    {!loading&&!list.length&&<div className="wf-empty"><p>Bring a workflow from ComfyUI. Choose its references and prompt here, then compare the results with your music.</p>
-      <button onClick={()=>file.current?.click()}>Import workflow JSON</button><small>Use ComfyUI’s Export (API), or import from its Reprise sidebar.</small></div>}
+    {!loading&&!list.length&&<div className="wf-empty">{available===false?<><p>Try the edit here, then use your own ComfyUI and installed models to generate takes.</p><button onClick={()=>openSetup('local')}>Use my ComfyUI</button></>:<><p>Bring a workflow from ComfyUI. Choose its references and prompt here, then compare the results with your music.</p>
+      <button onClick={()=>file.current?.click()}>Import workflow JSON</button><small>Use ComfyUI’s Export (API), or import from its Reprise sidebar.</small></>}</div>}
     {error&&<div className="wf-err" role="alert">{error}<button className="icon-sm" aria-label="Dismiss generation error" onClick={()=>setError('')}>×</button></div>}
     {wf?.missing.length?<div className="wf-err">Missing nodes: {wf.missing.join(', ')}</div>:null}
-    {!!wf?.missingModels?.length&&<details className="wf-unavailable"><summary>{wf.missingModels.length} models unavailable on {wf.target==='remote'?'remote':'local'} ComfyUI</summary>
-      <p>{wf.missingModels.join(', ')}</p><button onClick={()=>void refresh()}>Check again</button></details>}
-    {wf&&mapping&&<><Mapping key={wf.id} wf={wf} onSave={patch=>void updateWorkflow(wf.id,patch).then(w=>{setList(ls=>ls.map(x=>x.id===w.id?w:x));setMapping(false);}).catch(fail)}/>
+    {!!missingModels.length&&<details className="wf-unavailable"><summary>{missingModels.length} models unavailable on {target==='remote'?'remote':'local'} ComfyUI</summary>
+      <p>{missingModels.join(', ')}</p><button onClick={()=>openSetup('models')}>Get missing models</button></details>}
+    {modelInputs.length>0&&<details className="wf-models" open={missingModels.length>0||undefined}><summary title="Choose compatible files from the workflow’s model family"><span>Models <small>{modelInputs.length}</small></span><Icon name="keyNext" size={14}/></summary>
+      {modelInputs.map(([k,i])=>{const value=String(vals[k]??i.default??''),installed=i.choices?.includes(value);return <label key={k} title={`${i.title} · ${i.field.replace(/_/g,' ')}`}>{i.title}<select aria-label={`Model: ${i.title} · ${i.field}`} value={value} disabled={loading||running} onChange={e=>setVal(k,e.target.value)}>
+        {!installed&&<option value={value}>{value||'Choose a model'} · unavailable</option>}{i.choices?.map(v=><option key={v} value={v}>{v}</option>)}
+      </select>{!i.choices?.length&&<small>No model files reported by this loader.</small>}</label>;})}
+      <div className="wf-model-actions"><button className="ghost" disabled={loading} onClick={()=>void refresh(true)}><Icon name="redraw" size={13}/>{loading?'Checking…':'Refresh models'}</button><button className="link" onClick={()=>openSetup('models')}>Download help</button></div>
+    </details>}
+    {wf&&mapping&&<><Mapping key={wf.id} wf={wf} onSave={patch=>void updateWorkflow(wf.id,patch).then(()=>{setMapping(false);return refresh();}).catch(fail)}/>
       <button className="danger" onClick={()=>{if(confirm(`Remove ${wf.name}?`))void deleteWorkflow(wf.id).then(()=>refresh()).catch(fail);}}>Remove workflow</button></>}
     {wf&&!mapping&&<>
       {mediaInputs.length>0&&<div className="wf-references">{mediaInputs.map(([k,inp])=>{const value=sourceId(k,inp),a=assetOf(project,value===LAYER?layer?.assetId||'':value),special=options(k,inp).find(c=>c.id===value),label=inp.title.split(/[·(]/)[0].trim();

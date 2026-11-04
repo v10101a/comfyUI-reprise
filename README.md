@@ -70,6 +70,8 @@ Reprise was previously called Typeset. The `/typeset/` mount, `typeset_nodes` pa
 
 Requirements: Python 3.12, Node/npm, ffmpeg/ffprobe and ComfyUI (the commands below assume `~/ComfyUI`).
 
+Use your existing ComfyUI installation and model folders. You do not need another copy of ComfyUI or all the models used in the demos. Replace `~/ComfyUI` and its Python path below with those of your installation (Desktop and portable installs can use different locations). The shell commands below are for macOS/Linux.
+
 ```bash
 python3.12 -m venv server/.venv
 server/.venv/bin/python -m pip install -r server/requirements.txt
@@ -83,6 +85,8 @@ ln -s "$PWD/custom_nodes_dev/typeset_nodes" ~/ComfyUI/custom_nodes/typeset_nodes
 
 **Inside ComfyUI:** restart ComfyUI, then open `http://127.0.0.1:8188/typeset/`. The built studio is served by the node pack. Rebuild `apps/web` after changing the renderer. Graph-based Chromium rendering needs Playwright in the ComfyUI environment or the repo's `server/.venv`.
 
+The mounted app also needs the server dependencies in **ComfyUI's Python environment**. Install `server/requirements.txt` there if they are missing; installing them only into `server/.venv` supports the standalone app. Keep the full Reprise checkout beside its node pack so the mounted studio can find `server/` and `apps/web/dist`. ffmpeg/ffprobe are discovered on PATH; `FFMPEG` and `FFPROBE` can override their executable paths.
+
 **Standalone development:**
 
 ```bash
@@ -91,6 +95,24 @@ scripts/dev.sh          # API on :8787; prints the web URL (the studio alone is 
 ```
 
 Open the printed web URL for the demos, or `/#/studio` for the editor. The offline sample needs no model download; analysis and project exports need the backend. Use one host at a time for a shared project store.
+
+To use an **already-running ComfyUI without a proxy**, launch the standalone app with:
+
+```bash
+TYPESET_COMFY_MODE=direct TYPESET_COMFY_DIR="$HOME/ComfyUI" TYPESET_COMFYUI_URL=http://127.0.0.1:8188 scripts/dev.sh
+```
+
+Set the folder and address to your existing installation. The public website's **Use my ComfyUI** button opens the mounted `/typeset/` app on the address you enter; it does not upload projects to this website or turn a bare ComfyUI server into a Reprise backend.
+
+### Choose your own models or Cloud
+
+In a scene, import a working ComfyUI **API-format** workflow, or choose **Add model workflow** for an image, animation or singing preset. **Run on** starts with **My ComfyUI**. Its **Models** dropdowns read the connected host's loader choices, including configured extra model folders. Pick compatible files from the workflow's model family; changing architectures generally needs a different workflow. Your choices are saved with the scene/take recipe and recorded in generated assets, without changing the imported graph's defaults.
+
+Missing files are shown before a job can start. **Download help** links to model repositories and ComfyUI's template instructions. Supported templates in Comfy Desktop can install missing files into the correct folders; other installations may require manual placement. Return to Reprise and choose **Refresh models** after downloading. Preset JSON files do not download weights or install custom nodes.
+
+**Comfy Cloud is optional:** create your own key at [platform.comfy.org](https://platform.comfy.org/), put `TYPESET_CLOUD_API_KEY=your-key` in the ignored `.env.comfy` file at the repo root, and restart `scripts/dev.sh`. The workflow's **Run on** menu then includes **Comfy Cloud**. Other launch methods can set the same environment variable before starting the process. The key stays in your own backend. Cloud needs a paid subscription, available credits and supported nodes/models; [Comfy's API guide](https://docs.comfy.org/development/deploy/cloud) describes the requirements.
+
+Local workflows using installed model weights do not require Cloud or Router credits. Workflows that contain paid API nodes still require their provider's credits. The public static site includes an editable sample; your own uploads, generation and video export run through your Reprise installation.
 
 The [node-pack reference](custom_nodes_dev/typeset_nodes/README.md) lists analysis dependencies. [Server configuration](server/app/config.py) defines environment variables and defaults; [`scripts/comfy-remote.sh`](scripts/comfy-remote.sh) manages the optional remote ComfyUI proxy. Additional setup and research notes in the root `docs/` and `research/` folders are local-only and are not included in a fresh checkout.
 

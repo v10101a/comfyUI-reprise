@@ -120,3 +120,31 @@
 
 .scene-workspace .panel-sec:has(>.scene-heading){padding:12px 16px}
 .scene-workspace .scene-heading:last-child{margin-bottom:0}
+
+/* Compute settings use the inspector's field rows and disclosure sections. */
+.wf-compute{display:flex;gap:4px;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--ln);font-size:11px;color:var(--mut)}
+.wf-compute label{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.studio .wf-compute select{min-width:0;flex:1;font-size:12px}
+.studio .wf-setup{padding:0 6px;font-size:11px;color:var(--mut)}
+.studio .wf-add{align-self:flex-start;font-size:11px;height:28px;padding:0 2px}
+.wf-models{border-top:1px solid var(--ln);border-bottom:1px solid var(--ln);padding:4px 0;font-size:11px;color:var(--mut)}
+.wf-models>summary{display:flex;align-items:center;justify-content:space-between;min-height:28px;list-style:none;cursor:pointer;font-size:12px;font-weight:500;color:var(--tx)}
+.wf-models>summary::-webkit-details-marker{display:none}
+.wf-models>summary>span{display:flex;gap:8px;align-items:baseline}
+.wf-models>summary small{font:10px var(--mono);color:var(--mut)}
+.wf-models[open]>summary>svg{transform:rotate(90deg)}
+.wf-models label{display:grid;gap:6px;margin:12px 0}
+.studio .wf-models select{max-width:100%;min-width:0;font-size:11px}
+.wf-models label>small{font-size:10px;color:var(--mut)}
+.wf-model-actions{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:4px}
+.studio .wf-model-actions button{font-size:11px;padding:0 4px}
+.wf-presets{padding:0 0 8px;border-bottom:1px solid var(--ln);font-size:11px}
+.wf-presets article{padding:12px 0;border-top:1px solid var(--ln)}
+.wf-preset-title{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.wf-preset-title b{font-size:12px;font-weight:500;color:var(--tx)}
+.studio .wf-preset-title button{height:28px;font-size:11px;padding:0 10px}
+.wf-presets small{display:block;font-size:11px;color:var(--mut);margin-top:2px}
+.wf-preset-links{display:flex;align-items:center;gap:12px;margin-top:8px}
+.wf-presets a{color:var(--acc);text-underline-offset:2px}
+.wf-presets a:hover{text-decoration:underline}
+.wf-presets p{margin:4px 0;color:var(--mut);font-size:10px}

@@ -162,7 +162,7 @@ app.registerExtension({
       id: "typeset",
       icon: "pi pi-align-left",
       title: "Reprise",
-      tooltip: "Reprise — music and moving images",
+      tooltip: "Reprise — music video and motion graphics",
       type: "custom",
       render: root => { rerender = () => renderSide(root); renderSide(root); },
     });
