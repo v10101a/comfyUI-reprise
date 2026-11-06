@@ -19,6 +19,11 @@ done
 export TYPESET_WEB_URL="http://127.0.0.1:$web_port"
 export TYPESET_CORS_ORIGINS="http://127.0.0.1:$web_port,http://localhost:$web_port"
 export COMFY_BASE_URL="${COMFY_BASE_URL:-http://127.0.0.1:8189}"
+# Analysis (words, matte) runs on the local ComfyUI; bring it up with the editor unless told not to (TYPESET_NO_COMFY=1,
+# or a non-local COMFY_BASE_URL).
+if [ -z "${TYPESET_NO_COMFY:-}" ] && [ "$COMFY_BASE_URL" = "http://127.0.0.1:8189" ]; then
+  scripts/comfy.sh start || echo 'ComfyUI did not start; words and matte jobs will be refused until it is up.' >&2
+fi
 api_env=()
 if [ -f .env.comfy ]; then api_env=(--env-file .env.comfy); fi
 server/.venv/bin/python -m uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8787 "${api_env[@]}" &

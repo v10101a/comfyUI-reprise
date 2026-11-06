@@ -18,8 +18,6 @@ export function PipelinePanel({project,jobs,occKind,hasBeats,beatsNote,comparing
   const statuses=STEPS.map(s=>({def:s,st:stepStatus(s,project,jobs,{occKind,hasBeats,beatsNote,comparing,matteLayerId})}));
   const sources=layersOf(project).filter(l=>l.kind==='media');
   const hasSource=matteLayerId?sources.some(l=>l.id===matteLayerId):!!project.media.video;
-  const activeSource=project.analysis.matteSource?.layerId;
-  const activeName=activeSource?sources.find(l=>l.id===activeSource)?.name||'Visual layer':'Original footage';
   const comfyDone=statuses.filter(x=>x.def.engine==='comfy'&&x.st.state==='done').length;
   const comfySecs=statuses.filter(x=>x.def.engine==='comfy'&&x.st.state==='done').reduce((n,x)=>n+(x.st.seconds||0),0);
   const runnable:Partial<Record<StepId,string>>={words:'listen',matte:'cut out the subject',occupancy:'map the space',beats:'find the beat',audio:'feel the low end',voice:'follow the singer'};
@@ -33,7 +31,6 @@ export function PipelinePanel({project,jobs,occKind,hasBeats,beatsNote,comparing
       <option value="">{project.media.video?'Original footage':'Choose a visual layer'}</option>
       {sources.map(l=><option key={l.id} value={l.id}>{l.name||project.assets?.find(a=>a.id===(l.kind==='media'?l.assetId:''))?.name||'Visual layer'}</option>)}
     </select></label><small>Extract this layer’s person for Behind text and subject masks.</small>
-    {project.analysis.matte&&(activeSource||'')!==matteLayerId&&<small>Current scene matte: {activeName}. Run Subject matte to replace it.</small>}
     {project.analysis.matteSource&&!sources.some(l=>l.id===project.analysis.matteSource?.layerId)&&<small>The previous matte’s layer was removed. Choose a source and run again.</small>}</div>
     <ol className="steps">
       {statuses.map(({def,st})=><li key={def.id} className={`step st-${st.state} eng-${def.engine}`} title={[def.model,`${st.path}${st.engineNote?` · ${st.engineNote}`:''}`,def.nodes.join(' → ')].filter(Boolean).join('\n')}>

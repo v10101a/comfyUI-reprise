@@ -2,7 +2,7 @@
 // Job records come from GET /api/jobs?projectId=… (kind, status, message, result.elapsedSeconds, createdAt).
 import type {Project,Job} from '../types';
 import {at} from '../base';
-import {matteLayer} from '../matte';
+import {matteLayer,matteFor,matteEntries,matteValid} from '../matte';
 
 export type Engine = 'comfy'|'cpu'|'remote'|'browser';
 export type StepId = 'words'|'matte'|'occupancy'|'surface'|'reframe'|'beats'|'flow'|'audio'|'voice'|'generate';
@@ -77,12 +77,14 @@ export function stepStatus(step:StepDef,p:Project,jobs:Map<string,JobRecord>,ctx
         return {...base,state:r.engine==='whisper'&&p.media.lyrics?'fallback':'done',path:'ComfyUI',engineNote:note,count:p.words.length};}
       if(job?.status==='failed')return {...base,state:'failed',path:'ComfyUI',engineNote:'failed'};
       return p.words.length?{...base,state:'fallback',path:'authored',engineNote:'words typed by hand',count:p.words.length}:{...base,state:'idle',path:'—',engineNote:'not run'};
-    case 'matte':
-      if(ctx.matteLayerId!==undefined&&(p.analysis.matteSource?.layerId||'')!==ctx.matteLayerId)return {...base,state:job?.status==='failed'?'failed':'idle',path:'—',engineNote:'not run for this layer'};
-      if(p.analysis.matteSource&&!matteLayer(p))return {...base,state:'idle',path:'—',engineNote:'source take or range changed · run again'};
-      if(p.analysis.matte)return {...base,state:'done',path:'ComfyUI',engineNote:p.analysis.tracks?'cutout + person tracks':'cutout'};
+    case 'matte':{
+      // One cutout per clip: the status is the chosen clip's run (every clip keeps its own).
+      const e=ctx.matteLayerId!==undefined?matteFor(p,ctx.matteLayerId):matteEntries(p)[0];
+      if(ctx.matteLayerId!==undefined&&!e)return {...base,state:job?.status==='failed'?'failed':'idle',path:'—',engineNote:'not run for this clip'};
+      if(e&&!matteValid(p,e))return {...base,state:'idle',path:'—',engineNote:'source take or range changed · run again'};
+      if(e)return {...base,state:'done',path:'ComfyUI',engineNote:e.tracks?'cutout + person tracks':'cutout'};
       if(job?.status==='failed')return {...base,state:'failed',path:'ComfyUI',engineNote:'failed'};
-      return {...base,state:'idle',path:'—',engineNote:'not run · behind needs it'};
+      return {...base,state:'idle',path:'—',engineNote:'not run · behind needs it'};}
     case 'occupancy':
       if(p.analysis.matteSource&&!matteLayer(p))return {...base,state:'idle',path:'—',engineNote:'run matte for the current take first'};
       if(p.analysis.occupancy)return via({...base,state:'done',path:'ComfyUI',engineNote:'from the matte'});

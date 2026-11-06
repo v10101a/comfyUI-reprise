@@ -54,7 +54,7 @@ export function Timeline(props:{
   /** Track dot: hide / show every line of a track on stage. */
   onSetHidden?:(lineIds:string[],hidden:boolean)=>void;
   /** What the stage can do for Behind (subject matte) and HUD (person track); flagged per line when missing. */
-  subject?:{matte:'ok'|'none'|'missing'|'stale';person:boolean;personLines?:string[]};
+  subject?:{matte:'ok'|'none'|'missing'|'stale';person:boolean;personLines?:string[];matteLines?:string[]};
   /** A drag gesture starts: the next edit opens one undo step. */
   onCheckpoint?:()=>void;
   /** Drop an audio file on the waveform to replace the song; realign (set once replaced) re-runs words + beats. */
@@ -343,7 +343,7 @@ export function Timeline(props:{
               onPointerDown={e=>{if(e.button===2)return;if(e.shiftKey||e.metaKey||e.ctrlKey){e.stopPropagation();props.onToggleLine?.(l.id);return;}props.onSelect(sel===l.id?props.selectedWord:l.words[0].id,false,'line');begin(e,{kind:'line',lineId:l.id});}} onPointerMove={move} onPointerUp={end}
               onContextMenu={e=>openMenu(e,tk.group,l.id)}>
               {narrow&&<span className="tl-region-label">{l.words.map(w=>w.text).join(' ')}</span>}
-              {l.role==='behind'&&props.subject&&props.subject.matte!=='ok'&&<i className="tl-warn" onPointerDown={e=>e.stopPropagation()} title={MATTE_TITLE[props.subject.matte]}><Icon name="noMatte" size={11}/></i>}
+              {l.role==='behind'&&props.subject&&!(props.subject.matteLines?.includes(l.id)??props.subject.matte==='ok')&&<i className="tl-warn" onPointerDown={e=>e.stopPropagation()} title={MATTE_TITLE[l.id===props.selectedLine||!props.subject.matteLines?props.subject.matte:'none']}><Icon name="noMatte" size={11}/></i>}
               {(l.role==='hud'||l.role==='anchor')&&props.subject&&!(props.subject.personLines?.includes(l.id)??props.subject.person)&&<i className="tl-warn" onPointerDown={e=>e.stopPropagation()} title="No head track for this clip · select it and use Track head"><Icon name="noPerson" size={11}/></i>}
               <button className={`eye ${l.hidden?'off':''}`} aria-label={l.hidden?'Show line':'Hide line'} title={l.hidden?'show':'hide (H)'} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();props.onToggleHidden(l.id);}}>{l.hidden?'○':'●'}</button>
               {(['start','end'] as const).map(edge=><div key={edge} className={`tl-region-${edge} tl-trim-${edge}`} title={`Trim phrase ${edge}`}
@@ -412,7 +412,7 @@ export function Timeline(props:{
   </section>;
 }
 
-const MATTE_TITLE={none:'No subject matte: Behind cannot cut out the person · run Subject matte',missing:'Subject matte did not load: Behind is not cut out · run Subject matte',
+const MATTE_TITLE={none:'No subject matte for this clip: Behind cannot cut out the person · run Subject matte',missing:'Subject matte did not load: Behind is not cut out · run Subject matte',
   stale:'Subject matte does not match the footage · run Subject matte again',ok:''};
 
 /** Inline text field over a word chip: ↵ or blur commits (spaces make several words), esc cancels. */

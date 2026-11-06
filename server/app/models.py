@@ -102,6 +102,7 @@ class Analysis(Base):
     words: Optional[str] = None
     matte: Optional[str] = None
     matteSource: Optional[dict] = None  # layer/take + source-local time range; absent = legacy footage
+    mattes: dict[str, dict] = Field(default_factory=dict)  # layer id -> {matte, matteSource, tracks, occupancy}: one cutout per clip
     tracks: Optional[str] = None
     headTracks: dict[str, str] = Field(default_factory=dict)  # media source path -> source-time head tracks JSON
     depth: Optional[str] = None

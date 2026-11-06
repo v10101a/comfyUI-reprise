@@ -9,7 +9,7 @@ import {cropAt,toOut,drawWarped,drawMapped,quadIsConvex,quadSize,squareToQuad,ap
 import {FONTS,lookOf,lineLookOf,lookIsFrozen,gradeOf,wordIsShown,lineIsHook,heroWordId,applyCase,isSubtitleLine,lineIsFilled,fillOf,rasterOf,noteBlocksOn,RASTER_DEFAULTS,colorParts} from './looks';
 import {GlyphFill,type FillLine} from './glyph';
 import {assetOf,layerSourceTime,layerStateAt,placeLayer,BLEND_OP,image} from './layers';
-import {matteLayer,matteTime,mattePoint,matteSignature,matteTracks} from './matte';
+import {matteLayer,matteTime,mattePoint,matteSignature,matteTracks,matteEntries,matteFor,activeMatteAt,withMatte,topMediaAt,type MatteEntry} from './matte';
 import {headSourceAt,sampleHead,headPoint,headSpotPoint} from './heads';
 import {hudPointer,relativeHeadSpot} from './hud';
 import type {MediaLayer,HeadSpot} from './types';
@@ -873,6 +873,7 @@ const TICKER_GAP_WORD=.9,TICKER_GAP_LINE=1.2;
  *  frame (the canvas keeps the previous one), so a newer request never waits behind a slow paint.
  *  Preview-only: cacheMedia reuses the graded footage/cutout; cacheLayouts retains bounded per-look placement plans;
  *  previewScale scales pixel-sized details when the caller supplies a reduced-size project. */
+type MatteMedia={entry:MatteEntry;el?:HTMLVideoElement;proxy?:HTMLVideoElement;seek?:HTMLVideoElement;tracks?:Tracks;occupancy?:Occupancy};
 export type RenderOpts={heavyOptics?:boolean;proxy?:boolean;full?:boolean;cacheMedia?:boolean;cacheLayouts?:boolean;previewScale?:number;stale?:()=>boolean};
 export class StageRenderer {
   project:Project;server:string;bg?:HTMLVideoElement;matte?:HTMLVideoElement;bgProxy?:HTMLVideoElement;matteProxy?:HTMLVideoElement;bgSeek?:HTMLVideoElement;matteSeek?:HTMLVideoElement;tracks?:Tracks;shots=new Map<string,HTMLVideoElement>();
@@ -900,6 +901,22 @@ export class StageRenderer {
   private layoutSource?:OccupancySource;
   private plan?:{sig:string;map:Map<string,LinePlacement>;source:OccupancySource};private fixedBoxes:Placed[]=[];private occSource?:{key:object;crop?:CropData;fps:number;portrait:boolean;src:OccupancySource};
   private sourceTracks?:Tracks;private matteSig='';
+  /** Every cutout the project holds, by clip (layers) or '' (original footage); selectMatte() makes one current per frame. */
+  private mattes=new Map<string,MatteMedia>();private activeId?:string;private mp_?:{base:Project;id:string|undefined;p:Project};private fallbackOccupancy?:Occupancy;
+  private entryProjects=new WeakMap<Project,Map<string,Project>>();
+  /** The project with the current frame's cutout in the legacy analysis slots: everything that draws or maps the matte reads this. */
+  private mp():Project{const base=this.project,id=this.activeId,c=this.mp_;if(c&&c.base===base&&c.id===id)return c.p;
+    const p=withMatte(base,id===undefined?undefined:this.mattes.get(id)?.entry);this.mp_={base,id,p};return p;}
+  private entryProject(p:Project,e:MatteEntry):Project{let m=this.entryProjects.get(p);if(!m){m=new Map();this.entryProjects.set(p,m);}let q=m.get(e.id);if(!q){q=withMatte(p,e);m.set(e.id,q);}return q;}
+  /** Make the cutout for time t current (its video, tracks and occupancy); a cut to another clip swaps them. */
+  private selectMatte(t:number){const e=activeMatteAt(this.project,t);const id=e?.id;const m=id===undefined?undefined:this.mattes.get(id);
+    if(id===this.activeId&&this.matte===m?.el)return;this.activeId=id;
+    this.matte=m?.el;this.matteProxy=m?.proxy;this.matteSeek=m?.seek;this.sourceTracks=m?.tracks;this.occupancy=m?.occupancy??(id===undefined?this.fallbackOccupancy:undefined);this.matteSig='';this.syncMatte();}
+  /** Studio: whether Behind is cut out at t: ok · none (the clip on screen has no cutout) · missing (did not load) · stale (take or trim changed). */
+  subjectAt(t:number):'ok'|'none'|'missing'|'stale'{const p=this.project;const e=activeMatteAt(p,t);
+    if(e){const v=this.mattes.get(e.id)?.el;if(!v)return 'missing';const b=this.bg;
+      if(!e.source&&b&&(Math.abs((v.duration||0)-(b.duration||0))>Math.max(.3,2/p.fps)||!!v.videoWidth&&!!b.videoWidth&&Math.abs(v.videoWidth/v.videoHeight-b.videoWidth/b.videoHeight)>.02))return 'stale';return 'ok';}
+    const top=topMediaAt(p,t);return top&&matteFor(p,top.id)?'stale':'none';}
   headTracks=new Map<string,Tracks>();
   /** Current visible footage's head, in composition coordinates. Source data survives trims, splits and moves. */
   head(t:number,id='person0',p=this.project,spot?:HeadSpot):{point:TrackPoint;state:HeadState}{
@@ -907,9 +924,9 @@ export class StageRenderer {
     const raw=this.headTracks.get(source.path);let pt=sampleHead(raw,source.time,id);
     if(!pt&&!raw){
       // Older projects may still use a subject matte's track, but only on the shot it belongs to.
-      const s=p.analysis.matteSource;
-      if(s&&source.layer?.id===s.layerId){const at=matteTime(p,t);if(at!=null)pt=sampleHead(this.sourceTracks,at,id);}
-      else if(!s&&!source.layer&&p.media.video?.path===source.path)pt=sampleHead(this.sourceTracks,source.time,id);
+      const m=this.mattes.get(source.layer?source.layer.id:'');
+      if(m?.tracks&&m.entry.source&&source.layer){const at=matteTime(this.entryProject(p,m.entry),t);if(at!=null)pt=sampleHead(m.tracks,at,id);}
+      else if(m?.tracks&&!m.entry.source&&!source.layer&&p.media.video?.path===source.path)pt=sampleHead(m.tracks,source.time,id);
     }
     if(!pt)return {point:VIRTUAL_HEAD,state:'none'};
     pt=headSpotPoint(pt,spot);
@@ -934,8 +951,8 @@ export class StageRenderer {
       if(origin.x+exR>x0&&origin.x+exL<x1&&origin.y+bot>y0-cl&&origin.y-top<y1+cl&&y1+top+cl<1-bot-smy)origin={x:origin.x,y:y1+top+cl};}
     return origin;
   }
-  private syncMatte(){const sig=matteSignature(this.project);if(sig===this.matteSig)return;this.matteSig=sig;
-    this.tracks=matteTracks(this.project,this.sourceTracks);this.occSource=undefined;}
+  private syncMatte(){const p=this.mp();const sig=matteSignature(p);if(sig===this.matteSig)return;this.matteSig=sig;
+    this.tracks=matteTracks(p,this.sourceTracks);this.occSource=undefined;}
   private unitCache?:{sig:string;units:Line[]};private buffers:HTMLCanvasElement[]=[];
   constructor(project:Project,server=''){this.project=project;this.server=server;}
   /** Studio only: why the matte did not load (the stage still draws, Behind uncut). */
@@ -943,12 +960,16 @@ export class StageRenderer {
   async load(layer:Layer='composite'){
     const p=this.project;
     await loadFonts();
-    if(p.analysis.tracks)this.tracks=await fetch(assetUrl(p,p.analysis.tracks,this.server)).then(r=>{if(!r.ok)throw new Error('Cannot load tracking data');return r.json();});
-    this.sourceTracks=this.tracks;this.syncMatte();
-    await Promise.all(Object.entries(p.analysis.headTracks||{}).map(async([source,path])=>{const tr=await json<Tracks>(assetUrl(p,path,this.server));if(tr)this.headTracks.set(source,tr);}));
+    // One cutout per clip: each run's tracks and occupancy, then (below) its videos. The frame's clip picks which is current.
+    this.mattes.clear();this.activeId=undefined;this.mp_=undefined;this.matte=this.matteProxy=this.matteSeek=this.tracks=this.sourceTracks=this.occupancy=undefined;this.matteSig='';
     // Occupancy: server file when present; else a local fixture (until the server writes it); else tracks fallback.
-    this.occupancy=p.analysis.occupancy?await json<Occupancy>(assetUrl(p,p.analysis.occupancy,this.server)):undefined;
-    if(!this.occupancy&&p.id!=='sample')this.occupancy=await json<Occupancy>(`/fixtures/${encodeURIComponent(p.frame?.source?.projectId||p.id)}/occupancy.json`);
+    const fixture=()=>p.id!=='sample'?json<Occupancy>(`/fixtures/${encodeURIComponent(p.frame?.source?.projectId||p.id)}/occupancy.json`):Promise.resolve(undefined);
+    for(const entry of matteEntries(p)){const m:MatteMedia={entry};this.mattes.set(entry.id,m);
+      if(entry.tracks)m.tracks=await fetch(assetUrl(p,entry.tracks,this.server)).then(r=>{if(!r.ok)throw new Error('Cannot load tracking data');return r.json();});
+      if(entry.occupancy)m.occupancy=await json<Occupancy>(assetUrl(p,entry.occupancy,this.server));
+      if(!m.occupancy&&!entry.source)m.occupancy=await fixture();}
+    if(!this.mattes.size)this.fallbackOccupancy=await fixture();
+    await Promise.all(Object.entries(p.analysis.headTracks||{}).map(async([source,path])=>{const tr=await json<Tracks>(assetUrl(p,path,this.server));if(tr)this.headTracks.set(source,tr);}));
     if(p.frame?.crop&&!this.crop){this.crop=await json<CropData>(assetUrl(p,p.frame.crop,this.server));
       if(this.crop&&p.timing?.sceneOffset)this.crop={...this.crop,frames:this.crop.frames.map(f=>({...f,f:f.f+Math.round(p.timing!.sceneOffset!*this.crop!.fps)}))};}
     await this.loadFields();
@@ -957,13 +978,14 @@ export class StageRenderer {
     if(layer!=='composite'&&!this.hasFill())return;
     if(p.media.video)this.bg=await video(assetUrl(p,p.media.video.path,this.server));
     // Studio (draftMedia): a matte that will not load leaves Behind uncut (the studio flags it) instead of failing the stage.
-    if(p.analysis.matte)this.matte=await video(assetUrl(p,`${p.analysis.matte.replace(/\/$/,'')}/fg.webm`,this.server)).catch(e=>{if(!this.draftMedia)throw e;this.matteError=String(e);return undefined;});
-    if(this.draftMedia){const none=()=>undefined;const md=p.analysis.matte?.replace(/\/$/,'');[this.bgProxy,this.matteProxy,this.bgSeek,this.matteSeek]=await Promise.all([
-      p.media.video?video(assetUrl(p,proxyPath(p.media.video.path),this.server)).catch(none):undefined,
-      p.analysis.matte?video(assetUrl(p,`${p.analysis.matte.replace(/\/$/,'')}/fg_proxy.webm`,this.server)).catch(none):undefined,
-      p.media.video?video(assetUrl(p,seekPath(p.media.video.path),this.server)).catch(none):undefined,
-      md?video(assetUrl(p,`${md}/fg_seek.webm`,this.server)).catch(none):undefined]);}
+    const none=()=>undefined;
+    for(const m of this.mattes.values()){const dir=m.entry.matte.replace(/\/$/,'');
+      m.el=await video(assetUrl(p,`${dir}/fg.webm`,this.server)).catch(e=>{if(!this.draftMedia)throw e;this.matteError=String(e);return undefined;});
+      if(this.draftMedia)[m.proxy,m.seek]=await Promise.all([video(assetUrl(p,`${dir}/fg_proxy.webm`,this.server)).catch(none),video(assetUrl(p,`${dir}/fg_seek.webm`,this.server)).catch(none)]);}
+    if(this.draftMedia&&p.media.video)[this.bgProxy,this.bgSeek]=await Promise.all([
+      video(assetUrl(p,proxyPath(p.media.video.path),this.server)).catch(none),video(assetUrl(p,seekPath(p.media.video.path),this.server)).catch(none)]);
     await Promise.all(p.shots.filter(s=>s.status==='done'&&s.video).map(async s=>this.shots.set(s.id,await video(assetUrl(p,s.video!,this.server)))));
+    this.selectMatte(0);
   }
   /** Field data (motion, voice), loaded when the analysis exists. */
   flow?:FlowField;voice?:SongField;audio?:SongField;
@@ -982,12 +1004,12 @@ export class StageRenderer {
       this.surfaceTracks.set(`${s.id}:${s.track}`,raw&&off?{...raw,frames:raw.frames.map(f=>({...f,f:f.f+Math.round(off*raw.fps)}))}:raw||null);
     }));
   }
-  dispose(){for(const v of [this.bg,this.matte,this.bgProxy,this.matteProxy,this.bgSeek,this.matteSeek,...this.shots.values()])if(v){v.pause();v.removeAttribute('src');v.load();}
+  dispose(){for(const v of [this.bg,this.bgProxy,this.bgSeek,...[...this.mattes.values()].flatMap(m=>[m.el,m.proxy,m.seek]),...this.shots.values()])if(v){v.pause();v.removeAttribute('src');v.load();}
     for(const m of this.layerMedia.values())void m.then(e=>{if(e instanceof HTMLVideoElement){e.pause();e.removeAttribute('src');e.load();}}).catch(()=>{});this.layerMedia.clear();
     for(const entry of this.mediaFrames)if(entry)entry.canvas.width=entry.canvas.height=0;this.mediaFrames=[];this.layoutPlans.clear();}
   occ(){
     this.syncMatte();
-    const key=this.occupancy||this.tracks||this;const p=this.project;
+    const key=this.occupancy||this.tracks||this;const p=this.mp();
     const portrait=p.height>p.width;
     if(!this.occSource||this.occSource.key!==key||this.occSource.crop!==this.crop||this.occSource.fps!==p.fps||this.occSource.portrait!==portrait){
       const l=matteLayer(p),bound=!!p.analysis.matteSource;
@@ -1010,9 +1032,9 @@ export class StageRenderer {
   timed():Project{return withLead(this.project);}
   units(ctx:CanvasRenderingContext2D):Line[]{
     const p=this.timed();const look=this.look();
-    const sig=JSON.stringify([p.width,p.height,p.style,p.words,p.look,p.lineMeta,!!p.analysis.matte]);
+    const hasMatte=matteEntries(p).length>0;const sig=JSON.stringify([p.width,p.height,p.style,p.words,p.look,p.lineMeta,hasMatte]);
     if(this.unitCache?.sig===sig)return this.unitCache.units;
-    const units=look?lookUnits(ctx,p,look,!!p.analysis.matte):lines(ctx,p);
+    const units=look?lookUnits(ctx,p,look,hasMatte):lines(ctx,p);
     for(const u of units){if(u.sub)continue;const look=lineLookOf(p,u.lineId);const m=p.lineMeta?.[u.lineId];const ai=m?.animIn??look?.animIn,ao=m?.animOut??look?.animOut;
       if(ai!=null)u.ain=Math.max(0,ai);if(ao!=null)u.aout=Math.max(0,ao);}
     this.unitCache={sig,units};return units;
@@ -1203,7 +1225,7 @@ export class StageRenderer {
   }
   /** A media frame through the crop, scaled to w×h. */
   private drawMediaTo(g:CanvasRenderingContext2D,v:HTMLVideoElement,frame:number,w:number,h:number){
-    if(v===this.matte&&this.project.analysis.matteSource){g.save();g.scale(w/this.project.width,h/this.project.height);this.drawMedia(g,v,frame);g.restore();return;}
+    if(v===this.matte&&this.mp().analysis.matteSource){g.save();g.scale(w/this.project.width,h/this.project.height);this.drawMedia(g,v,frame);g.restore();return;}
     const c=cropAt(this.crop,frame);
     if(c){const vw=v.videoWidth,vh=v.videoHeight;g.drawImage(v,c.x*vw,c.y*vh,c.w*vw,c.h*vh,0,0,w,h);}else g.drawImage(v,0,0,w,h);
   }
@@ -1318,7 +1340,7 @@ export class StageRenderer {
   /** Neon relights the subject: a coloured rim on the matte edges that face the sign (matte minus itself shifted toward
    *  the light) and a soft colour cast, both scaled by the sign's power and its distance to the subject. */
   private relight(ctx:CanvasRenderingContext2D,frame:number,amount:number){
-    const l=this.light;if(!l||!this.matte)return;const p=this.project;
+    const l=this.light;if(!l||!this.matte)return;const p=this.mp();
     const M=this.buffer(23);const mg=M.getContext('2d')!;this.drawMedia(mg,this.matte,frame);
     const a=anchorAt(this.tracks,'person0',frame);const [sx,sy]=a?(p.analysis.matteSource?[a.cx,a.cy]:this.point(frame,a.cx,a.cy)):[.5,.5];
     let vx=(l.x-sx)*p.width,vy=(l.y-sy)*p.height;const n=Math.hypot(vx,vy)||1;const dist=n/Math.hypot(p.width,p.height);vx/=n;vy/=n;
@@ -1484,7 +1506,7 @@ export class StageRenderer {
   /** Draw a video frame (through the crop) with the project's grade (gradeOf): 'color' tint keeping luminance,
    *  halation, photocopy mono (+ beat flash). The grade is independent of the look. */
   private paintVideo(ctx:CanvasRenderingContext2D,v:HTMLVideoElement,frame:number,graded:boolean,place?:(g:CanvasRenderingContext2D)=>void){
-    const p=this.project;const c=cropAt(this.crop,frame);const gr=graded?this.grade():undefined;const tint=gr?.tint;
+    const p=this.mp();const c=cropAt(this.crop,frame);const gr=graded?this.grade():undefined;const tint=gr?.tint;
     if(v===this.matte&&p.analysis.matteSource){const l=matteLayer(p);if(!l||matteTime(p,frame/p.fps)==null)return;
       place=g=>this.drawMedia(g,v,frame);}
     const draw=place||((g:CanvasRenderingContext2D)=>{if(c){const vw=v.videoWidth,vh=v.videoHeight;g.drawImage(v,c.x*vw,c.y*vh,c.w*vw,c.h*vh,0,0,p.width,p.height);}else g.drawImage(v,0,0,p.width,p.height);});
@@ -1507,7 +1529,7 @@ export class StageRenderer {
    * separates original, proxy, seek-copy and generated-shot decoders; time, size, crop and grade cover all pixels
    * produced by paintVideo. Grain and neon relighting remain in the final composite, after the editable text. */
   private paintMedia(ctx:CanvasRenderingContext2D,v:HTMLVideoElement,frame:number,slot:0|1){
-    if(v===this.matte&&this.project.analysis.matteSource){const l=matteLayer(this.project);if(!l)return;ctx.save();ctx.globalAlpha*=layerStateAt(l,frame/this.project.fps).opacity;this.paintVideo(ctx,v,frame,l.graded!==false);ctx.restore();return;}
+    if(v===this.matte&&this.mp().analysis.matteSource){const l=matteLayer(this.mp());if(!l)return;ctx.save();ctx.globalAlpha*=layerStateAt(l,frame/this.project.fps).opacity;this.paintVideo(ctx,v,frame,l.graded!==false);ctx.restore();return;}
     if(!this.cacheMedia){this.paintVideo(ctx,v,frame,true);return;}
     const p=this.project;
     const key=JSON.stringify([frame,v.currentSrc,v.currentTime,v.videoWidth,v.videoHeight,p.width,p.height,cropAt(this.crop,frame),this.grade(),this.flashNow]);
@@ -1522,7 +1544,7 @@ export class StageRenderer {
   }
   /** A media frame through the crop, ungraded. */
   private drawMedia(g:CanvasRenderingContext2D,v:HTMLVideoElement,frame:number){
-    const p=this.project;const c=cropAt(this.crop,frame);
+    const p=this.mp();const c=cropAt(this.crop,frame);
     if(v===this.matte&&p.analysis.matteSource){const l=matteLayer(p);if(l&&matteTime(p,frame/p.fps)!=null)placeLayer(g,v,v.videoWidth,v.videoHeight,p.width,p.height,layerStateAt(l,frame/p.fps).transform);return;}
     if(c){const vw=v.videoWidth,vh=v.videoHeight;g.drawImage(v,c.x*vw,c.y*vh,c.w*vw,c.h*vh,0,0,p.width,p.height);}else g.drawImage(v,0,0,p.width,p.height);
   }
@@ -1536,7 +1558,7 @@ export class StageRenderer {
     return m;
   }
   private async composeStack(canvas:HTMLCanvasElement,ctx:CanvasRenderingContext2D,t:number,frame:number,fit:()=>void){
-    const p=this.project;const stack=p.layers!.filter(l=>!l.hidden);const mid=.5/p.fps;
+    const p=this.mp();const stack=p.layers!.filter(l=>!l.hidden);const mid=.5/p.fps;
     const bgTime=t-(p.timing?.sceneOffset||0),bgActive=bgTime>=0&&(!p.media.video||bgTime<p.media.video.duration);
     const shot=p.shots.find(s=>s.status==='done'&&s.video&&s.start<=t&&s.end>t);const clip=shot?this.shots.get(shot.id):bgActive?this.bg:undefined;
     const matte=(shot&&!p.analysis.matteSource)||(!bgActive&&!p.analysis.matteSource)||matteTime(p,t)==null?undefined:this.matte;
@@ -1577,6 +1599,7 @@ export class StageRenderer {
    *  switch; proxy seeks the preview proxies when loaded. Defaults = instance state, so export, TypesetRender and capture
    *  are unchanged. Calls on one instance are serialized by the callers (studio loop, thumb loop). */
   async render(canvas:HTMLCanvasElement,frame:number,layer:Layer='composite',opts?:RenderOpts){
+    {const p=this.project;const last=Math.max(0,Math.round(p.duration*p.fps)-1);this.selectMatte(Math.max(0,Math.min(last,frame))/p.fps);}
     const prev=this.heavyOptics,bg=this.bg,matte=this.matte;if(opts?.heavyOptics!==undefined)this.heavyOptics=opts.heavyOptics;
     if(opts?.proxy){if(this.bgProxy)this.bg=this.bgProxy;if(this.matteProxy)this.matte=this.matteProxy;}
     else if(opts?.full){if(this.bgSeek)this.bg=this.bgSeek;if(this.matteSeek)this.matte=this.matteSeek;}
@@ -1588,7 +1611,7 @@ export class StageRenderer {
   }
   private async renderFrame(canvas:HTMLCanvasElement,frame:number,layer:Layer){
     this.syncMatte();
-    const p=this.project;const last=Math.max(0,Math.round(p.duration*p.fps)-1);frame=Math.max(0,Math.min(last,frame));const t=frame/p.fps;
+    const p=this.mp();const last=Math.max(0,Math.round(p.duration*p.fps)-1);frame=Math.max(0,Math.min(last,frame));const t=frame/p.fps;
     await this.loadSurfaceTracks();
     const ctx=canvas.getContext('2d')!;
     const fl=this.grade()?.flash;

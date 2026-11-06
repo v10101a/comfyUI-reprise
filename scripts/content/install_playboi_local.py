@@ -50,7 +50,7 @@ def main():
     plan = []
     for s in shots:
         stills = sorted((d / 'raw' / s['name']).glob('*.png'))
-        if s['name'] in picks: stills = [d / 'raw' / s['name'] / p for p in picks[s['name']]]
+        if s['name'] in picks: stills = [(d / 'raw' / p) if '/' in p else (d / 'raw' / s['name'] / p) for p in picks[s['name']]]
         clips = [(m, sorted((d / 'clips' / m['name']).glob('*.mp4'))) for m in motion['shots'] if m.get('still') == s['name']]
         if not stills: continue
         refs = [(p, upload(p, f"{s['name']} · still {p.stem.split('_')[-1]}", {})) for p in stills]

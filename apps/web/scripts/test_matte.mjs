@@ -38,3 +38,15 @@ test('prepending time delays original footage matte and tracks, leaving source f
   assert.equal(m.matteTime(p,1),undefined);assert.equal(m.matteTime(p,2.5),.5);
   assert.equal(m.matteTracks(p,raw).tracks[0].frames[0].f,48);assert.equal(raw.tracks[0].frames[0].f,0);
 });
+test('per-clip mattes: the cutout follows the clip on top; a clip without a run cuts nothing out',()=>{
+  const p=project();const src=p.analysis.matteSource;
+  p.layers=[{id:'shot',kind:'media',assetId:'a',in:2,out:4,start:1},{id:'top',kind:'media',assetId:'a',in:0,out:1,start:2}];
+  p.analysis={matte:'analysis/matte_top/',matteSource:{...src,layerId:'top',in:0,out:1},
+    mattes:{shot:{matte:'analysis/matte_shot/',matteSource:src},top:{matte:'analysis/matte_top/',matteSource:{...src,layerId:'top',in:0,out:1}}}};
+  assert.equal(m.matteEntries(p).map(e=>e.id).sort().join(),'shot,top');
+  assert.equal(m.activeMatteAt(p,1.5)?.id,'shot');assert.equal(m.activeMatteAt(p,2.5)?.id,'top');assert.equal(m.activeMatteAt(p,.5),undefined);
+  assert.equal(m.matteTime(m.withMatte(p,m.activeMatteAt(p,1.5)),1.5),.5);
+  delete p.analysis.mattes.top;p.analysis.matte=null;p.analysis.matteSource=null;
+  assert.equal(m.activeMatteAt(p,2.5),undefined,'top clip covers the shot and has no run');
+  p.layers[0].assetId='b';assert.equal(m.matteValid(p,m.matteFor(p,'shot')),false);
+});

@@ -41,7 +41,6 @@ import {FootageGrade} from './FootageGrade';
 import {visualLayer} from './takes';
 import './scenes.css';
 import {SidebarResize} from './SidebarResize';
-import {matteLayer} from '../matte';
 import {clipOf,shiftOf,songRef} from '../audioClip';
 import PIECES from '../showcase-pieces.json';
 import './studio.css';
@@ -274,10 +273,10 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
   async function upload(file:File){let p=project!;if(p.id==='sample'){if(!await backendAvailable())return;p=await request<Project>('/api/projects',{method:'POST',body:JSON.stringify({name:file.name.replace(/\.[^.]+$/,'')})});}const form=new FormData();form.append('file',file);form.append('kind',file.type.startsWith('audio/')?'audio':'video');await request(`/api/projects/${p.id}/media`,{method:'POST',body:form});p=await getProject(p.id);changeProject(p);setProjects(items=>[p,...items.filter(item=>item.id!==p.id)]);setNotice('Media ready');}
   /** Re-fetch after any analysis job, before the next PUT (a stale copy would overwrite the job's fields). */
   async function refetch(p:Project){const updated=await getProject(p.id);hist.current={past:[],future:[],last:0};setProject(updated);setDirty(false);setSelected(s=>updated.words.some(w=>w.id===s)?s:'');await refreshJobs(p.id);return updated;}
-  async function jobAction(kind:'words'|'matte'|'inworld'|'export'){
+  async function jobAction(kind:'words'|'matte'|'inworld'|'export',layerId?:string){
     if(!project)return;if(project.id==='sample')throw new Error('The sample is offline. Start a project to run this.');if(kind==='inworld'&&(!current||project.duration<=current.start))throw new Error('Pick a word first');await save(project,true);
     const path=kind==='words'||kind==='matte'?`analyze/${kind}`:kind==='inworld'?'generate/inworld':'export';
-    const body=kind==='words'?{language:'auto'}:kind==='inworld'?inworldBody():kind==='export'?{layer:'composite',formats,scale:exportScale,...await prepareExport(project,'composite',formats,setNotice,exportScale)}:{layerId:matteTarget||null};
+    const body=kind==='words'?{language:'auto'}:kind==='inworld'?inworldBody():kind==='export'?{layer:'composite',formats,scale:exportScale,...await prepareExport(project,'composite',formats,setNotice,exportScale)}:{layerId:(layerId??matteTarget)||null};
     const start=await request<Job>(`/api/projects/${project.id}/${path}`,{method:'POST',body:JSON.stringify(body)});const done=await pollJob(start,trackJob);
     if(kind==='export'){const result=done.result as {files?:Record<string,string>};setExports(Object.values(result?.files||{}));setNotice('Exported');setOutputOpen(true);await refreshJobs();}
     else{await refetch(project);setNotice(`${kind==='inworld'?'Shot':kind==='words'?'Words':'Matte'} done`);}trackJob(done);
@@ -297,7 +296,7 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
     const j=await optionalJob(`/api/projects/${project.id}/analyze/${kind}`,{});if(!j){setNotice(`${kind} unavailable`);return;}
     const done=await pollJob(j,trackJob);trackJob(done);await refetch(project);setNotice(`${kind} done`);
   }
-  function runStep(id:StepId){if(id==='words'||id==='matte')void run(()=>jobAction(id));else if(id==='occupancy'||id==='beats'||id==='flow'||id==='audio'||id==='voice')void run(()=>analysisJob(id));}
+  function runStep(id:StepId,layerId?:string){if(id==='words'||id==='matte')void run(()=>jobAction(id,layerId));else if(id==='occupancy'||id==='beats'||id==='flow'||id==='audio'||id==='voice')void run(()=>analysisJob(id));}
   async function trackHeads(){
     const p=projectRef.current;if(!p||p.id==='sample')return;await save(p,true);
     const start=await request<Job>(`/api/projects/${p.id}/analyze/heads`,{method:'POST',body:'{}'});trackJob(start);
@@ -535,14 +534,16 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
   const matteTarget=useMemo(()=>{if(!project)return '';const media=layersOf(project).filter(l=>l.kind==='media');
     return media.some(l=>l.id===matteChoice)?matteChoice:topMediaAt(project,time)?.id||media[0]?.id||'';},[project,matteChoice,time]);
   const jobMap=useMemo(()=>latestJobs(jobs,matteTarget),[jobs,matteTarget]);
-  // What Behind and HUD can use, as the stage loaded it: the subject matte (none / did not load / does not match the
-  // footage) and a person track. Shown on the lines that need them, with the matte step one click away.
-  const subject=useMemo(()=>{const r=renderer.current;const p=projectRef.current;if(!ready||!r||!p)return undefined;
+  // What Behind and HUD can use, as the stage loaded it: the cutout of the clip on screen at the line's time (none /
+  // did not load / does not match the take) and a person track. Shown on the lines that need them, with the matte step one click away.
+  const lineAt=(l:{start:number;end:number},d:number)=>{const a=Math.max(0,l.start),b=Math.min(d,l.end);return a+Math.min(.05,(b-a)/2);};
+  const subjectLines=useMemo(()=>{const r=renderer.current;const p=projectRef.current;if(!ready||!r||!p)return undefined;
     const personLines=lines.filter(l=>{const a=Math.max(0,l.start),b=Math.min(p.duration,l.end);for(let t=a+Math.min(.05,(b-a)/2);t<b;t+=.25)if(r.head(t,l.words[0].anchor?.trackId||'person0',p).state==='tracked')return true;return false;}).map(l=>l.id);
-    const person=currentLine?personLines.includes(currentLine.id):personLines.length>0;
-    if(!p.analysis.matte)return {matte:'none' as const,person,personLines};const m=r.matte,b=r.bg;if(!m)return {matte:'missing' as const,person,personLines};
-    const stale=p.analysis.matteSource?!matteLayer(p):!!b&&(Math.abs((m.duration||0)-(b.duration||0))>Math.max(.3,2/p.fps)||!!m.videoWidth&&!!b.videoWidth&&Math.abs(m.videoWidth/m.videoHeight-b.videoWidth/b.videoHeight)>.02);
-    return {matte:stale?'stale' as const:'ok' as const,person,personLines};},[ready,mediaSignature,project,currentLine?.id]);// eslint-disable-line react-hooks/exhaustive-deps
+    const matteLines=lines.filter(l=>r.subjectAt(lineAt(l,p.duration))==='ok').map(l=>l.id);
+    return {personLines,matteLines};},[ready,mediaSignature,project]);// eslint-disable-line react-hooks/exhaustive-deps
+  const subject=useMemo(()=>{const r=renderer.current;const p=projectRef.current;if(!subjectLines||!r||!p)return undefined;
+    const {personLines,matteLines}=subjectLines;const at=currentLine?lineAt(currentLine,p.duration):time;
+    return {matte:r.subjectAt(at),person:currentLine?personLines.includes(currentLine.id):personLines.length>0,personLines,matteLines,at};},[subjectLines,currentLine,time]);// eslint-disable-line react-hooks/exhaustive-deps
   const headsRunning=jobMap.get('heads')?.status==='running'||jobMap.get('heads')?.status==='queued';
   const headTime=currentLine&&!(time>=currentLine.start&&time<currentLine.end)?currentLine.start+.05:time;
   const headHere=project&&ready?renderer.current?.head(headTime,'person0',project).state==='tracked':false;
@@ -711,7 +712,7 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
         :current&&currentLine?<LineInspector project={project} line={currentLine} word={current} selected={selected} setSelected={id=>{setSelected(id);}} edit={edit} checkpoint={checkpoint} onBack={()=>{setSelected('');setMulti(null);}} busy={busy}
           startSurface={startSurface} trackSurface={id=>void run(()=>trackSurface(project,id))} generate={()=>void run(()=>jobAction('inworld'))} wordOpen={wordOpen} setWordOpen={setWordOpen}
           box={!playing&&ready?lineBoxes(renderer.current,project,frame).find(x=>x.lineId===currentLine.id&&x.placement!=='surface'):undefined}
-          subject={subject} matteRunning={jobMap.get('matte')?.status==='running'||jobMap.get('matte')?.status==='queued'} runMatte={()=>runStep('matte')} deleteWall={deleteWall} wallKeys={wallKeys} wallRunning={!!wallJob}/>
+          subject={subject} matteRunning={jobs.some(j=>j.kind==='matte'&&(j.status==='running'||j.status==='queued'))} runMatte={()=>runStep('matte',subject?topMediaAt(project,subject.at)?.id:undefined)} deleteWall={deleteWall} wallKeys={wallKeys} wallRunning={!!wallJob}/>
         :null}
         </TextStyle>}
       </aside>

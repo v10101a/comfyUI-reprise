@@ -33,7 +33,7 @@ function inworldBlocker(){
   return inworldCheck??=fetch('/api/health').then(r=>r.ok?r.json():null).then((h:{comfyui?:boolean;remote?:{comfyui?:boolean}}|null)=>
     !h?'Server offline':!h.remote?.comfyui?'Remote GPU not reachable':!h.comfyui?'Local ComfyUI not reachable':'').catch(()=>'Server offline');
 }
-const MATTE_WHY={none:'No subject matte: Behind cannot cut out the person',missing:'Subject matte did not load: Behind is not cut out',stale:'Subject matte does not match the footage'};
+const MATTE_WHY={none:'No subject matte for this clip: Behind cannot cut out the person',missing:'Subject matte did not load: Behind is not cut out',stale:'Subject matte does not match the footage'};
 export const FAMILIES=[...new Set(FONTS.map(f=>f.family))];
 export const BOLD_FAMILIES=['Inter','Space Mono','Big Shoulders Display','Archivo Narrow'];
 const t2=(n:number)=>n.toFixed(2);

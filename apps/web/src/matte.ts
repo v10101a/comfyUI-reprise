@@ -1,5 +1,5 @@
 import type {Project,MediaLayer,Tracks,Point} from './types';
-import {assetOf,layerSourceTime,layerStateAt} from './layers';
+import {assetOf,layerSourceTime,layerStateAt,topMediaAt} from './layers';
 
 /** Never reuse a matte from another take or from outside its extracted range. */
 export function matteLayer(p:Project):MediaLayer|undefined{
@@ -38,3 +38,33 @@ export function matteTracks(p:Project,raw:Tracks|undefined):Tracks|undefined{
     }
     return {...track,frames:mapped};})};
 }
+
+/** One cutout run: a per-clip entry (analysis.mattes) or the legacy single matte (id '' when it is the original footage). */
+export type MatteEntry={id:string;matte:string;source:MatteSource|null;tracks?:string|null;occupancy?:string|null};
+/** Every cutout the project holds; a per-clip entry wins over the legacy copy of the same clip. */
+export function matteEntries(p:Project):MatteEntry[]{
+  const a=p.analysis,out=new Map<string,MatteEntry>();
+  if(a.matte){const id=a.matteSource?.layerId||'';out.set(id,{id,matte:a.matte,source:a.matteSource||null,tracks:a.tracks,occupancy:a.occupancy});}
+  for(const [id,e] of Object.entries(a.mattes||{}))if(e?.matte&&e.matteSource)out.set(id,{id,matte:e.matte,source:e.matteSource,tracks:e.tracks,occupancy:e.occupancy});
+  return [...out.values()];
+}
+export function matteFor(p:Project,layerId:string):MatteEntry|undefined{return matteEntries(p).find(e=>e.id===layerId);}
+/** The project with one cutout in the legacy slots (what matteLayer / matteTime / mattePoint read); none = no cutout. */
+export function withMatte(p:Project,e:MatteEntry|undefined):Project{
+  const a=p.analysis;
+  if(!e)return a.matte?{...p,analysis:{...a,matte:null,matteSource:null,tracks:null,occupancy:null}}:p;
+  if(a.matte===e.matte&&(a.matteSource??null)===(e.source??null)&&(a.tracks??null)===(e.tracks??null)&&(a.occupancy??null)===(e.occupancy??null))return p;
+  return {...p,analysis:{...a,matte:e.matte,matteSource:e.source,tracks:e.tracks??null,occupancy:e.occupancy??null}};
+}
+/** False when the entry's clip changed take or grew past the extracted range (never for the original footage). */
+export function matteValid(p:Project,e:MatteEntry){return !e.source||!!matteLayer(withMatte(p,e));}
+/** The cutout at t: the one belonging to the clip on top of the stack (a clip without one covers the rest, so none);
+ *  the original footage's matte where no clip covers it. */
+export function activeMatteAt(p:Project,t:number):MatteEntry|undefined{
+  const entries=matteEntries(p);if(!entries.length)return;
+  const legacy=entries.find(e=>!e.source);
+  const top=p.layers?.length?[...p.layers].reverse().find((l):l is MediaLayer=>l.kind==='media'&&!l.hidden&&layerSourceTime(l,t)!==undefined&&layerStateAt(l,t).opacity>0):undefined;
+  if(!top)return legacy;
+  const e=entries.find(x=>x.id===top.id);return e&&matteTime(withMatte(p,e),t)!=null?e:undefined;
+}
+export {topMediaAt};

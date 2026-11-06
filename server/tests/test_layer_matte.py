@@ -105,3 +105,20 @@ class LayerMatteTests(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+
+class PerClipMatteTests(LayerMatteTests):
+    def test_each_clip_keeps_its_own_run_and_saves_keep_them(self):
+        result, source, _ = self.run_matte()
+        p = service.store.load(self.pid)
+        self.assertEqual(p.analysis.mattes['shot']['matte'], result['matte'])
+        self.assertEqual(p.analysis.mattes['shot']['matteSource'], source)
+        self.assertEqual(p.analysis.mattes['shot']['tracks'], result['tracks'])
+        # A stale editor save (no mattes, no matte) keeps the server's per-clip runs; a removed clip drops its run.
+        body = self.c.get(f'/api/projects/{self.pid}').json()
+        body['analysis'] = {**body['analysis'], 'mattes': {}, 'matte': None, 'matteSource': None}
+        r = self.c.put(f'/api/projects/{self.pid}', json=body); r.raise_for_status()
+        self.assertEqual(r.json()['analysis']['mattes']['shot']['matte'], result['matte'])
+        body = r.json(); body['layers'] = []
+        r = self.c.put(f'/api/projects/{self.pid}', json=body); r.raise_for_status()
+        self.assertEqual(r.json()['analysis']['mattes'], {})

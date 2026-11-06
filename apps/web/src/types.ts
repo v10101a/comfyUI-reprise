@@ -64,7 +64,9 @@ export type Project = {version:1;id:string;name:string;fps:number;width:number;h
   media:{video?:MediaRef|null;audio?:MediaRef|null;lyrics?:string|null;
     /** Non-destructive song clip (docs/SCHEMA.md): play song [in,out) starting at project time `offset`. Absent = whole song at 0. */
     audioClip?:AudioClip|null};
-  analysis:{words?:string|null;matte?:string|null;matteSource?:MatteSource|null;tracks?:string|null;headTracks?:Record<string,string>;depth?:string|null;occupancy?:string|null;
+  analysis:{words?:string|null;matte?:string|null;matteSource?:MatteSource|null;tracks?:string|null;
+    /** One cutout per clip (layer id → its run); the legacy slots above hold the latest run. */
+    mattes?:Record<string,{matte:string;matteSource:MatteSource;tracks?:string|null;occupancy?:string|null}>|null;headTracks?:Record<string,string>;depth?:string|null;occupancy?:string|null;
     /** Fields (TypesetFlowField / TypesetVoiceField / TypesetAudioField): analysis/flow.json, analysis/voice.json,
      *  analysis/audio_<job>.json (low-band pulse of the mix). */
     flow?:string|null;voice?:string|null;audio?:string|null};

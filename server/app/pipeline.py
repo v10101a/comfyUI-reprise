@@ -222,6 +222,9 @@ def analyze_matte(store: ProjectStore, pid: str, ctx: JobContext, source: dict |
         p.analysis.matteSource = source if source["layerId"] else None
         p.analysis.tracks = tracks_rel
         p.analysis.occupancy = occ_rel
+        if source["layerId"]:  # every clip keeps its own cutout; the legacy slots hold the latest run
+            p.analysis.mattes[source["layerId"]] = {"matte": f"analysis/{matte.name}/", "matteSource": source,
+                                                    "tracks": tracks_rel, "occupancy": occ_rel}
     store.update(pid, update)
     ctx.progress(1, f"Foreground ready: {done} frames" + (f" in {len(chunks)} chunks" if len(chunks) > 1 else ""))
     return {"frames": done, "matte": f"analysis/{matte.name}/", "tracks": tracks_rel, "occupancy": occ_rel,

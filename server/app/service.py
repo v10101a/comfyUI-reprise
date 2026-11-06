@@ -6,6 +6,7 @@ are thin adapters over these functions. Errors are `ApiError(status, detail)`.
 from __future__ import annotations
 
 import json
+import os
 import re
 import logging
 import threading
@@ -54,6 +55,8 @@ def validate_paths(project: Project):
                          project.analysis.occupancy, project.analysis.beats, project.analysis.flow,
                          project.analysis.voice, project.analysis.audio) if p]
     refs += [s.track for s in project.surfaces or [] if s.track]
+    for entry in project.analysis.mattes.values():
+        refs += [entry.get(k) for k in ("matte", "tracks", "occupancy") if isinstance(entry, dict) and entry.get(k)]
     refs += list(project.analysis.headTracks) + list(project.analysis.headTracks.values())
     if project.frame and project.frame.crop:
         refs.append(project.frame.crop)
@@ -66,6 +69,18 @@ def validate_paths(project: Project):
 def health() -> dict[str, Any]:
     return {"status": "ok", **runner.health(), "generationTarget": "remote" if remote_runner else "local",
             "remote": remote_runner.health() if remote_runner else None}
+
+
+def require_comfy(what: str) -> None:
+    """Refuse a ComfyUI-backed job up front when the local ComfyUI is unreachable, so the studio shows one clear
+    message instead of a queued job that fails on submit. Offline tests (TYPESET_ANALYSIS_ENGINE=local) skip this."""
+    if os.environ.get("TYPESET_ANALYSIS_ENGINE", "comfy") == "local":
+        return
+    h = runner.health()
+    if h.get("comfyui") and (h.get("proxy") or h.get("transport") == "direct"):
+        return
+    where = h.get("comfyuiUrl") if not h.get("comfyui") else h.get("proxyUrl")
+    raise ApiError(503, f"{what} needs ComfyUI, which is not reachable at {where}. Start it with scripts/comfy.sh start and try again.")
 
 
 def create_project(body: CreateProjectBody) -> Project:
@@ -88,6 +103,10 @@ def save_project(pid: str, body: Project) -> Project:
         current = store.load(pid)
         # Head tracks belong to immutable source media, independent of trim and edit time.
         body.analysis.headTracks = {**body.analysis.headTracks, **current.analysis.headTracks}
+        # One cutout per clip, finished on the server: keep every clip's run, drop the runs whose clip is gone.
+        layer_ids = {l.get("id") for l in (getattr(body, "layers", None) or []) if isinstance(l, dict)}
+        merged = {**body.analysis.mattes, **current.analysis.mattes}
+        body.analysis.mattes = {k: v for k, v in merged.items() if k in layer_ids}
         # Analysis can finish in another tab/worker while this editor has an older
         # copy. A same-footage save must not discard completed server assets.
         if (body.media.video == current.media.video and body.width == current.width
@@ -170,6 +189,7 @@ def upload_media(pid: str, filename: str, kind: str, chunks: Iterable[bytes]):
                 p.duration = ref.duration
                 # Old mattes/tracks belong to old footage.
                 p.analysis.matte = p.analysis.tracks = p.analysis.occupancy = p.analysis.matteSource = None
+                p.analysis.mattes = {}
                 p.analysis.headTracks = {}
                 p.shots = []
             elif not p.media.video:
@@ -303,6 +323,7 @@ def analyze_words_job(pid: str, body: AnalyzeWordsBody) -> Job:
     project = require_project(pid)
     if not (project.media.audio or project.media.video):
         raise ApiError(400, "Upload audio or video first")
+    require_comfy("Words")
     job = jobs.create("words", pid)
     return jobs.submit(job, lambda ctx: analyze_words(store, pid, body.language or "auto", ctx))
 
@@ -315,6 +336,7 @@ def analyze_matte_job(pid: str, body: AnalyzeMatteBody) -> Job:
             raise ValueError("The selected matte source file is missing")
     except (ValueError, TypeError) as exc:
         raise ApiError(400, str(exc)) from exc
+    require_comfy("Subject matte")
     job = jobs.create("matte", pid, "Preparing subject matte")
     job.layerId = body.layerId
     return jobs.submit(job, lambda ctx: analyze_matte(store, pid, ctx, source=source))
