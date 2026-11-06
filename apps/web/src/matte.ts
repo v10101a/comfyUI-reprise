@@ -1,4 +1,4 @@
-import type {Project,MediaLayer,Tracks,Point} from './types';
+import type {Project,MediaLayer,Tracks,Point,MatteSource} from './types';
 import {assetOf,layerSourceTime,layerStateAt,topMediaAt} from './layers';
 
 /** Never reuse a matte from another take or from outside its extracted range. */
