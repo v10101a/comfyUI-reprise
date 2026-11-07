@@ -134,7 +134,11 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
   },[mediaSignature]);
   // One request object per (frame, project, quality): the loop runs until the request it just drew is still the latest, so
   // the same frame with different text is a new result (the last edit of a drag used to be dropped when it landed mid-render).
-  useEffect(()=>{const r=renderer.current;if(r&&previewProject)r.project=previewProject;if(!ready||!r||!canvas.current)return;{const q:Req={frame};q.opts={...(held?DRAFT:playing?PLAYBACK:SETTLED),stale:()=>requested.current!==q};requested.current=q;}
+  // Dropping a frame is only ever a shortcut: never during playback (each seek can outlast a frame period on slow media,
+  // so every frame would be dropped and the stage would freeze until pause), and never two in a row while scrubbing.
+  const dropped=useRef(false);
+  const staleFor=useCallback((q:Req,latest:{current:Req},live:boolean)=>live?undefined:()=>{const s=latest.current!==q&&!dropped.current;dropped.current=s;return s;},[]);
+  useEffect(()=>{const r=renderer.current;if(r&&previewProject)r.project=previewProject;if(!ready||!r||!canvas.current)return;{const q:Req={frame};q.opts={...(held?DRAFT:playing?PLAYBACK:SETTLED),stale:staleFor(q,requested,playing)};requested.current=q;}
     const draw=async()=>{if(rendering.current)return;rendering.current=true;try{do{const q=requested.current;await r.render(canvas.current!,q.frame,'composite',q.opts);if(q===requested.current){if(!held&&!playing)setPaint(v=>v+1);break;}}while(true);}catch(e){setError(String(e));}finally{rendering.current=false;}};void draw();
   },[frame,previewProject,ready,held,playing]);
   useEffect(()=>{if(!compare||!ready||!projectRef.current||!renderer.current){compareRenderer.current?.dispose();compareRenderer.current=undefined;setCompareReady(false);return;}
@@ -148,7 +152,7 @@ export default function Studio({initialProjectId='sample'}:{initialProjectId?:st
   },[compare,ready,mediaSignature]);
   useEffect(()=>{const r=compareRenderer.current;const p=projectRef.current;if(!compareReady||!r||!p||!compareCanvas.current)return;
     if(!p.frame?.source)r.project=reframeProject(p,'9:16',renderer.current?.tracks,r.crop).project;
-    {const q:Req={frame};q.opts={...(held?DRAFT:playing?PLAYBACK:SETTLED),stale:()=>compareRequested.current!==q};compareRequested.current=q;}
+    {const q:Req={frame};q.opts={...(held?DRAFT:playing?PLAYBACK:SETTLED),stale:staleFor(q,compareRequested,playing)};compareRequested.current=q;}
     const draw=async()=>{if(comparing.current)return;comparing.current=true;try{do{const q=compareRequested.current;await r.render(compareCanvas.current!,q.frame,'composite',q.opts);if(q===compareRequested.current)break;}while(true);}catch(e){setError(String(e));}finally{comparing.current=false;}};void draw();
   },[frame,project,compareReady,held,playing]);
   // Waveform: min/max peaks (2 floats per bin) so the arrangement can redraw at any zoom.
